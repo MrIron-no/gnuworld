@@ -242,6 +242,39 @@ if test "x$check_log4cplus" != "x" ; then
 	CXXFLAGS="${CXXFLAGS} -I${LOG4CPLUS_INCLUDE}"
 fi
 
+dnl Enable OpenSSL if required
+AC_ARG_WITH(libssl,
+		AC_HELP_STRING([--with-openssl],
+						[Check for openssl. If not enabled, TLS connections will not be available]),
+		[check_libssl=$withval]
+)
+if [test "$check_libssl" == "yes"]; then
+        check_libssl=/usr
+fi
+SSL_LIB="${check_libssl}/lib"
+AC_ARG_WITH(libssl-lib,
+        AC_HELP_STRING([--with-libssl-lib=LIBSSLLIBDIR],
+                        [Specify location to find libssl.so]),
+        [SSL_LIB=$withval]
+)
+
+SSL_INCLUDE="${check_libssl}/include"
+AC_ARG_WITH(libssl-include,
+        AC_HELP_STRING([--with-libssl-include=SSLINCLUDEDIR],
+                        [Specify location to find ssl.h]),
+        [SSL_INCLUDE=$withval]
+)
+
+if [test "x$check_libssl" != "x" ]; then
+        LDFLAGS="${LDFLAGS} -L${SSL_LIB}"
+        CXXFLAGS="${CXXFLAGS} -I${SSL_INCLUDE} -L${SSL_LIB}"
+        dnl AC_CHECK_FILE("$SSL_LIB/libssl.so",, [AC_MSG_ERROR([Unable to find libssl.so, \
+        dnl                 please use the --with-liboath-lib argument to point to the right path],1)])
+        AC_CHECK_LIB(ssl,oath_totp_validate,, [AC_MSG_ERROR([Unable to find libssl.so, please use the --with-libssl-lib argument to point to the right path],1)])
+        AC_CHECK_FILE("$SSL_INCLUDE/openssl/ssl.h",, [AC_MSG_ERROR([Unable to find ssl.h, please use the --with-libssl-include argument to point to the right path],1)])
+        dnl AC_DEFINE([ENABLE_LIBSSL], [], [Enable LIBSSL])
+fi
+
 dnl Allow selection of additional includes and libraries paths
 dnl just in case!
 

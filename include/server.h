@@ -1291,6 +1291,22 @@ protected:
 	long			Version ;
 
 	/**
+	 * Whether or not TLS encrypted connections are enabled (and required)
+	 * for the server uplink
+	 */
+	bool			tlsEnabled ;
+
+	bool			sslV2 ;
+
+	bool			sslV3 ;
+
+	bool			tlsV1P0 ;
+
+	bool			tlsV1P1 ;
+
+	bool			tlsV1P2	;
+
+	/**
 	 * This variable is true when this server is bursting.
 	 */
 	bool			bursting ;
@@ -1493,6 +1509,18 @@ protected:
 	std::string	shutDownReason ;
 
 	/**
+	 * The path to the TLS key file
+	 */
+	std::string tlsKeyFile ;
+
+	/**
+	 * The path to the TLS cert file
+	 */
+	std::string tlsCertFile ;
+
+
+
+	/**
 	 * The char array to be used to read in network data.
 	 * This is allocated only once in the server for
 	 * performance reasons.
@@ -1536,6 +1564,11 @@ protected:
 	 * This method loads all command handlers.
 	 */
 	bool		loadCommandHandlers() ;
+
+	/**
+	 * This method initializes all of the TLS contexts
+	 */
+	bool		initTls() ;
 
 	/**
 	 * Load an individual command handler from a file (fileName),

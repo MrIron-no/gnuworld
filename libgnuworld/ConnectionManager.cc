@@ -109,7 +109,8 @@ handlerMap.clear() ;
 
 Connection* ConnectionManager::Connect( ConnectionHandler* hPtr,
 	const string& host,
-	const unsigned short int remotePort )
+	const unsigned short int remotePort,
+	bool tlsEnabled = false )
 {
 // Handler must be valid
 assert( hPtr != 0 ) ;
@@ -128,7 +129,7 @@ if( host.empty() )
 
 // Allocate a new Connection object
 Connection* newConnection = new (nothrow)
-	Connection( host, remotePort, delimiter ) ;
+	Connection( host, remotePort, delimiter, tlsEnabled ) ;
 assert( newConnection != 0 ) ;
 
 // Set the absolute time for this Connection's timeout to occur
@@ -183,6 +184,19 @@ addr->sin_addr.s_addr = inet_addr( newConnection->getIP().c_str() ) ;
 
 // Update the new Connection object
 newConnection->setSockFD( sockFD ) ;
+
+if (tlsEnabled) {
+	SSL* state = SSL_new(sslCtx);
+	if (!state) {
+		elog << "Connect> Could not create SSL session" << endl;
+		return 0;
+	}
+	newConnection->setTlsState(state);
+	SSL_set_fd(state, sockFD);
+	BIO_set_nbio(SSL_get_rbio(state), 1);
+	BIO_set_nbio(SSL_get_wbio(state), 1);
+	SSL_set_connect_state(state);
+}
 
 // Attempt to initiate the connect.
 // The socket is non-blocking, so a failure is expected
@@ -1024,11 +1038,15 @@ if( cPtr->isFile() )
 		inputBufferSize ) ;
 	}
 else
-	{
+{
 	// Network connection
+	if (cPtr->isTLS()) {
+		readResult = SSL_read(cPtr->getTlsState(), inputBuffer, inputBufferSize);
+	} else {
 	readResult = ::recv( cPtr->getSockFD(), inputBuffer,
 		inputBufferSize, 0 ) ;
 	}
+}
 
 if( EAGAIN == errno )
 	{
@@ -1099,7 +1117,6 @@ if( cPtr->isFile() )
 	{
 	// Just ignore writes to the file
 	cPtr->outputBuffer.clear() ;
-
 	return true ;
 	}
 
@@ -1109,16 +1126,37 @@ if( cPtr->isFlush() )
 	}
 
 errno = 0 ;
-int writeResult = ::send( cPtr->getSockFD(),
-	cPtr->outputBuffer.data(),
-	cPtr->outputBuffer.size(),
-	0 ) ;
+int writeResult = 0;
+if ( !cPtr->isTLS()) {
+	writeResult = ::send( cPtr->getSockFD(),
+		cPtr->outputBuffer.data(),
+		cPtr->outputBuffer.size(),
+		0 ) ;
+} else {
+	writeResult = SSL_write(cPtr->getTlsState(),
+		cPtr->outputBuffer.data(),
+		cPtr->outputBuffer.size()) ;
+	if (writeResult < 0) {
+		int err = SSL_get_error(cPtr->getTlsState(), writeResult);
+
+		switch (err)
+		{
+		case SSL_ERROR_WANT_READ:
+		case SSL_ERROR_WANT_WRITE:
+		case SSL_ERROR_SYSCALL:
+		default:
+			elog << "ConnectionManager::HandleWrite> Fatal TLS error encountered. Are you sure you're connecting to the uplink on an encrypted port?" << endl;
+			hPtr->OnDisconnect( cPtr ) ;
+			return false;
+		}
+	}
+}
 
 if( (ENOBUFS == errno) || (EWOULDBLOCK == errno) || (EAGAIN == errno) )
 	{
 	// Nonblocking type error
 	// Ignore it for now
-	elog	<< "ConnectionManager::handleWrite> errno: "
+	elog	<< "ConnectionManager::handleWrite> errno: (" << errno << ") "
 		<< strerror( errno )
 		<< endl ;
 	return true ;
@@ -1677,7 +1715,7 @@ if( fd < 0 )
 
 // Create a new Connection object to represent this open file
 Connection* newConnect = new (std::nothrow)
-	Connection( fileName, fd, delimiter ) ;
+	Connection( fileName, fd, delimiter, false ) ;
 assert( newConnect != 0 ) ;
 
 // Set the Connection's state

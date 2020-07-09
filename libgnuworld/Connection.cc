@@ -47,12 +47,14 @@ using std::string ;
 // Simply initialize the object
 Connection::Connection( const string& _hostname,
 	const unsigned short int _remotePort,
-	const char _delimiter )
+	const char _delimiter,
+	bool _tlsEnabled )
 : hostname( _hostname ),
 	localPort( 0 ),
 	remotePort( _remotePort ),
 	inputBuffer( _delimiter ),
 	outputBuffer( _delimiter ),
+	tlsEnabled( _tlsEnabled ),
 	IP( string() ),
 	sockFD( -1 ),
 	flags( F_PENDING ),
@@ -68,6 +70,7 @@ Connection::Connection( const char _delimiter )
 	remotePort( 0 ),
 	inputBuffer( _delimiter ),
 	outputBuffer( _delimiter ),
+	tlsEnabled( false ),
 	sockFD( -1 ),
 	flags( F_PENDING )
 {
@@ -76,7 +79,6 @@ memset( &addr, 0, sizeof( struct sockaddr_in ) ) ;
 
 Connection::~Connection()
 {
-/* No work to be done, no heap space allocated */
 }
 
 void Connection::Write( const string& writeMe )

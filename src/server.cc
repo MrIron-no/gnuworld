@@ -264,7 +264,87 @@ glineUpdateInterval = static_cast< time_t >( atoi(
 pingUpdateInterval = static_cast< time_t >( atoi(
 	conf.Require( "pingupdateinterval" )->second.c_str() ) ) ;
 
+// Check TLS configuration settings
+EConfig::const_iterator tlsItr = conf.Find( "tls" ) ;
+if ( tlsItr == conf.end() || tlsItr->second != "yes" )
+{
+	tlsEnabled = false ;
+} else {
+	tlsEnabled = true ;
+
+	// If TLS is enabled, parse the other configuration options
+	tlsKeyFile = conf.Require( "tlsKeyFile" )->second ;
+	tlsCertFile = conf.Require( "tlsCertFile" )->second ;
+
+	tlsItr = conf.Find( "sslV2" ) ;
+	sslV2 = (tlsItr != conf.end() && tlsItr->second == "yes" );
+
+	tlsItr = conf.Find( "sslV3" ) ;
+	sslV3 = (tlsItr != conf.end() && tlsItr->second == "yes" );
+
+	tlsItr = conf.Find( "tlsV1P0" ) ;
+	tlsV1P0 = (tlsItr != conf.end() && tlsItr->second == "yes" );
+
+	tlsItr = conf.Find( "tlsV1P1" ) ;
+	tlsV1P1 = (tlsItr != conf.end() && tlsItr->second == "yes" );
+
+	tlsItr = conf.Find( "tlsV1P2" ) ;
+	tlsV1P2 = (tlsItr != conf.end() && tlsItr->second == "yes" );
+
+	if (!initTls()) {
+		elog << "TLS initialization error. Exiting." << endl;
+		::exit(1);
+	}
+}
+
 return true ;
+}
+
+bool xServer::initTls()
+{
+	elog << "xServer::initTls - Spinning up TLS" << endl;
+	SSL_library_init();
+	SSL_load_error_strings();
+	if (!RAND_poll()) {
+		elog << "xServer::initTls - RAND_poll() failed" << endl;
+		return false;
+	}
+	sslCtx = SSL_CTX_new(SSLv23_method());
+
+	if (sslV2)
+		SSL_CTX_set_options(sslCtx, SSL_OP_NO_SSLv2);
+	if (sslV3)
+		SSL_CTX_set_options(sslCtx, SSL_OP_NO_SSLv3);
+	if (tlsV1P0)
+		SSL_CTX_set_options(sslCtx, SSL_OP_NO_TLSv1);
+	if (tlsV1P1)
+		SSL_CTX_set_options(sslCtx, SSL_OP_NO_TLSv1_1);
+	if (tlsV1P2)
+		SSL_CTX_set_options(sslCtx, SSL_OP_NO_TLSv1_2);
+
+	int res = SSL_CTX_use_certificate_chain_file(sslCtx, tlsCertFile.c_str());
+	if (res != 1) {
+		elog << "xServer::initTls - Could not load certificate file" << endl;
+		SSL_CTX_free(sslCtx);
+		return false;
+	}
+
+	res = SSL_CTX_use_PrivateKey_file(sslCtx, tlsKeyFile.c_str(), SSL_FILETYPE_PEM);
+	if (res != 1) {
+		elog << "xServer::initTls - Could not load key file" << endl;
+		SSL_CTX_free(sslCtx);
+		return false;
+	}
+
+	res = SSL_CTX_check_private_key(sslCtx);
+	if (res != 1) {
+		elog << "xServer::initTls - Private key validation failed" << endl;
+		SSL_CTX_free(sslCtx);
+		return false;
+	}
+
+	SSL_CTX_set_cipher_list(sslCtx, SSL_DEFAULT_CIPHER_LIST);
+	return true;
 }
 
 bool xServer::loadCommandHandlers()

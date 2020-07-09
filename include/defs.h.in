@@ -273,3 +273,6 @@
 
 /* Define as 'int' if <sys/types.h> doesn't define. */
 #undef uid_t
+
+/* Have LIBSSL */
+#undef HAVE_LIBSSL

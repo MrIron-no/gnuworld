@@ -33,6 +33,10 @@
 #include	<string>
 #include	<iostream>
 
+#include	<openssl/err.h>
+#include	<openssl/rand.h>
+#include	<openssl/ssl.h>
+
 #include	"Buffer.h"
 #include	"ELog.h"
 
@@ -242,6 +246,12 @@ public:
 	 */
 	inline size_t	getInputBufferSize() const
 		{ return inputBuffer.size() ; }
+	
+	/**
+	 * Return whether or not this connection has TLS enabled
+	 */
+	inline bool		isTLS() const
+		{ return tlsEnabled ; }
 
 	/**
 	 * Set the F_FLUSH flag to true.
@@ -306,7 +316,8 @@ protected:
 	 */
 	Connection( const std::string& host,
 			const unsigned short int remotePort,
-			const char delimiter ) ;
+			const char delimiter,
+			bool tlsEnabled ) ;
 
 	/**
 	 * Create a new instance of this class, set all variables
@@ -414,6 +425,15 @@ protected:
 	 */
 	inline time_t	getAbsTimeout() const
 		{ return absTimeout ; }
+	
+	/**
+	 * Return the current TLS state for this connection
+	 */
+	inline SSL*		getTlsState() const
+		{ return tlsState ; }
+	
+	inline void		setTlsState(SSL* newState)
+		{ tlsState = newState ; }
 
 	/**
 	 * The remote hostname of this connection
@@ -484,6 +504,15 @@ protected:
 	 */
 	size_t			bytesWritten ;
 
+	/**
+	 * Whether or not this connection is encrypted
+	 */
+	bool 			tlsEnabled ;
+
+	/**
+	 * The current OpenSSL TLS state for this connection
+	 */
+	SSL*			tlsState ;
 } ;
 
 } // namespace gnuworld

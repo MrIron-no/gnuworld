@@ -34,6 +34,10 @@
 
 #include	<ctime>
 
+#include	<openssl/err.h>
+#include	<openssl/rand.h>
+#include	<openssl/ssl.h>
+
 #include	"Connection.h"
 #include	"ConnectionHandler.h"
 
@@ -188,7 +192,8 @@ public:
 	virtual Connection*	Connect(
 				ConnectionHandler*,
 				const std::string& host,
-				const unsigned short int remotePort ) ;
+				const unsigned short int remotePort,
+				bool tlsEnabled ) ;
 
 	/**
 	 * Connect to a file instead of a network host.  This method
@@ -333,6 +338,11 @@ protected:
 	 * Scratch buffer for reads
 	 */
 	char*		inputBuffer ;
+
+	/**
+	 * The OpenSSL context for TLS connections
+	 */
+	SSL_CTX*	sslCtx ;
 
 	/**
 	 * Open a socket.
