@@ -331,7 +331,7 @@ while( keepRunning )
 				<< "... "
 				<< endl ;
 
-			serverConnection = Connect( this, UplinkName, Port ) ;
+			serverConnection = Connect( this, UplinkName, Port, tlsEnabled ) ;
 			}
 		} // if( NULL == serverConnection )
 
