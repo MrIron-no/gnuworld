@@ -244,7 +244,7 @@ fi
 
 dnl Enable OpenSSL if required
 AC_ARG_WITH(libssl,
-		AC_HELP_STRING([--with-openssl],
+		AC_HELP_STRING([--with-libssl],
 						[Check for openssl. If not enabled, TLS connections will not be available]),
 		[check_libssl=$withval]
 )
@@ -266,11 +266,10 @@ AC_ARG_WITH(libssl-include,
 )
 
 if [test "x$check_libssl" != "x" ]; then
-        LDFLAGS="${LDFLAGS} -L${SSL_LIB}"
+        LDFLAGS="${LDFLAGS} -L${SSL_LIB} -lssl"
         CXXFLAGS="${CXXFLAGS} -I${SSL_INCLUDE} -L${SSL_LIB}"
         dnl AC_CHECK_FILE("$SSL_LIB/libssl.so",, [AC_MSG_ERROR([Unable to find libssl.so, \
         dnl                 please use the --with-liboath-lib argument to point to the right path],1)])
-        AC_CHECK_LIB(ssl,oath_totp_validate,, [AC_MSG_ERROR([Unable to find libssl.so, please use the --with-libssl-lib argument to point to the right path],1)])
         AC_CHECK_FILE("$SSL_INCLUDE/openssl/ssl.h",, [AC_MSG_ERROR([Unable to find ssl.h, please use the --with-libssl-include argument to point to the right path],1)])
         dnl AC_DEFINE([ENABLE_LIBSSL], [], [Enable LIBSSL])
 fi
