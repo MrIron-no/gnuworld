@@ -400,7 +400,7 @@ else if( command == "JOINALL" )
 	if( NULL == theChan )
 		{
 		theChan = new (std::nothrow)
-			Channel( playChan, ::time( 0 ) ) ;
+			Channel( chanName, ::time( 0 ) ) ;
 		assert( theChan != 0 ) ;
 
 		// Add the channel to the network tables
@@ -596,6 +596,100 @@ else if( command == "PARTALL" )
 			}
 		}
 	} // PARTALL
+else if( command == "PART" )
+	{
+	if( st.size() < 3 )
+		{
+		Notice( theClient, "Usage: %s <#channel> <# of clones> [reason]",
+			command.c_str() ) ;
+		return ;
+		}
+
+	size_t numClones = atoi( st[ 2 ].c_str() ) ;
+	if( numClones < 1 )
+		{
+		Notice( theClient,
+			"%s: Invalid number of clones", command.c_str() ) ;
+		return ;
+		}
+
+	string chanName( st[ 1 ] ) ;
+
+	if( chanName[ 0 ] != '#' )
+		{
+		chanName.insert( chanName.begin(), '#' ) ;
+		}
+
+	// Is the channel the playChan? Then use the PLAY command!
+	if( strcasecmp( chanName.c_str(), playChan.c_str() ) == 0 )
+		{
+		Notice( theClient, "That's the play channel! Please use the PLAY command." ) ;
+		return ;
+		}
+
+	Channel* theChan = Network->findChannel( chanName ) ;
+	if( theChan != NULL )
+		{
+		if( st.size() == 2 )
+			{
+			size_t i { } ;
+			for( Channel::userIterator chanUsers = theChan->userList_begin() ;
+				chanUsers != theChan->userList_end(); ++chanUsers )
+				{
+				if( i == numClones ) break ;
+
+				ChannelUser* tmpUser = chanUsers->second ;
+
+				// Check if tmpUser is in clones list.
+    			auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+				if( pos != clones.end() )
+					{
+					stringstream s ;
+					s	<< tmpUser->getCharYYXXX()
+						<< " L "
+						<< chanName ;
+
+					MyUplink->Write( s ) ;
+
+					theChan->removeUser ( tmpUser ) ;
+					tmpUser->getClient()->removeChannel( theChan ) ;
+					}
+				i++ ;
+				}
+			}
+		if( st.size() > 2 )
+			{
+			string partReason( st.assemble(3).c_str() ) ;
+
+			size_t i { } ;
+			for( Channel::userIterator chanUsers = theChan->userList_begin() ;
+				chanUsers != theChan->userList_end(); ++chanUsers )
+				{
+				if( i == numClones ) break ;
+
+				ChannelUser* tmpUser = chanUsers->second ;
+
+				// Check if tmpUser is in clones list.
+    			auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+				if( pos != clones.end() )
+					{
+					stringstream s ;
+					s	<< tmpUser->getCharYYXXX()
+						<< " L "
+						<< chanName
+						<< " :"
+						<< partReason ;
+
+					MyUplink->Write( s ) ;
+
+					theChan->removeUser ( tmpUser ) ;
+					tmpUser->getClient()->removeChannel( theChan ) ;
+					}
+				i++ ;
+				}
+			}
+		}
+	}
 else if( command == "KILLALL" || command == "QUITALL" )
 	{
         if( st.size() < 1 )
@@ -1074,14 +1168,16 @@ else if( timer_id == joinTimer )
 	// We cannot go back in time. Cutting the interval in two. 
 	if( diff > cycleInterval ) diff = (float)cycleInterval / 2 ; 
 
-	/*elog 	<< "cloner::onTimer> joinTimer: Current clones on channel: "
+	elog 	<< "cloner::onTimer> joinTimer: Current clones on channel: "
 			<< cloneCount( theChan )
 			<< " playCloneCount: "
 			<< playCloneCount
 			<< ". Correcting interval by " 
-			<< diff << " seconds." << endl ;*/
+			<< diff << " seconds ("
+			<< (int)diff 
+			<< ")" << endl ;
 
-	joinTimer = MyUplink->RegisterTimer( ::time( 0 ) + cycleInterval - diff, this, 0 ) ; 
+	joinTimer = MyUplink->RegisterTimer( ::time( 0 ) + cycleInterval - (int)diff, this, 0 ) ; 
 	}
 else if( timer_id == partTimer )
 	{
@@ -1126,7 +1222,7 @@ else if( timer_id == partTimer )
 			<< ". Correcting interval by " 
 			<< diff << " seconds." << endl ;*/
 	
-	partTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( cycleInterval * 2 ) + diff, this, 0 ) ;
+	partTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( cycleInterval * 2 ) + (int)diff, this, 0 ) ;
 	}
 else if( timer_id == quitTimer )
 	{
