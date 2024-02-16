@@ -145,15 +145,17 @@ if( spamList.empty() )
 playChan = conf.Require( "playchan" )->second ;
 
 makeCloneCount = 0 ;
-spamFloodCount = 0 ;
-actionFloodCount = 0 ;
-nickFloodCount = 0 ;
-kickFloodCount = 0 ;
-topicFloodCount = 0 ;
-opFloodCount = 0 ;
-deopFloodCount = 0 ;
-joinFloodCount = 0 ;
 playCloneCount = 0 ;
+
+// Let's make sure we don't get all flood at the same time
+spamFloodCount = 0 ;
+actionFloodCount = 1 ;
+nickFloodCount = 2 ;
+kickFloodCount = 3 ;
+topicFloodCount = 4 ;
+opFloodCount = 5 ;
+deopFloodCount = 6 ;
+joinFloodCount = 7 ;
 
 spamInterval = atoi( conf.Require( "spaminterval" )->second.c_str() ) ;
 cycleInterval = atoi( conf.Require( "cycleinterval" )->second.c_str() ) ;
@@ -487,39 +489,37 @@ else if( command == "JOIN" )
 			}
 		}
 
-	size_t i {} ;
-	for( std::list< iClient* >::const_iterator ptr = clones.begin(),
-		endPtr = clones.end() ; ptr != endPtr ; ++ptr )
+	for( size_t i = 0 ; i < numClones ; i++ )
 		{
-		if( i == numClones ) break ;
+			iClient* theClone = availableClone( theChan ) ;
+			if( NULL == theClone ) break ;
 
-		stringstream s ;
-		s	<< (*ptr)->getCharYYXXX()
-			<< " J "
-			<< chanName 
-			<< " "
-			<< theChan->getCreationTime() ;
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " J "
+				<< chanName 
+				<< " "
+				<< theChan->getCreationTime() ;
 
-		MyUplink->Write( s ) ;
+			MyUplink->Write( s ) ;
 
-		// Creating ChannelUser, and adding to network table. 
-		ChannelUser* theUser =
-			new (std::nothrow) ChannelUser( *ptr ) ;
-		assert( theUser != 0 ) ;
+			// Creating ChannelUser, and adding to network table. 
+			ChannelUser* theUser =
+				new (std::nothrow) ChannelUser( theClone ) ;
+			assert( theUser != 0 ) ;
 
-		if( !theChan->addUser( theUser ) )
-			{
-			elog << "clone::OnPrivateMessage> Failed to addUser()." << endl ;
-			delete theUser ; theUser = 0 ;
-			}
+			if( !theChan->addUser( theUser ) )
+				{
+				elog << "clone::OnPrivateMessage> Failed to addUser()." << endl ;
+				delete theUser ; theUser = 0 ;
+				}
 
-		if( !(*ptr)->addChannel( theChan ) )
-			{
-			elog << "clone::OnPrivateMessage> Failed to addChannel()." << endl ;
-			theChan->removeUser( *ptr ) ;
-			delete theUser ; theUser = 0 ;
-			}
-		i++ ;
+			if( !theClone->addChannel( theChan ) )
+				{
+				elog << "clone::OnPrivateMessage> Failed to addChannel()." << endl ;
+				theChan->removeUser( theClone ) ;
+				delete theUser ; theUser = 0 ;
+				}
 		}
 	} // JOIN
 else if( command == "PARTALL" )
@@ -544,20 +544,24 @@ else if( command == "PARTALL" )
 			chanUsers != theChan->userList_end(); ++chanUsers )
 			{
 			ChannelUser* tmpUser = chanUsers->second ;
+			if( NULL == tmpUser ) continue ;
 
 			// Check if tmpUser is in clones list.
     		auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
 			if( pos != clones.end() )
 				{
+				iClient* tmpClone = tmpUser->getClient() ;
 				stringstream s ;
-				s	<< tmpUser->getCharYYXXX()
+				s	<< tmpClone->getCharYYXXX()
 					<< " L "
 					<< chanName ;
 
 				MyUplink->Write( s ) ;
 
-				theChan->removeUser ( tmpUser ) ;
-				tmpUser->getClient()->removeChannel( theChan ) ;
+				theChan->removeUser( tmpClone ) ;
+				delete tmpUser ; tmpUser = 0 ;
+
+				tmpClone->removeChannel( theChan ) ;
 				}
 			}
 		}
@@ -576,13 +580,15 @@ else if( command == "PARTALL" )
 			chanUsers != theChan->userList_end(); ++chanUsers )
 			{
 			ChannelUser* tmpUser = chanUsers->second ;
+			if( NULL == tmpUser ) continue ;
 
 			// Check if tmpUser is in clones list.
     		auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
 			if( pos != clones.end() )
 				{
+				iClient* tmpClone = tmpUser->getClient() ;
 				stringstream s ;
-				s	<< tmpUser->getCharYYXXX()
+				s	<< tmpClone->getCharYYXXX()
 					<< " L "
 					<< chanName
 					<< " :"
@@ -590,8 +596,10 @@ else if( command == "PARTALL" )
 
 				MyUplink->Write( s ) ;
 
-				theChan->removeUser ( tmpUser ) ;
-				tmpUser->getClient()->removeChannel( theChan ) ;
+				theChan->removeUser( tmpClone ) ;
+				delete tmpUser ; tmpUser = 0 ;
+
+				tmpClone->removeChannel( theChan ) ;
 				}
 			}
 		}
@@ -639,20 +647,24 @@ else if( command == "PART" )
 				if( i == numClones ) break ;
 
 				ChannelUser* tmpUser = chanUsers->second ;
+				if( NULL == tmpUser ) continue ;
 
 				// Check if tmpUser is in clones list.
     			auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
 				if( pos != clones.end() )
 					{
+					iClient* tmpClone = tmpUser->getClient() ;
 					stringstream s ;
-					s	<< tmpUser->getCharYYXXX()
+					s	<< tmpClone->getCharYYXXX()
 						<< " L "
 						<< chanName ;
 
 					MyUplink->Write( s ) ;
 
-					theChan->removeUser ( tmpUser ) ;
-					tmpUser->getClient()->removeChannel( theChan ) ;
+					theChan->removeUser( tmpClone ) ;
+					delete tmpUser ; tmpUser = 0 ;
+
+					tmpClone->removeChannel( theChan ) ;
 					}
 				i++ ;
 				}
@@ -668,13 +680,15 @@ else if( command == "PART" )
 				if( i == numClones ) break ;
 
 				ChannelUser* tmpUser = chanUsers->second ;
+				if( NULL == tmpUser ) continue ;
 
 				// Check if tmpUser is in clones list.
     			auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
 				if( pos != clones.end() )
 					{
+					iClient* tmpClone = tmpUser->getClient() ;
 					stringstream s ;
-					s	<< tmpUser->getCharYYXXX()
+					s	<< tmpClone->getCharYYXXX()
 						<< " L "
 						<< chanName
 						<< " :"
@@ -682,8 +696,10 @@ else if( command == "PART" )
 
 					MyUplink->Write( s ) ;
 
-					theChan->removeUser ( tmpUser ) ;
-					tmpUser->getClient()->removeChannel( theChan ) ;
+					theChan->removeUser( tmpClone ) ;
+					delete tmpUser ; tmpUser = 0 ;
+
+					tmpClone->removeChannel( theChan ) ;
 					}
 				i++ ;
 				}
@@ -789,7 +805,9 @@ else if( command == "PLAY" )
 
 			MyUplink->Write( s ) ;
 
-			theChan->removeUser ( *ptr ) ;
+			ChannelUser* theUser = theChan->removeUser( *ptr ) ;
+			delete theUser ; theUser = 0 ;
+
 			(*ptr)->removeChannel( theChan ) ;
 			}
 
@@ -1147,7 +1165,7 @@ else if( timer_id == joinTimer )
 
 		if( !theClone->addChannel( theChan ) )
 			{
-			theChan->removeUser( theUser ) ;
+			theChan->removeUser( theClone ) ;
 			delete theUser ; theUser = 0 ;
 			}
 
@@ -1196,7 +1214,9 @@ else if( timer_id == partTimer )
 		MyUplink->Write( s ) ;
 
 		// Cleaning up.
-		theChan->removeUser( theClone ) ;
+		ChannelUser* theUser = theChan->removeUser( theClone ) ;
+		delete theUser ; theUser = 0 ;
+
 		theClone->removeChannel ( theChan ) ;
 		}
 
@@ -1389,7 +1409,7 @@ else if( timer_id == kickTimer )
 		for( int i = 0 ; i < tmp ; i++ )
 			{
 			iClient* destClone = randomChanClone( theChan ) ;
-			if( theClone == NULL) break ;
+			if( NULL == theClone ) break ;
 
 			stringstream s ;
 			s	<< theClone->getCharYYXXX()
@@ -1402,7 +1422,9 @@ else if( timer_id == kickTimer )
 
 			MyUplink->Write( s ) ;
 
-			theChan->removeUser( destClone ) ;
+			ChannelUser* destUser = theChan->removeUser( destClone ) ;
+			delete destUser ; destUser = 0 ;
+
 			destClone->removeChannel( theChan ) ;
 
 			// Did the clone kick itself? Break.
@@ -1529,6 +1551,8 @@ while ( i < theChan->userList_size() )
 
 	// Check if tmpUser is in clones list.
 	ChannelUser* tmpUser = chanUsers->second;
+	if( NULL == tmpUser ) continue;
+
 	auto pos = find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
 	if( pos != clones.end() )
 		return tmpUser->getClient() ;
@@ -1573,8 +1597,7 @@ while ( i < theChan->userList_size() )
 
 	// Check if tmpUser is op'd and on clones list.
 	ChannelUser* tmpUser = chanUsers->second ;
-
-	if( !tmpUser->isModeO() ) continue ;
+	if( NULL == tmpUser || !tmpUser->isModeO() ) continue ;
 
 	auto pos = find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
 	if( pos != clones.end() )
@@ -1592,6 +1615,7 @@ for( Channel::userIterator chanUsers = theChan->userList_begin() ;
 	chanUsers != theChan->userList_end(); ++chanUsers )
 	{
 	ChannelUser* tmpUser = chanUsers->second ;
+	if( NULL == tmpUser ) continue ;
 
 	// Check if tmpUser is in clones list.
     auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
@@ -1609,8 +1633,7 @@ for( Channel::userIterator chanUsers = theChan->userList_begin() ;
 	chanUsers != theChan->userList_end(); ++chanUsers )
 	{
 	ChannelUser* tmpUser = chanUsers->second ;
-
-	if( !tmpUser->isModeO() ) continue ;
+	if( NULL == tmpUser || !tmpUser->isModeO() ) continue ;
 
 	// Check if tmpUser is in clones list.
     auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
