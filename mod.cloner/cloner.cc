@@ -29,9 +29,11 @@
 #include	<iostream>
 #include	<sstream>
 #include	<string>
+#include	<algorithm>
 
 #include	<ctime>
 #include	<cstdlib>
+#include	<cmath>
 
 #include	"client.h"
 #include	"iClient.h"
@@ -126,10 +128,53 @@ if( userNames.empty() )
 	::exit( 0 ) ;
 	}
 
+ptr = conf.Find( "spam" ) ;
+while( ptr != conf.end() && ptr->first == "spam" )
+	{
+	spamList.push_back( ptr->second ) ;
+	++ptr ;
+	}
+
+if( spamList.empty() )
+	{
+	elog	<< "cloner> Must specify at least one spam line"
+		<< endl ;
+	::exit( 0 ) ;
+	}
+
+playChan = conf.Require( "playchan" )->second ;
+
 makeCloneCount = 0 ;
+spamFloodCount = 0 ;
+actionFloodCount = 0 ;
+nickFloodCount = 0 ;
+kickFloodCount = 0 ;
+topicFloodCount = 0 ;
+opFloodCount = 0 ;
+deopFloodCount = 0 ;
+joinFloodCount = 0 ;
+playCloneCount = 0 ;
+
+spamInterval = atoi( conf.Require( "spaminterval" )->second.c_str() ) ;
+cycleInterval = atoi( conf.Require( "cycleinterval" )->second.c_str() ) ;
+quitInterval = atoi( conf.Require( "quitinterval" )->second.c_str() ) ;
+opInterval = atoi( conf.Require( "opsinterval" )->second.c_str() ) ;
+topicInterval = atoi( conf.Require( "topicinterval" )->second.c_str() ) ;
+nickInterval = atoi( conf.Require( "nickchangeinterval" )->second.c_str() ) ;
+
+floodLines = atoi( conf.Require( "floodlines" )->second.c_str() ) ;
+floodCount = atoi( conf.Require( "floodcount" )->second.c_str() ) ;
+playOps = atoi( conf.Require( "playops" )->second.c_str() ) ;
 
 minNickLength = atoi( conf.Require( "minnicklength" )->second.c_str() ) ;
 maxNickLength = atoi( conf.Require( "maxnicklength" )->second.c_str() ) ;
+
+if( playChan[0] != '#' && ( playChan != "0" ) )
+	{
+	elog	<< "cloner> invalid channel name for playchan"
+		<< endl ;
+	::exit( 0 );
+	}
 
 if( minNickLength < 1 )
 	{
@@ -217,8 +262,8 @@ if( command == "SHOWCOMMANDS" )
 	if( st.size() >= 1 )
 		{
 		Notice( theClient, "_-=[Cloner Commands]=-_" ) ;
-		Notice( theClient, "LOADCLONES JOINALL PARTALL "
-			"KILLALL/QUITALL SAYALL/MSGALL "
+		Notice( theClient, "LOADCLONES JOINALL JOIN PARTALL "
+			"KILLALL/QUITALL SAYALL/MSGALL PLAY "
 			"ACTALL/DOALL/DESCRIBEALL NOTICEALL" ) ;
 		Notice( theClient, "_-=[End of Cloner Commands]=-_" ) ;
 		}
@@ -252,11 +297,21 @@ else if( command == "HELP" )
 		Notice( theClient, "%s <#channel> - Make all clones "
 			"/join a #channel", topic.c_str() ) ;
 		}
+	else if( topic == "JOIN" )
+		{
+		Notice( theClient, "%s <#channel> <# of clones> - Make clones "
+			"/join a #channel", topic.c_str() ) ;
+		}
 	else if( topic == "PARTALL" )
 		{
 		Notice( theClient, "%s <#channel> [reason] - Make "
 			"all clones /part a #channel with an optional "
 			"reason", topic.c_str() ) ;
+		}
+	else if( topic == "PART" )
+		{
+		Notice( theClient, "%s <#channel> <# of clones> - Makes clones "
+			"/part a #channel", topic.c_str() ) ;
 		}
 	else if( topic == "KILLALL" || topic == "QUITALL" )
 		{
@@ -269,6 +324,11 @@ else if( command == "HELP" )
 		Notice( theClient, "%s <#channel/nickname> "
 			"<message> - Make all clones /msg a #channel or "
 			"nickname", topic.c_str() ) ;
+		}
+	else if( topic == "PLAY" )
+		{
+		Notice( theClient, "%s <# of clones/OFF> - Make clones "
+			"create random activity on a #channel at the defined intervals", topic.c_str() ) ;
 		}
 	else if( topic == "ACTALL" || topic == "DOALL" || topic ==
 		"DESCRIBEALL" )
@@ -303,7 +363,7 @@ else if( command == "LOADCLONES" )
 
 	if( 0 == makeCloneCount )
 		{
-		MyUplink->RegisterTimer( ::time( 0 ) + 1, this, 0 ) ;
+		loadCloneTimer = MyUplink->RegisterTimer( ::time( 0 ) + 1, this, 0 ) ;
 		}
 
 	makeCloneCount += static_cast< size_t >( numClones ) ;
@@ -328,17 +388,140 @@ else if( command == "JOINALL" )
 		chanName.insert( chanName.begin(), '#' ) ;
 		}
 
+	// Is the channel the playChan? Then use the PLAY command!
+	if( strcasecmp( chanName.c_str(), playChan.c_str() ) == 0 )
+		{
+		Notice( theClient, "That's the play channel! Please use the PLAY command." ) ;
+		return ;
+		}
+	
+	// Does the channel already exist?
+	Channel* theChan = Network->findChannel( chanName ) ;
+	if( NULL == theChan )
+		{
+		theChan = new (std::nothrow)
+			Channel( playChan, ::time( 0 ) ) ;
+		assert( theChan != 0 ) ;
+
+		// Add the channel to the network tables
+		if( !Network->addChannel( theChan ) )
+			{
+			delete theChan ; theChan = 0 ;
+			}
+		}
+
 	for( std::list< iClient* >::const_iterator ptr = clones.begin(),
 		endPtr = clones.end() ; ptr != endPtr ; ++ptr )
 		{
 		stringstream s ;
 		s	<< (*ptr)->getCharYYXXX()
 			<< " J "
-			<< chanName ;
+			<< chanName 
+			<< " "
+			<< theChan->getCreationTime() ;
 
 		MyUplink->Write( s ) ;
+
+		// Creating ChannelUser, and adding to network table. 
+		ChannelUser* theUser =
+			new (std::nothrow) ChannelUser( *ptr ) ;
+		assert( theUser != 0 ) ;
+
+		if( !theChan->addUser( theUser ) )
+			{
+			elog << "clone::OnPrivateMessage> Failed to addUser()." << endl ;
+			delete theUser ; theUser = 0 ;
+			}
+
+		if( !(*ptr)->addChannel( theChan ) )
+			{
+			elog << "clone::OnPrivateMessage> Failed to addChannel()." << endl ;
+			theChan->removeUser( *ptr ) ;
+			delete theUser ; theUser = 0 ;
+			}
 		}
 	} // JOINALL
+else if( command == "JOIN" )
+	{
+	if( st.size() < 3 )
+		{
+		Notice( theClient, "Usage: %s <#channel> <# of clones>",
+			command.c_str() ) ;
+		return ;
+		}
+
+	size_t numClones = atoi( st[ 2 ].c_str() ) ;
+	if( numClones < 1 || numClones > clones.size() )
+		{
+		Notice( theClient,
+			"%s: Invalid number of clones", command.c_str() ) ;
+		return ;
+		}
+
+	string chanName( st[ 1 ] ) ;
+
+	if( chanName[ 0 ] != '#' )
+		{
+		chanName.insert( chanName.begin(), '#' ) ;
+		}
+
+	// Is the channel the playChan? Then use the PLAY command!
+	if( strcasecmp( chanName.c_str(), playChan.c_str() ) == 0 )
+		{
+		Notice( theClient, "That's the play channel! Please use the PLAY command." ) ;
+		return ;
+		}
+
+	// Does the channel already exist?
+	Channel* theChan = Network->findChannel( chanName ) ;
+	if( NULL == theChan )
+		{
+		theChan = new (std::nothrow)
+			Channel( playChan, ::time( 0 ) ) ;
+		assert( theChan != 0 ) ;
+
+		// Add the channel to the network tables
+		if( !Network->addChannel( theChan ) )
+			{
+			delete theChan ; theChan = 0 ;
+			}
+		}
+
+	size_t i {} ;
+	for( std::list< iClient* >::const_iterator ptr = clones.begin(),
+		endPtr = clones.end() ; ptr != endPtr ; ++ptr )
+		{
+		if( i == numClones ) break ;
+
+		stringstream s ;
+		s	<< (*ptr)->getCharYYXXX()
+			<< " J "
+			<< chanName 
+			<< " "
+			<< theChan->getCreationTime() ;
+
+		MyUplink->Write( s ) ;
+
+		// Creating ChannelUser, and adding to network table. 
+		ChannelUser* theUser =
+			new (std::nothrow) ChannelUser( *ptr ) ;
+		assert( theUser != 0 ) ;
+
+		if( !theChan->addUser( theUser ) )
+			{
+			elog << "clone::OnPrivateMessage> Failed to addUser()." << endl ;
+			delete theUser ; theUser = 0 ;
+			}
+
+		if( !(*ptr)->addChannel( theChan ) )
+			{
+			elog << "clone::OnPrivateMessage> Failed to addChannel()." << endl ;
+			theChan->removeUser( *ptr ) ;
+			delete theUser ; theUser = 0 ;
+			}
+		i++ ;
+		}
+	} // JOIN
 else if( command == "PARTALL" )
 	{
 	if( st.size() < 2 )
@@ -356,15 +539,26 @@ else if( command == "PARTALL" )
 			chanName.insert( chanName.begin(), '#' ) ;
 			}
 
-		for( std::list< iClient* >::const_iterator ptr = clones.begin(),
-			endPtr = clones.end() ; ptr != endPtr ; ++ptr )
+		Channel* theChan = Network->findChannel ( chanName ) ;
+		for( Channel::userIterator chanUsers = theChan->userList_begin() ;
+			chanUsers != theChan->userList_end(); ++chanUsers )
 			{
-			stringstream s ;
-			s	<< (*ptr)->getCharYYXXX()
-				<< " L "
-				<< chanName ;
+			ChannelUser* tmpUser = chanUsers->second ;
 
-			MyUplink->Write( s ) ;
+			// Check if tmpUser is in clones list.
+    		auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+			if( pos != clones.end() )
+				{
+				stringstream s ;
+				s	<< tmpUser->getCharYYXXX()
+					<< " L "
+					<< chanName ;
+
+				MyUplink->Write( s ) ;
+
+				theChan->removeUser ( tmpUser ) ;
+				tmpUser->getClient()->removeChannel( theChan ) ;
+				}
 			}
 		}
 	if( st.size() > 2 )
@@ -377,17 +571,28 @@ else if( command == "PARTALL" )
 
 		string partReason( st.assemble(2).c_str() ) ;
 
-		for( std::list< iClient* >::const_iterator ptr = clones.begin(),
-			endPtr = clones.end() ; ptr != endPtr ; ++ptr )
+		Channel* theChan = Network->findChannel ( chanName ) ;
+		for( Channel::userIterator chanUsers = theChan->userList_begin() ;
+			chanUsers != theChan->userList_end(); ++chanUsers )
 			{
-			stringstream s ;
-			s	<< (*ptr)->getCharYYXXX()
-				<< " L "
-				<< chanName
-				<< " :"
-				<< partReason ;
+			ChannelUser* tmpUser = chanUsers->second ;
 
-			MyUplink->Write( s ) ;
+			// Check if tmpUser is in clones list.
+    		auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+			if( pos != clones.end() )
+				{
+				stringstream s ;
+				s	<< tmpUser->getCharYYXXX()
+					<< " L "
+					<< chanName
+					<< " :"
+					<< partReason ;
+
+				MyUplink->Write( s ) ;
+
+				theChan->removeUser ( tmpUser ) ;
+				tmpUser->getClient()->removeChannel( theChan ) ;
+				}
 			}
 		}
 	} // PARTALL
@@ -454,6 +659,186 @@ else if( command == "SAYALL" || command == "MSGALL" )
 		MyUplink->Write( s ) ;
 		}
 	} // SAYALL/MSGALL
+else if( command == "PLAY" )
+	{
+	if( st.size() < 2 )
+		{
+		Notice( theClient, "Usage: %s <[# of clones]/OFF>", command.c_str() ) ;
+		return ;
+		}
+
+	if( playChan == "0" )
+		{
+		Notice( theClient, "%s: Please specify a play channel in the config file", command.c_str() ) ;
+		return ;
+		}
+
+	Channel* theChan = Network->findChannel( playChan ) ;
+
+	if( st[ 1 ] == "OFF" )
+		{
+		/* Checking if PLAY is already active. */ 
+		if( 0 == playCloneCount )
+			{
+			Notice ( theClient, "%s is already OFF", command.c_str() ) ;
+			return;
+			}
+
+		// Parting the playchan.
+		for( std::list< iClient* >::const_iterator ptr = clones.begin(),
+			endPtr = clones.end() ; ptr != endPtr ; ++ptr )
+			{
+			stringstream s ;
+			s	<< (*ptr)->getCharYYXXX()
+				<< " L "
+				<< theChan->getName() ;
+
+			MyUplink->Write( s ) ;
+
+			theChan->removeUser ( *ptr ) ;
+			(*ptr)->removeChannel( theChan ) ;
+			}
+
+		// Unregistering timers.
+		MyUplink->UnRegisterTimer( spamTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( actionTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( joinTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( partTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( quitTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( opTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( deopTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( kickTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( topicTimer, 0 ) ;
+		MyUplink->UnRegisterTimer( nickTimer, 0 ) ;
+
+		playCloneCount = 0 ;
+
+		Notice( theClient, "%s is deactivated.", command.c_str() ) ;
+		}
+	else
+		{
+		/* Checking if PLAY is already active. */ 
+		if( playCloneCount > 0 )
+			{
+				Notice ( theClient, "%s is already activated.", command.c_str() ) ;
+				return;
+			}
+
+		playCloneCount = atoi( st[ 1 ].c_str() ) ;
+
+		/* The number of clones must be at least 1, and at least the number
+		 * of clones loaded in LOADCLONES. */
+		if( playCloneCount < 1 || playCloneCount > clones.size() )
+			{
+			Notice( theClient,
+				"%s: Invalid number of clones", command.c_str() ) ;
+			playCloneCount = 0 ;
+			return ;
+			}
+
+		// Does the channel already exist?
+		Channel* theChan = Network->findChannel( playChan ) ;
+		if( NULL == theChan )
+			{
+			theChan = new (std::nothrow)
+				Channel( playChan, ::time( 0 ) ) ;
+			assert( theChan != 0 ) ;
+
+			// Add the channel to the network tables
+			if( !Network->addChannel( theChan ) )
+				{
+				delete theChan ; theChan = 0 ;
+				}
+			}
+
+		// Joining the playchan.
+		size_t i {} ;
+		int k {} ;
+		for( std::list< iClient* >::const_iterator ptr = clones.begin(),
+			endPtr = clones.end() ; ptr != endPtr ; ++ptr )
+			{
+			if( i > playCloneCount) // Stop when we have reached the number of clones.
+				break ;
+
+			stringstream s ;
+			s	<< (*ptr)->getCharYYXXX()
+				<< " J "
+				<< theChan->getName() 
+				<< " "
+				<< theChan->getCreationTime() ;
+
+			MyUplink->Write( s ) ;
+
+			// Creating ChannelUser, and adding to network table. 
+			ChannelUser* theUser =
+				new (std::nothrow) ChannelUser( *ptr ) ;
+			assert( theUser != 0 ) ;
+
+			if( !theChan->addUser( theUser ) )
+				{
+				elog << "cloner::OnPrivateMessage> Failed to addUser()." << endl ;
+				delete theUser ; theUser = 0 ;
+				}
+
+			if( !(*ptr)->addChannel( theChan ) )
+				{
+				elog << "cloner::OnPrivateMessage> Failed to addChannel()." << endl ;
+
+				theChan->removeUser( *ptr ) ;
+				delete theUser ; theUser = 0 ;
+				}
+
+			// Let's op a percentage of the clones.
+			if( k < round( ( playCloneCount / 100 ) * playOps ) + 1 )
+				{
+				stringstream s ;
+				s	<< MyUplink->getCharYY()
+					<< " M "
+					<< theChan->getName()
+					<< " +o "
+					<< (*ptr)->getCharYYXXX() 
+					<< " "
+					<< theChan->getCreationTime() ;
+
+					MyUplink->Write( s ) ;
+
+					theUser->setModeO() ;
+				}
+			i++ ; k++ ;
+			}
+
+		// Activating timers.
+		if( spamInterval > 0 )
+			{
+			spamTimer = MyUplink->RegisterTimer( ::time( 0 ) + spamInterval, this, 0 ) ;
+			actionTimer = MyUplink->RegisterTimer( ::time( 0 ) + spamInterval + 5, this, 0 ) ;
+			}
+
+		if( cycleInterval > 0)
+			{
+			joinTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( cycleInterval / 2 ) + 10, this, 0 ) ;
+			partTimer = MyUplink->RegisterTimer( ::time( 0 ) + cycleInterval + 15, this, 0 ) ;
+			kickTimer = MyUplink->RegisterTimer( ::time( 0 ) + cycleInterval + 35, this, 0 ) ;
+			}
+
+		if( quitInterval > 0 )
+			quitTimer = MyUplink->RegisterTimer( ::time( 0 ) + quitInterval + 20, this, 0 ) ;
+
+		if( opInterval > 0 )
+			{
+			opTimer = MyUplink->RegisterTimer( ::time( 0 ) + opInterval + 25, this, 0 ) ;
+			deopTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( opInterval / 2 ) + 30, this, 0 ) ;
+			}
+
+		if( topicInterval > 0 )
+			topicTimer = MyUplink->RegisterTimer( ::time( 0 ) + topicInterval + 40, this, 0 ) ;
+
+		if( nickInterval > 0 )
+			nickTimer = MyUplink->RegisterTimer( ::time( 0 ) + nickInterval + 45, this, 0 ) ;
+
+		Notice( theClient, "%s is now activated on %s for %d clones.", command.c_str(), playChan.c_str(), playCloneCount ) ;
+		}
+	} // PLAY
 else if( command == "ACTALL" || command == "DOALL" ||
 	command == "DESCRIBEALL" )
 	{
@@ -532,38 +917,467 @@ else if( command == "NOTICEALL" )
 	} // NOTICEALL
 }
 
-void cloner::OnTimer( const xServer::timerID&, void* )
+void cloner::OnTimer( const xServer::timerID& timer_id, void* )
 {
 //elog	<< "cloner::OnTimer> makeCloneCount: "
 //	<< makeCloneCount
 //	<< endl ;
 
-if( 0 == makeCloneCount )
-	{
-	return ;
+if( timer_id == loadCloneTimer )
+{
+	if( 0 == makeCloneCount )
+		{
+		return ;
+		}
+
+	size_t cloneCount = makeCloneCount ;
+	if( cloneCount > cloneBurstCount )
+		{
+		// Too many
+		cloneCount = cloneBurstCount ;
+		}
+
+	makeCloneCount -= cloneCount ;
+
+	//elog	<< "cloner::OnTimer> loadCloneTimer: "
+	//	<< cloneCount
+	//	<< endl ;
+
+	for( size_t i = 0 ; i < cloneCount ; ++i )
+		{
+		addClone() ;
+		}
+
+	if( makeCloneCount > 0 )
+		{
+		loadCloneTimer = MyUplink->RegisterTimer( ::time( 0 ) + 1, this, 0 ) ;
+		}
 	}
-
-size_t cloneCount = makeCloneCount ;
-if( cloneCount > cloneBurstCount )
+else if( timer_id == spamTimer )
 	{
-	// Too many
-	cloneCount = cloneBurstCount ;
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanClone( theChan ) ;
+
+	if( theClone != NULL )
+		{
+		int tmp { 1 } ;
+		if( spamFloodCount > floodCount )
+			{
+			tmp = floodLines ;
+			spamFloodCount = 0 ;
+			}
+
+		for( int i = 0 ; i < tmp ; i++ )
+			{
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " P "
+				<< theChan->getName()
+				<< " :"
+				<< randomSpam() ;	
+
+			MyUplink->Write( s ) ;
+			}
+			
+		spamFloodCount++ ;
+		}
+
+	spamTimer = MyUplink->RegisterTimer( ::time( 0 ) + spamInterval, this, 0 ) ;
 	}
-
-makeCloneCount -= cloneCount ;
-
-//elog	<< "cloner::OnTimer> cloneCount: "
-//	<< cloneCount
-//	<< endl ;
-
-for( size_t i = 0 ; i < cloneCount ; ++i )
+else if( timer_id == actionTimer )
 	{
-	addClone() ;
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanClone( theChan ) ;
+
+	if( theClone != NULL )
+		{
+		int tmp { 1 } ;
+		if( actionFloodCount > floodCount )
+			{
+			tmp = floodLines ;
+			actionFloodCount = 0 ;
+			}
+
+		for( int i = 0 ; i < tmp ; i++ )
+			{
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " P "
+				<< theChan->getName()
+				<< " :\001ACTION "
+				<< randomSpam() 
+				<< "\001" ;	
+
+			MyUplink->Write( s ) ;
+			}
+			
+		actionFloodCount++ ;
+		}
+
+	actionTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( spamInterval * 4 ), this, 0 ) ;
 	}
-
-if( makeCloneCount > 0 )
+else if( timer_id == joinTimer )
 	{
-	MyUplink->RegisterTimer( ::time( 0 ) + 1, this, 0 ) ;
+	Channel* theChan = Network->findChannel( playChan ) ;
+
+	int tmp { 1 } ;
+	if( joinFloodCount > floodCount )
+		{
+		tmp = floodLines ;
+		joinFloodCount = 0 ;
+		}
+
+	for( int i = 0 ; i < tmp ; i++ )
+		{
+		iClient* theClone = availableClone( theChan ) ; 
+		if( theClone == NULL ) break ;
+
+		stringstream s ;
+		s	<< theClone->getCharYYXXX()
+			<< " J "
+			<< theChan->getName()
+			<< " "
+			<< theChan->getCreationTime() ;
+
+		MyUplink->Write( s ) ;
+
+		// Creating ChannelUser, and adding to network table. 
+		ChannelUser* theUser =
+			new (std::nothrow) ChannelUser( theClone ) ;
+		assert( theUser != 0 ) ;
+
+		if( !theChan->addUser( theUser ) )
+			{
+			delete theUser ; theUser = 0 ;
+			}
+
+		if( !theClone->addChannel( theChan ) )
+			{
+			theChan->removeUser( theUser ) ;
+			delete theUser ; theUser = 0 ;
+			}
+
+		joinFloodCount++ ;
+		}
+	/*
+	 * The interval for joining adds up with the interval for parts and kicks initiated by
+	 * the cloner, so as to maintain the number of clones on the channel. However, it does not 
+	 * factor in quits and clones may be kicked by other users due to its behaviour. Hence, we 
+	 * need to adjust the interval to increase the number of clones if necessary. 
+	 * 
+	 * The following will decrease the interval with four times the percentage as the difference 
+	 * between the number of clones present and the number of clones initiated in percentage.
+	 */
+
+	float diff = ( ( ( (float)playCloneCount - (float)cloneCount( theChan ) ) / (float)playCloneCount ) * (float)cycleInterval ) * 2 ;
+
+	// We cannot go back in time. Cutting the interval in two. 
+	if( diff > cycleInterval ) diff = (float)cycleInterval / 2 ; 
+
+	/*elog 	<< "cloner::onTimer> joinTimer: Current clones on channel: "
+			<< cloneCount( theChan )
+			<< " playCloneCount: "
+			<< playCloneCount
+			<< ". Correcting interval by " 
+			<< diff << " seconds." << endl ;*/
+
+	joinTimer = MyUplink->RegisterTimer( ::time( 0 ) + cycleInterval - diff, this, 0 ) ; 
+	}
+else if( timer_id == partTimer )
+	{
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanClone( theChan ) ;
+
+	if( theClone != NULL )
+		{
+		stringstream s ;
+		s	<< theClone->getCharYYXXX()
+			<< " L "
+			<< theChan->getName() 
+			<< " :"
+			<< randomSpam() ;
+
+		MyUplink->Write( s ) ;
+
+		// Cleaning up.
+		theChan->removeUser( theClone ) ;
+		theClone->removeChannel ( theChan ) ;
+		}
+
+	/*
+	 * The interval for joining adds up with the interval for parts and kicks initiated by
+	 * the cloner, so as to maintain the number of clones on the channel. However, it does not 
+	 * factor in quits and clones may be kicked by other users due to its behaviour. Hence, we 
+	 * need to adjust the interval to increase the number of clones if necessary. 
+	 * 
+	 * The following will increase the interval with twice the percentage as the difference 
+	 * between the number of clones present and the number of clones initiated in percentage.
+	 */
+
+	float diff = ( ( ( (float)playCloneCount - (float)cloneCount( theChan ) ) / (float)playCloneCount ) * (float)cycleInterval ) * 2 ;
+
+	// We cannot go back in time. Cutting the interval in two. 
+	if( diff > cycleInterval ) diff = (float)cycleInterval / 2 ; 
+
+	/*elog 	<< "cloner::onTimer> partTimer: Current clones on channel: "
+			<< cloneCount( theChan )
+			<< " playCloneCount: "
+			<< playCloneCount
+			<< ". Correcting interval by " 
+			<< diff << " seconds." << endl ;*/
+	
+	partTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( cycleInterval * 2 ) + diff, this, 0 ) ;
+	}
+else if( timer_id == quitTimer )
+	{
+	iClient* theClone = randomClone() ;
+
+	if( theClone != NULL )
+		{
+		if( MyUplink->DetachClient( theClone, randomSpam() ) )
+			{
+			delete theClone ;
+			}
+
+		// Adding a new clone.
+		addClone() ;
+		}
+	
+	quitTimer = MyUplink->RegisterTimer( ::time( 0 ) + quitInterval, this, 0 ) ;
+	}
+else if( timer_id == opTimer )
+	{
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* tmpClone = randomChanOpClone( theChan ) ;
+
+	// If there aren't any op'd clones on the channel, let's reop them.
+	if( tmpClone == NULL) 
+		{
+		float opTarget = round( ( (float)playCloneCount / 100 ) * playOps ) ;
+		for( int i = 0 ; i < opTarget + 1 ; i++ )
+			{
+				ChannelUser* tmpUser = theChan->findUser ( randomChanClone( theChan ) ) ;
+				if( tmpUser == NULL ) continue ;
+				stringstream s ;
+				s	<< MyUplink->getCharYY()
+					<< " M "
+					<< theChan->getName()
+					<< " +o "
+					<< tmpUser->getCharYYXXX() 
+					<< " "
+					<< theChan->getCreationTime() ;
+
+					MyUplink->Write( s ) ;
+
+					tmpUser->setModeO() ;
+			}
+		}
+
+	iClient* theClone = randomChanOpClone( theChan ) ;
+
+	if( theClone != NULL ) // Still no op'd clones?
+		{
+		int tmp { 1 } ;
+		if( opFloodCount > floodCount )
+			{
+			tmp = floodLines ;
+			opFloodCount = 0 ;
+			}
+
+		for( int i = 0 ; i < tmp ; i++ )
+			{
+			iClient* destClone = randomChanClone( theChan ) ;
+			ChannelUser* destUser = theChan->findUser( destClone ) ;
+			if( destClone == NULL ) break ;
+
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " M "
+				<< theChan->getName()
+				<< " +o "
+				<< destClone->getCharYYXXX() ;
+
+			MyUplink->Write( s ) ;
+			destUser->setModeO() ;
+			}
+
+		opFloodCount++ ;
+		}
+	/*
+	 * The interval for ops adds up with the interval for deops initiated by
+	 * the cloner, so as to maintain the number of ops on the channel. However, opped clones
+	 * may be kicked by other clones, or other users due to its behaviour. Hence, we need to adjust the interval
+	 * to increase the number of ops if necessary. 
+	 * 
+	 * The following will decrease the interval with twice the same percentage as the difference between
+	 * the number of opped clones and a percentage of the number of clones initiated on the channel.
+	 */
+
+	float opTarget = round( ( (float)playCloneCount / 100 ) * playOps ) ;
+	float diff = ( ( ( opTarget - (float)cloneOpCount( theChan ) ) / opTarget ) * (float)opInterval ) * 2 ;
+
+	// We cannot go back in time. Cutting the interval in two. 
+	if( diff > opInterval ) diff = (float)opInterval / 2 ; 
+
+/*	elog 	<< "opTimer: Current ops: "
+			<< cloneOpCount( theChan )
+			<< " opTarget: "
+			<< opTarget
+			<< ". Correcting interval by "
+			<< (int)diff 
+			<< " seconds. ("
+			<< diff
+			<< ")" << endl ;*/
+
+	opTimer = MyUplink->RegisterTimer( ::time( 0 ) + opInterval - (int)diff, this, 0 ) ;
+	}
+else if( timer_id == deopTimer )
+	{
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanOpClone( theChan ) ;
+
+	if( theClone != NULL )
+		{
+		int tmp { 1 } ;
+		if( deopFloodCount > floodCount )
+			{
+			tmp = floodLines / 2 ;
+			deopFloodCount = 0 ;
+			}
+
+		for( int i = 0 ; i < tmp ; i++ )
+			{
+			// Let's break if the number of op'd clones is less than four.
+			if( cloneOpCount(theChan) < 4 ) break ;
+
+			iClient* destClone = randomChanOpClone( theChan ) ;
+			if( destClone == NULL ) break ;
+
+			ChannelUser* destUser = theChan->findUser( destClone ) ;
+			if( destUser == NULL ) break ;
+
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " M "
+				<< theChan->getName()
+				<< " -o "
+				<< destClone->getCharYYXXX() ;
+
+			MyUplink->Write( s ) ;
+
+			destUser->removeModeO() ;
+
+			// Did the clone deop itself? Break.
+			if( theClone == destClone ) break ;
+			}
+
+		deopFloodCount++ ;
+		}
+
+	deopTimer = MyUplink->RegisterTimer( ::time( 0 ) + opInterval, this, 0 ) ;
+	}
+else if( timer_id == kickTimer )
+	{
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanOpClone( theChan ) ;
+
+	if( theClone != NULL )
+		{
+		int tmp { 1 } ;
+		if( kickFloodCount > floodCount )
+			{
+			tmp = floodLines ;
+			kickFloodCount = 0 ;
+			}
+
+		for( int i = 0 ; i < tmp ; i++ )
+			{
+			iClient* destClone = randomChanClone( theChan ) ;
+			if( theClone == NULL) break ;
+
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " K "
+				<< theChan->getName()
+				<< " "
+				<< destClone->getCharYYXXX() 
+				<< " :"
+				<< randomSpam() ;
+
+			MyUplink->Write( s ) ;
+
+			theChan->removeUser( destClone ) ;
+			destClone->removeChannel( theChan ) ;
+
+			// Did the clone kick itself? Break.
+			if( theClone == destClone ) break ;
+			}
+		kickFloodCount++ ; 
+		}
+
+	kickTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( cycleInterval * 2 ), this, 0 ) ;
+	}
+else if( timer_id == topicTimer )
+	{
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanOpClone( theChan ) ;
+
+	if( theClone != NULL )
+		{
+		int tmp { 1 } ;
+		if( topicFloodCount > floodCount )
+			{
+			tmp = floodLines ;
+			topicFloodCount = 0 ;
+			}
+
+		for( int i = 0 ; i < tmp ; i++ )
+			{
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " T "
+				<< theChan->getName()
+				<< " :"
+				<< randomSpam() ;
+
+			MyUplink->Write( s ) ;
+			}
+		topicFloodCount++ ;
+		}
+	
+	topicTimer = MyUplink->RegisterTimer( ::time( 0 ) + topicInterval, this, 0 ) ;
+	}
+else if( timer_id == nickTimer )
+	{
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanClone( theChan ) ;
+
+	if( theClone != NULL )
+		{
+		int tmp { 1 } ;
+		if( nickFloodCount > floodCount )
+			{
+			tmp = floodLines ;
+			nickFloodCount = 0 ;
+			}
+
+		for( int i = 0 ; i < tmp ; i++ )
+			{
+			string tmpNick = randomNick() ;
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " N "
+				<< tmpNick 
+				<< " "
+				<< ::time( 0 ) ;
+
+			MyUplink->Write( s ) ;
+			Network->rehashNick( theClone->getCharYYXXX(), tmpNick ) ;
+			}
+		nickFloodCount++ ;
+		}
+
+	nickTimer = MyUplink->RegisterTimer( ::time( 0 ) + nickInterval, this, 0 ) ;
 	}
 }
 
@@ -594,6 +1408,122 @@ if( MyUplink->AttachClient( newClient, this ) )
 	}
 }
 
+// Returns an iClient pointer to a random clone. 
+iClient* cloner::randomClone()
+{
+srand( ::time( 0 ) ) ;
+
+std::list < iClient* >::iterator theClone = clones.begin() ;
+std::advance( theClone, rand() % clones.size() ) ;
+
+return *theClone ;
+}
+
+// Returns an iClient pointer to a random clone present on a channel. 
+iClient* cloner::randomChanClone( Channel* theChan )
+{
+srand( ::time( 0 ) ) ;
+size_t i { } ;
+
+while ( i < theChan->userList_size() )
+	{
+	i++ ;
+	Channel::userIterator chanUsers = theChan->userList_begin() ;
+	std::advance( chanUsers, rand() % theChan->userList_size() ) ;
+
+	// Check if tmpUser is in clones list.
+	ChannelUser* tmpUser = chanUsers->second;
+	auto pos = find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+	if( pos != clones.end() )
+		return tmpUser->getClient() ;
+	}
+	
+// We have iterated through as many entries as in the userlist, without finding
+// a single clone. Return NULL.
+return NULL ;
+}
+
+// Returns an iClient pointer to a random clone not present on a channel.
+iClient* cloner::availableClone( Channel* theChan )
+{
+srand( ::time( 0 ) ) ;
+size_t i { } ;
+
+while ( i < clones.size() )
+	{
+	i++ ;
+	std::list < iClient* >::iterator theClone = clones.begin() ;
+	std::advance( theClone, rand() % clones.size() ) ;
+
+	if( !(*theClone)->findChannel( theChan ) ) return *theClone ;
+	}
+
+// We have iterated through the clones list, without finding any clones not
+// present on the channel. Return NULL.
+return NULL ;
+}
+
+// Returns an iClient pointer to a random clone present and op'd on a channel.
+iClient* cloner::randomChanOpClone( Channel* theChan )
+{
+srand( ::time( 0 ) ) ;
+size_t i { } ;
+
+while ( i < theChan->userList_size() )
+	{
+	i++ ;
+	Channel::userIterator chanUsers = theChan->userList_begin() ;
+	std::advance( chanUsers, rand() % theChan->userList_size() ) ;
+
+	// Check if tmpUser is op'd and on clones list.
+	ChannelUser* tmpUser = chanUsers->second ;
+
+	if( !tmpUser->isModeO() ) continue ;
+
+	auto pos = find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+	if( pos != clones.end() )
+		return tmpUser->getClient() ;
+	}
+
+return NULL;
+}
+
+size_t cloner::cloneCount( Channel* theChan )
+{
+size_t cloneCount { } ;
+
+for( Channel::userIterator chanUsers = theChan->userList_begin() ;
+	chanUsers != theChan->userList_end(); ++chanUsers )
+	{
+	ChannelUser* tmpUser = chanUsers->second ;
+
+	// Check if tmpUser is in clones list.
+    auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+	if( pos != clones.end() ) cloneCount++ ;
+	} // for()
+
+return cloneCount ;
+}
+
+size_t cloner::cloneOpCount( Channel* theChan )
+{
+size_t opCount { } ;
+
+for( Channel::userIterator chanUsers = theChan->userList_begin() ;
+	chanUsers != theChan->userList_end(); ++chanUsers )
+	{
+	ChannelUser* tmpUser = chanUsers->second ;
+
+	if( !tmpUser->isModeO() ) continue ;
+
+	// Check if tmpUser is in clones list.
+    auto pos = std::find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
+	if( pos != clones.end() ) opCount++ ;
+	} // for()
+
+return opCount ;
+}
+
 string cloner::randomUser()
 {
 return userNames[ rand() % userNames.size() ] ;
@@ -602,6 +1532,11 @@ return userNames[ rand() % userNames.size() ] ;
 string cloner::randomHost()
 {
 return hostNames[ rand() % hostNames.size() ] ;
+}
+
+string cloner::randomSpam()
+{
+return spamList[ rand() % spamList.size() ] ;
 }
 
 string cloner::randomNick( int minLength, int maxLength )

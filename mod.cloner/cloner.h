@@ -52,6 +52,18 @@ public:
 			bool secure = false ) ;
 	virtual void addClone() ;
 
+	gnuworld::xServer::timerID	loadCloneTimer ;
+	gnuworld::xServer::timerID	spamTimer ;
+	gnuworld::xServer::timerID	actionTimer ;
+	gnuworld::xServer::timerID	joinTimer ;
+	gnuworld::xServer::timerID	partTimer ;
+	gnuworld::xServer::timerID	quitTimer ;
+	gnuworld::xServer::timerID	opTimer ;
+	gnuworld::xServer::timerID	deopTimer ;
+	gnuworld::xServer::timerID	kickTimer ;
+	gnuworld::xServer::timerID	topicTimer ;
+	gnuworld::xServer::timerID	nickTimer ;
+
 protected:
 
 	virtual bool		hasAccess( const std::string& ) const ;
@@ -60,25 +72,57 @@ protected:
 					int maxLength = 9 ) ;
 	virtual std::string	randomUser() ;
 	virtual std::string	randomHost() ;
+	virtual std::string randomSpam() ;
 	virtual char		randomChar() ;
+
+	virtual iClient*	randomClone() ;
+	virtual iClient*	availableClone( Channel* theChan ) ;
+	virtual iClient*	randomChanClone( Channel* theChan ) ;
+	virtual iClient*	randomChanOpClone( Channel* theChan ) ;
+	virtual size_t		cloneCount( Channel* theChan ) ;
+	virtual size_t 		cloneOpCount( Channel* theChan ) ;
 
 	std::list< std::string >	allowAccess ;
 	std::list< iClient* >		clones ;
 	std::vector< std::string >	userNames ;
 	std::vector< std::string >	hostNames ;
+	std::vector< std::string >	spamList ;
+
 	iServer*		fakeServer ;
 
 	bool			allowOpers ;
+
+	int				spamInterval ;
+	int				cycleInterval ;
+	int				quitInterval ;
+	int				opInterval ;
+	int				topicInterval ;
+	int				nickInterval ;
+	int				floodLines ;
+	int				floodCount ;
+
+	int				spamFloodCount ;
+	int				nickFloodCount ;
+	int				kickFloodCount ;
+	int				opFloodCount ;
+	int 			deopFloodCount ;
+	int				topicFloodCount ;
+	int				joinFloodCount ;
+	int				actionFloodCount ;
+
+	float			playOps ;
 
 	size_t			makeCloneCount ;
 	size_t			cloneBurstCount ;
 	size_t			minNickLength ;
 	size_t			maxNickLength ;
+	size_t			playCloneCount ;
 
 	std::string		cloneDescription ;
 	std::string		cloneMode ;
 	std::string		fakeServerName ;
 	std::string		fakeServerDescription ;
+	std::string		playChan ;
 
 } ;
 
