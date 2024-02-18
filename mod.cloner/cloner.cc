@@ -641,7 +641,7 @@ else if( command == "PART" )
 			}
 		i++ ;
 		}
-	}
+	} // PART
 else if( command == "KILLALL" || command == "QUITALL" )
 	{
 	if( st.size() < 1 )
@@ -721,7 +721,7 @@ else if( command == "PLAY" )
 
 	Channel* theChan = Network->findChannel( playChan ) ;
 
-	if( st[ 1 ] == "OFF" )
+	if( st[ 1 ] == "OFF" || st[ 1 ] == "off" )
 		{
 		/* Checking if PLAY is already active. */ 
 		if( 0 == playCloneCount )
@@ -734,6 +734,9 @@ else if( command == "PLAY" )
 		for( std::list< iClient* >::const_iterator ptr = clones.begin(),
 			endPtr = clones.end() ; ptr != endPtr ; ++ptr )
 			{
+			ChannelUser* theUser = theChan->findUser( *ptr ) ;
+			if( NULL == theUser ) continue ;
+
 			stringstream s ;
 			s	<< (*ptr)->getCharYYXXX()
 				<< " L "
@@ -741,7 +744,7 @@ else if( command == "PLAY" )
 
 			MyUplink->Write( s ) ;
 
-			ChannelUser* theUser = theChan->removeUser( *ptr ) ;
+			theChan->removeUser( *ptr ) ;
 			delete theUser ; theUser = 0 ;
 
 			(*ptr)->removeChannel( theChan ) ;
@@ -774,8 +777,8 @@ else if( command == "PLAY" )
 
 		playCloneCount = atoi( st[ 1 ].c_str() ) ;
 
-		/* The number of clones must be at least 1, and at least the number
-		 * of clones loaded in LOADCLONES. */
+		/* The number of clones must be at least 1, and not exceed the number
+		 * of clones loaded. */
 		if( playCloneCount < 1 || playCloneCount > clones.size() )
 			{
 			Notice( theClient,
@@ -1271,22 +1274,19 @@ else if( timer_id == opTimer )
 	 */
 
 	float opTarget = round( ( (float)playCloneCount / 100 ) * playOps ) ;
-	int diff = ( ( ( (int)opTarget - (int)cloneOpCount( theChan ) ) / (int)opTarget ) * opInterval ) * 2 ;
+	float diff = ( ( ( opTarget - (float)cloneOpCount( theChan ) ) / opTarget ) * (float)opInterval ) * 2 ;
 
 	// We cannot go back in time. Cutting the interval in two. 
-	if( diff > opInterval ) diff = opInterval / 2 ; 
+	if( diff > opInterval ) diff = (float)opInterval / 2 ; 
 
-/*	elog 	<< "opTimer: Current ops: "
+	elog 	<< "opTimer: Current ops: "
 			<< cloneOpCount( theChan )
 			<< " opTarget: "
 			<< opTarget
 			<< ". Correcting interval by "
-			<< (int)diff 
-			<< " seconds. ("
-			<< diff
-			<< ")" << endl ;*/
+			<< (int)diff << " seconds." << endl ;
 
-	opTimer = MyUplink->RegisterTimer( ::time( 0 ) + opInterval - diff, this, 0 ) ;
+	opTimer = MyUplink->RegisterTimer( ::time( 0 ) + opInterval - (int)diff, this, 0 ) ;
 	}
 else if( timer_id == deopTimer )
 	{

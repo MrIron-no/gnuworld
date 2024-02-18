@@ -105,7 +105,7 @@ protected:
 	int				nickFloodCount ;
 	int				kickFloodCount ;
 	int				opFloodCount ;
-	int 			deopFloodCount ;
+	int				deopFloodCount ;
 	int				topicFloodCount ;
 	int				joinFloodCount ;
 	int				actionFloodCount ;
