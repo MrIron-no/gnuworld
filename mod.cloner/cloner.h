@@ -72,7 +72,7 @@ protected:
 					int maxLength = 9 ) ;
 	virtual std::string	randomUser() ;
 	virtual std::string	randomHost() ;
-	virtual std::string randomSpam() ;
+	virtual std::string	randomSpam() ;
 	virtual char		randomChar() ;
 
 	virtual iClient*	randomClone() ;

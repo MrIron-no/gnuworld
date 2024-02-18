@@ -171,23 +171,23 @@ playOps = atoi( conf.Require( "playops" )->second.c_str() ) ;
 minNickLength = atoi( conf.Require( "minnicklength" )->second.c_str() ) ;
 maxNickLength = atoi( conf.Require( "maxnicklength" )->second.c_str() ) ;
 
-if( playChan[0] != '#' && ( playChan != "0" ) )
+if( playChan[0] != '#' && playChan != "0" )
 	{
 	elog	<< "cloner> invalid channel name for playchan"
-		<< endl ;
+			<< endl ;
 	::exit( 0 );
 	}
 
 if( minNickLength < 1 )
 	{
 	elog	<< "cloner> minNickLength must be at least 1"
-		<< endl ;
+			<< endl ;
 	::exit( 0 );
 	}
 if( maxNickLength <= minNickLength )
 	{
 	elog	<< "cloner> minNickLength must be less than maxNickLength"
-		<< endl ;
+			<< endl ;
 	::exit( 0 ) ;
 	}
 }
@@ -551,6 +551,7 @@ else if( command == "PARTALL" )
 		if( tmpUser != NULL )
 			{
 			iClient* tmpClone = Network->findClient( tmpUser->getCharYYXXX() ) ;
+			if( NULL == tmpClone ) continue ;
 
 			stringstream s ;
 			s	<< tmpUser->getCharYYXXX()
@@ -620,6 +621,7 @@ else if( command == "PART" )
 		if( tmpUser != NULL )
 			{
 			iClient* tmpClone = Network->findClient( tmpUser->getCharYYXXX() ) ;
+			if( NULL == tmpClone ) continue ;
 
 			stringstream s ;
 			s	<< tmpUser->getCharYYXXX()
@@ -721,7 +723,7 @@ else if( command == "PLAY" )
 
 	Channel* theChan = Network->findChannel( playChan ) ;
 
-	if( st[ 1 ] == "OFF" || st[ 1 ] == "off" )
+	if( string_upper( st[ 1 ] ) == "OFF" )
 		{
 		/* Checking if PLAY is already active. */ 
 		if( 0 == playCloneCount )
@@ -946,9 +948,9 @@ else if( command == "NOTICEALL" )
 		iClient* Target = Network->findNick( st[ 1 ] ) ;
 		if( NULL == Target )
 			{
-		    Notice( theClient, "Unable to find nick: %s"
+			Notice( theClient, "Unable to find nick: %s"
 				, st[ 1 ].c_str() ) ;
-		    return ;
+			return ;
 		    }
 		chanOrNickName = Target->getCharYYXXX();
 		}
@@ -975,7 +977,7 @@ void cloner::OnTimer( const xServer::timerID& timer_id, void* )
 //	<< endl ;
 
 if( timer_id == loadCloneTimer )
-{
+	{
 	if( 0 == makeCloneCount )
 		{
 		return ;
@@ -1137,7 +1139,7 @@ else if( timer_id == joinTimer )
 	// We cannot go back in time. Cutting the interval in two. 
 	if( diff > ( cycleInterval - quitDiff ) ) diff = ( (float)cycleInterval - (float)quitDiff ) / 2 ; 
 
-	elog 	<< "cloner::onTimer> joinTimer: Number of clones on channel: " << cloneCount( theChan )
+	elog	<< "cloner::onTimer> joinTimer: Number of clones on channel: " << cloneCount( theChan )
 			<< " playCloneCount: " << playCloneCount
 			<< ". Interval reduced by " << quitDiff 
 			<< " seconds to adjust for quitTimer. Correcting interval by an additional " 
@@ -1178,7 +1180,7 @@ else if( timer_id == partTimer )
 	// We cannot go back in time. Cutting the interval in two. 
 	if( diff > ( cycleInterval * 2 ) ) diff = cycleInterval ; 
 
-	elog 	<< "cloner::onTimer> partTimer: Number of clones on channel: "
+	elog	<< "cloner::onTimer> partTimer: Number of clones on channel: "
 			<< cloneCount( theChan )
 			<< " playCloneCount: "
 			<< playCloneCount
@@ -1218,7 +1220,7 @@ else if( timer_id == opTimer )
 		for( int i = 0 ; i < opTarget + 1 ; i++ )
 			{
 			ChannelUser* tmpUser = theChan->findUser ( randomChanClone( theChan ) ) ;
-			if( tmpUser == NULL ) continue ;
+			if( NULL == tmpUser ) continue ;
 			stringstream s ;
 			s	<< MyUplink->getCharYY()
 				<< " M "
@@ -1248,7 +1250,7 @@ else if( timer_id == opTimer )
 			{
 			iClient* destClone = randomChanClone( theChan ) ;
 			ChannelUser* destUser = theChan->findUser( destClone ) ;
-			if( destClone == NULL ) break ;
+			if( NULL == destClone ) break ;
 
 			stringstream s ;
 			s	<< theClone->getCharYYXXX()
@@ -1279,7 +1281,7 @@ else if( timer_id == opTimer )
 	// We cannot go back in time. Cutting the interval in two. 
 	if( diff > opInterval ) diff = (float)opInterval / 2 ; 
 
-	elog 	<< "opTimer: Current ops: "
+	elog	<< "clone::OnTimer> opTimer: Current ops: "
 			<< cloneOpCount( theChan )
 			<< " opTarget: "
 			<< opTarget
@@ -1308,10 +1310,10 @@ else if( timer_id == deopTimer )
 			if( cloneOpCount(theChan) < 4 ) break ;
 
 			iClient* destClone = randomChanOpClone( theChan ) ;
-			if( destClone == NULL ) break ;
+			if( NULL == destClone ) break ;
 
 			ChannelUser* destUser = theChan->findUser( destClone ) ;
-			if( destUser == NULL ) break ;
+			if( NULL == destUser ) break ;
 
 			stringstream s ;
 			s	<< theClone->getCharYYXXX()
