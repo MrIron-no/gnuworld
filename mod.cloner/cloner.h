@@ -46,11 +46,17 @@ public:
 	cloner( const std::string& configFileName ) ;
 	virtual ~cloner() ;
 
+	virtual void OnAttach() ;
 	virtual void OnConnect() ;
+	virtual void OnEvent( const eventType&,
+			void* = 0, void* = 0,
+			void* = 0, void* = 0 ) ;
 	virtual void OnTimer( const xServer::timerID&, void* ) ;
 	virtual void OnPrivateMessage( iClient*, const std::string&,
 			bool secure = false ) ;
 	virtual void addClone() ;
+
+	virtual bool deactivatePlay() ;
 
 	gnuworld::xServer::timerID	loadCloneTimer ;
 	gnuworld::xServer::timerID	spamTimer ;
@@ -63,6 +69,7 @@ public:
 	gnuworld::xServer::timerID	kickTimer ;
 	gnuworld::xServer::timerID	topicTimer ;
 	gnuworld::xServer::timerID	nickTimer ;
+	gnuworld::xServer::timerID	killTimer ;
 
 protected:
 
@@ -77,6 +84,7 @@ protected:
 
 	virtual iClient*	randomClone() ;
 	virtual iClient*	availableClone( Channel* theChan ) ;
+	virtual iClient*	randomOper() ;
 	virtual iClient*	randomChanClone( Channel* theChan ) ;
 	virtual iClient*	randomChanOpClone( Channel* theChan ) ;
 	virtual size_t		cloneCount( Channel* theChan ) ;
@@ -91,6 +99,7 @@ protected:
 	iServer*		fakeServer ;
 
 	bool			allowOpers ;
+	bool			doKill ;
 
 	int				spamInterval ;
 	int				cycleInterval ;
@@ -98,6 +107,7 @@ protected:
 	int				opInterval ;
 	int				topicInterval ;
 	int				nickInterval ;
+	int				killInterval ;
 	int				floodLines ;
 	int				floodCount ;
 
@@ -111,6 +121,7 @@ protected:
 	int				actionFloodCount ;
 
 	float			playOps ;
+	float			playOpers ;
 
 	size_t			makeCloneCount ;
 	size_t			cloneBurstCount ;

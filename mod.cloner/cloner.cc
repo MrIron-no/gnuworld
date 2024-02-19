@@ -157,16 +157,20 @@ opFloodCount = 5 ;
 deopFloodCount = 6 ;
 joinFloodCount = 7 ;
 
+doKill = true ;
+
 spamInterval = atoi( conf.Require( "spaminterval" )->second.c_str() ) ;
 cycleInterval = atoi( conf.Require( "cycleinterval" )->second.c_str() ) ;
 quitInterval = atoi( conf.Require( "quitinterval" )->second.c_str() ) ;
 opInterval = atoi( conf.Require( "opsinterval" )->second.c_str() ) ;
 topicInterval = atoi( conf.Require( "topicinterval" )->second.c_str() ) ;
 nickInterval = atoi( conf.Require( "nickchangeinterval" )->second.c_str() ) ;
+killInterval = atoi( conf.Require( "killinterval" )->second.c_str() ) ;
 
 floodLines = atoi( conf.Require( "floodlines" )->second.c_str() ) ;
 floodCount = atoi( conf.Require( "floodcount" )->second.c_str() ) ;
 playOps = atoi( conf.Require( "playops" )->second.c_str() ) ;
+playOpers = atoi( conf.Require( "playopers" )->second.c_str() ) ;
 
 minNickLength = atoi( conf.Require( "minnicklength" )->second.c_str() ) ;
 maxNickLength = atoi( conf.Require( "maxnicklength" )->second.c_str() ) ;
@@ -195,6 +199,11 @@ if( maxNickLength <= minNickLength )
 cloner::~cloner()
 {}
 
+void cloner::OnAttach()
+{
+MyUplink->RegisterEvent( EVT_KILL, this );
+}
+
 void cloner::OnConnect()
 {
 fakeServer = new (std::nothrow) iServer(
@@ -208,6 +217,28 @@ assert( fakeServer != 0 ) ;
 MyUplink->AttachServer( fakeServer, this ) ;
 
 xClient::OnConnect() ;
+}
+
+void cloner::OnEvent( const eventType& theEvent,
+	void*, void* Data2, void*, void* )
+{
+switch ( theEvent )
+	{
+	case EVT_KILL:
+		{
+		iClient* tmpUser = static_cast< iClient* >( Data2 ) ;
+
+    	auto pos = std::find( clones.begin() , clones.end() , tmpUser ) ;
+		if( pos != clones.end() ) 
+			{
+			clones.remove( tmpUser ) ;
+			}
+
+		break;
+		}
+	default:
+		break;
+	}
 }
 
 void cloner::OnPrivateMessage( iClient* theClient, const string& Message,
@@ -669,6 +700,9 @@ else if( command == "KILLALL" || command == "QUITALL" )
 		}
 	clones.clear() ;
 
+	if( playCloneCount > 0 )
+		deactivatePlay() ;
+
 	} // KILLALL/QUITALL
 else if( command == "SAYALL" || command == "MSGALL" )
 	{
@@ -742,7 +776,8 @@ else if( command == "PLAY" )
 			stringstream s ;
 			s	<< (*ptr)->getCharYYXXX()
 				<< " L "
-				<< theChan->getName() ;
+				<< theChan->getName() 
+				<< ": PLAY deactivated!" ;
 
 			MyUplink->Write( s ) ;
 
@@ -752,21 +787,8 @@ else if( command == "PLAY" )
 			(*ptr)->removeChannel( theChan ) ;
 			}
 
-		// Unregistering timers.
-		MyUplink->UnRegisterTimer( spamTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( actionTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( joinTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( partTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( quitTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( opTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( deopTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( kickTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( topicTimer, 0 ) ;
-		MyUplink->UnRegisterTimer( nickTimer, 0 ) ;
-
-		playCloneCount = 0 ;
-
-		Notice( theClient, "%s is deactivated.", command.c_str() ) ;
+		if( deactivatePlay() )
+			Notice( theClient, "%s is deactivated.", command.c_str() ) ;
 		}
 	else
 		{
@@ -805,8 +827,8 @@ else if( command == "PLAY" )
 			}
 
 		// Joining the playchan.
-		size_t i {} ;
-		int k {} ;
+		size_t i { } ;
+		int j { }, k { } ;
 		for( std::list< iClient* >::const_iterator ptr = clones.begin(),
 			endPtr = clones.end() ; ptr != endPtr ; ++ptr )
 			{
@@ -842,7 +864,7 @@ else if( command == "PLAY" )
 				}
 
 			// Let's op a percentage of the clones.
-			if( k < round( ( playCloneCount / 100 ) * playOps ) + 1 )
+			if( playOps > 0 && ( k < round( ( playCloneCount / 100 ) * playOps ) + 1 ) )
 				{
 				stringstream s ;
 				s	<< MyUplink->getCharYY()
@@ -857,7 +879,21 @@ else if( command == "PLAY" )
 
 					theUser->setModeO() ;
 				}
-			i++ ; k++ ;
+
+			// Let's oper a percentage of the clones.
+			if( playOpers > 0 && ( j < round( ( playCloneCount / 100 ) * playOpers ) + 1 ) )
+				{
+				stringstream s ;
+				s	<< (*ptr)->getCharYYXXX()
+					<< " M "
+					<< (*ptr)->getNickName() 
+					<< " :+o" ;
+
+					MyUplink->Write( s ) ;
+
+					(*ptr)->setModeO() ;
+				}
+			i++ ; j++ ; k++ ;
 			}
 
 		// Activating timers.
@@ -888,6 +924,9 @@ else if( command == "PLAY" )
 
 		if( nickInterval > 0 )
 			nickTimer = MyUplink->RegisterTimer( ::time( 0 ) + nickInterval + 45, this, 0 ) ;
+
+		if( killInterval > 0 )
+			killTimer = MyUplink->RegisterTimer( ::time( 0 ) + ( killInterval / 2 ) + 50, this, 0 ) ;
 
 		Notice( theClient, "%s is now activated on %s for %d clones.", command.c_str(), playChan.c_str(), playCloneCount ) ;
 		}
@@ -1010,8 +1049,9 @@ else if( timer_id == spamTimer )
 	{
 	Channel* theChan = Network->findChannel( playChan ) ;
 	iClient* theClone = randomChanClone( theChan ) ;
+	ChannelUser* theUser = theChan->findUser ( theClone ) ;
 
-	if( theClone != NULL )
+	if( theClone != NULL && ( !theChan->getMode( Channel::MODE_M ) || (theUser->isModeV() ) ) )
 		{
 		int tmp { 1 } ;
 		if( spamFloodCount > floodCount )
@@ -1041,8 +1081,9 @@ else if( timer_id == actionTimer )
 	{
 	Channel* theChan = Network->findChannel( playChan ) ;
 	iClient* theClone = randomChanClone( theChan ) ;
+	ChannelUser* theUser = theChan->findUser ( theClone ) ;
 
-	if( theClone != NULL )
+	if( theClone != NULL && ( !theChan->getMode( Channel::MODE_M ) || (theUser->isModeV() ) ) )
 		{
 		int tmp { 1 } ;
 		if( actionFloodCount > floodCount )
@@ -1125,27 +1166,34 @@ else if( timer_id == joinTimer )
 	 * We need to factor in the quitTimer, and to make an adjustment to factor in that the cloner
 	 * may be kicked by other users due to its behaviour. 
 	 * 
- 	 * Firstly, lets adjust the timer to cater for cloner quits (quitTimer).
+ 	 * Firstly, lets adjust the timer to cater for cloner quits (quitTimer) and kills (killTimer).
 	 */
-	int quitDiff = cycleInterval / ( ( cycleInterval + quitInterval ) / cycleInterval );
+	int quitDiff { } ;
+	if( quitInterval > 0 )
+		quitDiff = cycleInterval / ( ( cycleInterval + quitInterval ) / cycleInterval ) ;
+
+	int killDiff { } ;
+	if( killInterval > 0 )
+		killDiff = cycleInterval / ( ( cycleInterval + killInterval ) / cycleInterval ) ;
 
 	/* 
 	 * Secondly, let's adjust the interval with the percentage of the difference between the number of 
 	 * clones present and the number of clones initiated in the playchan multiplied by two.
 	 */
 
-	float diff = ( ( ( (float)playCloneCount - (float)cloneCount( theChan ) ) / (float)playCloneCount ) * ( cycleInterval - quitDiff ) ) * 2 ;
+	float diff = ( ( ( (float)playCloneCount - (float)cloneCount( theChan ) ) / (float)playCloneCount ) * ( cycleInterval - quitDiff - killDiff ) ) * 2 ;
 
 	// We cannot go back in time. Cutting the interval in two. 
-	if( diff > ( cycleInterval - quitDiff ) ) diff = ( (float)cycleInterval - (float)quitDiff ) / 2 ; 
+	if( diff > ( cycleInterval - quitDiff ) ) diff = ( (float)cycleInterval - (float)quitDiff - (float)killDiff ) / 2 ; 
 
 	elog	<< "cloner::onTimer> joinTimer: Number of clones on channel: " << cloneCount( theChan )
 			<< " playCloneCount: " << playCloneCount
 			<< ". Interval reduced by " << quitDiff 
-			<< " seconds to adjust for quitTimer. Correcting interval by an additional " 
-			<< (int)diff << " seconds." << endl ;
+			<< " seconds to adjust for quitTimer and " << killDiff
+			<< " seconds to adjust for killTimer. Correcting interval by an additional " 
+			<< (int)diff << " seconds due to clone count." << endl ;
 
-	joinTimer = MyUplink->RegisterTimer( ::time( 0 ) + cycleInterval - quitDiff - (int)diff, this, 0 ) ; 
+	joinTimer = MyUplink->RegisterTimer( ::time( 0 ) + cycleInterval - quitDiff - killDiff - (int)diff, this, 0 ) ; 
 	}
 else if( timer_id == partTimer )
 	{
@@ -1191,14 +1239,14 @@ else if( timer_id == partTimer )
 	}
 else if( timer_id == quitTimer )
 	{
-	iClient* theClone = randomClone() ;
+	Channel* theChan = Network->findChannel( playChan ) ;
+	iClient* theClone = randomChanClone( theChan ) ;
 
 	if( theClone != NULL )
 		{
-		clones.remove( theClone ) ;
-
 		if( MyUplink->DetachClient( theClone, randomSpam() ) )
 			{
+			clones.remove( theClone ) ;
 			delete theClone ;
 			}
 
@@ -1440,6 +1488,50 @@ else if( timer_id == nickTimer )
 
 	nickTimer = MyUplink->RegisterTimer( ::time( 0 ) + nickInterval, this, 0 ) ;
 	}
+else if( timer_id == killTimer )
+	{
+	/* We don't want the same random numeric to be chosen for the new clone as the killed one. */
+	if( doKill )
+		{
+		Channel* theChan = Network->findChannel( playChan ) ;
+		iClient* theClone = randomOper() ;
+		iClient* destClone = randomChanClone( theChan ) ;
+
+		doKill = false ;
+
+		if( theClone != NULL && destClone != NULL )
+			{
+			stringstream s ;
+			s	<< theClone->getCharYYXXX()
+				<< " D "
+				<< destClone->getCharYYXXX() 
+				<< " :"
+				<< MyUplink->getName()
+				<< "!"
+				<< theClone->getNickName()
+				<< " ("
+				<< randomSpam()
+				<< ")" ;
+
+			MyUplink->Write( s ) ;
+
+			if( Network->removeClient( destClone ) )
+				{
+				clones.remove( destClone ) ;
+				delete destClone ;
+				}
+			}
+		}
+	else
+		{
+		doKill = true ;
+
+		// Adding a new clone.
+		addClone() ;
+		}
+
+	killTimer = MyUplink->RegisterTimer( ::time( 0 ) + killInterval / 2, this, 0 ) ;
+	}
 }
 
 void cloner::addClone()
@@ -1492,9 +1584,9 @@ while ( i < theChan->userList_size() )
 	Channel::userIterator chanUsers = theChan->userList_begin() ;
 	std::advance( chanUsers, rand() % theChan->userList_size() ) ;
 
-	// Check if tmpUser is in clones list.
+	// Check if tmpUser is in clones list. Let's skip the oper'ed users (we don't want them to quit). 
 	ChannelUser* tmpUser = chanUsers->second;
-	if( NULL == tmpUser ) continue;
+	if( NULL == tmpUser || tmpUser->isOper() ) continue;
 
 	auto pos = find( clones.begin() , clones.end() , tmpUser->getClient() ) ;
 	if( pos != clones.end() )
@@ -1523,6 +1615,25 @@ while ( i < clones.size() )
 
 // We have iterated through the clones list, without finding any clones not
 // present on the channel. Return NULL.
+return NULL ;
+}
+
+// Returns an iClient pointer to a random oper'ed clone.
+iClient* cloner::randomOper()
+{
+srand( ::time( 0 ) ) ;
+size_t i { } ;
+
+while ( i < clones.size() )
+	{
+	i++ ;
+	std::list < iClient* >::iterator theClone = clones.begin() ;
+	std::advance( theClone, rand() % clones.size() ) ;
+
+	if( (*theClone)->isOper() ) return *theClone ;
+	}
+
+// We have iterated through the clones list, without finding any oper'd clones.
 return NULL ;
 }
 
@@ -1640,6 +1751,26 @@ for( std::list< string >::const_iterator itr = allowAccess.begin() ;
 		}
 	}
 return false ;
+}
+
+bool cloner::deactivatePlay()
+{
+	// Unregistering timers.
+	MyUplink->UnRegisterTimer( spamTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( actionTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( joinTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( partTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( quitTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( opTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( deopTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( kickTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( topicTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( nickTimer, 0 ) ;
+	MyUplink->UnRegisterTimer( killTimer, 0 ) ;
+
+	playCloneCount = 0 ;
+
+	return true ;
 }
 
 } // namespace gnuworld
