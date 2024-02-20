@@ -1181,7 +1181,8 @@ else if( timer_id == joinTimer )
 	 * clones present and the number of clones initiated in the playchan multiplied by two.
 	 */
 
-	float diff = ( ( ( (float)playCloneCount - (float)cloneCount( theChan ) ) / (float)playCloneCount ) * ( cycleInterval - quitDiff - killDiff ) ) * 2 ;
+	float diff = ( ( ( (float)playCloneCount - (float)cloneCount( theChan ) ) / 
+			(float)playCloneCount ) * ( (float)cycleInterval - (float)quitDiff - (float)killDiff ) ) * 2 ;
 
 	// We cannot go back in time. Cutting the interval in two. 
 	if( diff > ( cycleInterval - quitDiff ) ) diff = ( (float)cycleInterval - (float)quitDiff - (float)killDiff ) / 2 ; 
@@ -1755,22 +1756,21 @@ return false ;
 
 bool cloner::deactivatePlay()
 {
-	// Unregistering timers.
-	MyUplink->UnRegisterTimer( spamTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( actionTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( joinTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( partTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( quitTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( opTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( deopTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( kickTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( topicTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( nickTimer, 0 ) ;
-	MyUplink->UnRegisterTimer( killTimer, 0 ) ;
+MyUplink->UnRegisterTimer( spamTimer, 0 ) ;
+MyUplink->UnRegisterTimer( actionTimer, 0 ) ;
+MyUplink->UnRegisterTimer( joinTimer, 0 ) ;
+MyUplink->UnRegisterTimer( partTimer, 0 ) ;
+MyUplink->UnRegisterTimer( quitTimer, 0 ) ;
+MyUplink->UnRegisterTimer( opTimer, 0 ) ;
+MyUplink->UnRegisterTimer( deopTimer, 0 ) ;
+MyUplink->UnRegisterTimer( kickTimer, 0 ) ;
+MyUplink->UnRegisterTimer( topicTimer, 0 ) ;
+MyUplink->UnRegisterTimer( nickTimer, 0 ) ;
+MyUplink->UnRegisterTimer( killTimer, 0 ) ;
 
-	playCloneCount = 0 ;
+playCloneCount = 0 ;
 
-	return true ;
+return true ;
 }
 
 } // namespace gnuworld
