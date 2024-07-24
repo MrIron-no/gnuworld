@@ -83,14 +83,18 @@ else
 		) ;
 	}
 
-if (Target->getConnectTime() > 0)
-{
-	/* we have a client connection timestamp, display it */
-	bot->Notice(theClient, "%s has been connected for %s [since %ld]",
+if( Target->getNickTS() != Target->getFirstNickTS() )
+	{
+	bot->Notice(theClient, "%s has used its current nickname for %s [since %ld]",
 		st[1].c_str(),
-		Ago(Target->getConnectTime()),
-		Target->getConnectTime());
-}
+		Ago(Target->getNickTS()),
+		Target->getNickTS());
+	}
+
+bot->Notice(theClient, "%s has been connected for %s [since %ld]",
+	st[1].c_str(),
+	Ago(Target->getFirstNickTS()),
+	Target->getFirstNickTS());
 
 if (Target->isModeR())
 {

@@ -85,11 +85,6 @@ DEOP		2	Deops one or more users on a specific channel
 DEOP		3	Syntax: /msg $BOT$ deop <#chan> <nick1> [nick2 nick3...]
 DEOP		4	<#chan> - the channel to deop the users on
 DEOP		5	<nick1, nick2..> - nicks to deop
-EXCEPTIONS		1	****** EXCEPTIONS COMMAND ******
-EXCEPTIONS		2	Excepts users from the various glines/warnings within CONFIG
-EXCEPTIONS		3	Syntax: /msg $BOT$ exceptions <add|del|list> <host mask> <connections>
-EXCEPTIONS		4	<host mask> - user@host mask to except
-EXCEPTIONS		5	<connections> - number of connections allowed before gline/warning
 FORCECHANGLINE		1	****** FORCECHANGLINE COMMAND ******
 FORCECHANGLINE		2	Glines all users on the given channel
 FORCECHANGLINE		3	Syntax: /msg $BOT$ forcechangline [-u] <#channel> [duration] <reason>
@@ -128,7 +123,7 @@ INVITE		3	Syntax: /msg $BOT$ invite <#channel>
 INVITE		4	<#channel> - the channel to invite you to
 LIMITS		1	****** LIMITS COMMAND ******
 LIMITS		2	Manage IPv4/v6 clone limits
-LIMITS		3	LIMITS commands: addisp, addnetblock, delisp, delnetblock, list, chlimit, chname, chemail, forcecount, active, group, chccidr, clearall, userinfo
+LIMITS		3	LIMITS commands: addisp, addnetblock, delisp, delnetblock, list, chlimit, chname, chemail, forcecount, active, nogline, group, chccidr, clearall, userinfo
 LIMITS		4	Syntax for the two main commands:
 LIMITS		5	1. ADDISP <name> <max connections> <clones cidr> [abuse email]
 LIMITS		6	2. ADDNETBLOCK <isp> <netblock>
@@ -183,7 +178,7 @@ LEARNNET		3	Syntax: /msg $BOT$ learnnet
 LIST		1	****** LIST COMMAND ******
 LIST		2	This command lists various internal lists
 LIST		3	Syntax: /msg $BOT$ list <type>
-LIST		4	<type> - glines, servers, badchannels, exceptions, channels, limits
+LIST		4	<type> - glines, servers, badchannels, channels, limits
 LIST		5	 (see /msg $BOT$ help list channels for more info on channels)
 LIST	CHANNELS	1	****** LIST CHANNELS COMMAND ******
 LIST	CHANNELS	2	This command lists channels based on various criteria

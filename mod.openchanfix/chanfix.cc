@@ -128,7 +128,7 @@ RegisterCommand(new ADDHOSTCommand(this, "ADDHOST",
 RegisterCommand(new ADDNOTECommand(this, "ADDNOTE",
 	"<#channel> <reason>",
 	3,
-	sqlcfUser::F_COMMENT
+	0 /* Set to 0 to allow all opers to access it, otherwise this should be sqlcfUser::F_COMMENT */
 	));
 RegisterCommand(new ADDUSERCommand(this, "ADDUSER",
 	"<username> [host]",
@@ -138,7 +138,7 @@ RegisterCommand(new ADDUSERCommand(this, "ADDUSER",
 RegisterCommand(new ALERTCommand(this, "ALERT",
 	"<#channel> <reason>",
 	3,
-	sqlcfUser::F_COMMENT
+	0 /* Set to 0 to allow all opers to access it, otherwise this should be sqlcfUser::F_COMMENT */
 	));
 RegisterCommand(new BLOCKCommand(this, "BLOCK",
 	"<#channel> <reason>",
@@ -180,7 +180,7 @@ RegisterCommand(new DELHOSTCommand(this, "DELHOST",
 RegisterCommand(new DELNOTECommand(this, "DELNOTE",
 	"<#channel> <note_id>",
 	3,
-	sqlcfUser::F_COMMENT
+	0 /* Set to 0 to allow all opers to access it, otherwise this should be sqlcfUser::F_COMMENT */
 	));
 RegisterCommand(new DELUSERCommand(this, "DELUSER",
 	"<username>",
@@ -306,7 +306,7 @@ RegisterCommand(new SUSPENDCommand(this, "SUSPEND",
 RegisterCommand(new UNALERTCommand(this, "UNALERT",
 	"<#channel>",
 	2,
-	sqlcfUser::F_COMMENT
+	0 /* Set to 0 to allow all opers to access it, otherwise this should be sqlcfUser::F_COMMENT */
 	));
 RegisterCommand(new UNBLOCKCommand(this, "UNBLOCK",
 	"<#channel>",
@@ -692,6 +692,20 @@ if (st.size() < commHandler->second->getNumParams()) {
   commHandler->second->Usage(theClient);
   return;
 }
+
+/* Hidden: As of 2024-05-04, require opers to be authenticated to use oper level commands.
+   This is mainly for logging purposes, otherwise chanfix and oper notes are empty, as only account is stored in the note, not the nick!user@host.
+*/
+if (theClient->getAccount().length() == 0) {
+  if (Command != "CANFIX" && Command != "HELP" && Command != "REQUESTOP") {
+    SendTo(theClient,
+        getResponse(theUser,
+                    language::need_to_auth,
+                    std::string("You need to authenticate to use this command.")).c_str());
+    return;
+  }
+}
+
 
 /* If you change this code, remember to change it in HELPCommand.cc */
 sqlcfUser::flagType requiredFlags = commHandler->second->getRequiredFlags();
@@ -1091,10 +1105,6 @@ switch(whichEvent)
 		if (Command == "OPLIST")
 		{
 			doXROplist(theServer, Routing, Message);
-		}
-		else if (Command == "SCORE")
-		{
-			doXRScore(theServer, Routing, Message);
 		}
 		break;
 	}
@@ -2556,10 +2566,8 @@ void chanfix::stopFixingChan(Channel* theChan, bool force)
 if (!theChan) return;
 
 bool inFix = false;
-bool isAutoFix = false; /* false = manual - true = auto */
 
 if ((stopAutoFixOnOp || force) && isBeingAutoFixed(theChan)) {
-  isAutoFix = true;
   inFix = true;
   removeFromAutoQ(theChan);
 }
@@ -3826,12 +3834,6 @@ bool chanfix::doXROplist(iServer* theServer, const string& Routing, const string
 	}
 
 	// End of OPLIST
-	return true;
-}
-
-bool doXRScore(iServer* theServer, const string& Routing, const string& Message)
-{
-	// TODO
 	return true;
 }
 

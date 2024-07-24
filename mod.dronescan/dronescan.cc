@@ -1303,8 +1303,8 @@ if(channel->getJoinFlooded())
 
 time_t dronescan::getRoundedUnixTime(time_t ts, unsigned int power)
 {
-ts >> power;
-ts << power;
+ts >>= power;
+ts <<= power;
 return ts;
 }
 
@@ -1777,7 +1777,7 @@ void dronescan::log(LOG_TYPE logType, const char *format, ...)
 }
 
 #ifdef ENABLE_LOG4CPLUS
-void dronescan::log(char* cat,const char* format, ...)
+void dronescan::log(const char* cat,const char* format, ...)
 {
 	char buffer[512] = {0};
 	va_list _list;

@@ -620,7 +620,7 @@ return removeChannel( theChan->getName() ) ;
 }
 
 void xNetwork::rehashNick( const string& yyxxx,
-	const string& newNick )
+	const string& newNick, const time_t& newTS )
 {
 //elog	<< "xNetwork::rehashNick> yyxxx: "
 //	<< yyxxx
@@ -648,6 +648,9 @@ string oldNick = theClient->getNickName() ;
 
 // Change the client's nickname
 theClient->setNickName( newNick ) ;
+
+// Update the client's nick timestamp
+theClient->setNickTS( newTS ) ;
 
 // Add the client back to the nickname table
 addNick( theClient ) ;
@@ -1735,6 +1738,20 @@ list<const Channel*> xNetwork::getChannelsWithModes(const string& modes) const
 				case 'C':	/* new u2.10.12.15 mode to prevent chan CTCPs (except ACTION) */
 						if ((!modeflag && cptr->second->getMode(Channel::MODE_CTCP))
 							|| (modeflag && !cptr->second->getMode(Channel::MODE_CTCP)))
+						{
+							foundMatch = false;
+						}
+						break;
+				case 'P':	/* mode to prevent part messages */
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_PART))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_PART)))
+						{
+							foundMatch = false;
+						}
+						break;
+				case 'M':	/* mode to prevent part messages */
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_MNOREG))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_MNOREG)))
 						{
 							foundMatch = false;
 						}

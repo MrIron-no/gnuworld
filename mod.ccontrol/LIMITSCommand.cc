@@ -56,11 +56,16 @@ if(st.size() < 2)
 bot->MsgChanLog("LIMITS %s\n",st.assemble(1).c_str());
 if(!strcasecmp(st[1].c_str(),"list"))
 	{
+	bot->listIpLExceptions(theClient);
+	return true;
+	}
+if(!strcasecmp(st[1].c_str(),"list-old"))
+	{
 	bool listEmail = false;
 	if ((st.size() > 2) && (!strcasecmp(st[2].c_str(), "-e"))) {
 		listEmail = true;
 	}
-	bot->listIpLExceptions(theClient, "", listEmail);
+	bot->listIpLExceptionsOld(theClient, "", listEmail);
 	return true;
 	}
 if(!strcasecmp(st[1].c_str(),"info"))
@@ -69,7 +74,7 @@ if(!strcasecmp(st[1].c_str(),"info"))
 		bot->Notice(theClient,"SYNTAX: info <isp>");
 		return true;
 	}
-	bot->listIpLExceptions(theClient, st[2], true);
+	bot->listIpLExceptionsOld(theClient, st[2], true);
 	return true;
 	}
 else if(!strcasecmp(st[1].c_str(),"addisp"))
@@ -79,7 +84,7 @@ else if(!strcasecmp(st[1].c_str(),"addisp"))
 		bot->Notice(theClient,"SYNTAX: ADDISP <name> <max connections> <clones cidr> [abuse email]");
 		//bot->Notice(theClient, "-f: forcecount - use it if you want limits to still be enforced even if the netblocks"
 		//	" of this isp are not the closest match for a client");
-		//bot->Notice(theClient, "-i: inactive - deactivates glines, reports only");
+		//bot->Notice(theClient, "-i: inactive - deactivates glines and does not prevent new clients from connecting using iauth. It does reports only.");
 		return true;
 		}
 	if(st[2].size() > 32)
@@ -136,7 +141,7 @@ else if(!strcasecmp(st[1].c_str(),"addnetblock"))
 	}
 else if(!strcasecmp(st[1].c_str(),"active"))
 	{
-	if(st.size() < 4) 
+	if(st.size() < 4)
 		{
 		bot->Notice(theClient,"SYNTAX: ACTIVE <isp> <yes|no>");
 		return true;
@@ -147,7 +152,7 @@ else if(!strcasecmp(st[1].c_str(),"active"))
 		return true;
 		}
 	IpLisp = bot->getIpLisp(st[2]);
-	
+
 	if (IpLisp == 0)
 		{
 		bot->Notice(theClient,"Isp not found.");
@@ -158,7 +163,7 @@ else if(!strcasecmp(st[1].c_str(),"active"))
 		res = 1;
 	else if (!strcasecmp(st[3].c_str(), "no"))
 		res = 0;
-	else 
+	else
 		{
 		bot->Notice(theClient,"must be yes or no");
 		return true;
@@ -167,12 +172,53 @@ else if(!strcasecmp(st[1].c_str(),"active"))
 	IpLisp->setModOn(::time(0));
 	IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
 	bot->reloadIpLisp(theClient, IpLisp);
-	if (!IpLisp->updateData()) 
+	if (!IpLisp->updateData())
 		{
 		bot->Notice(theClient, "SQL insertion failed.");
 		}
 	else
-		bot->Notice(theClient,"G-lines on %s %sactivated", IpLisp->getName().c_str(), res ? "" : "de");
+		bot->Notice(theClient,"Limits are %s enforced on %s", res ? "now" : "no longer", IpLisp->getName().c_str());
+	}
+
+else if(!strcasecmp(st[1].c_str(),"nogline"))
+	{
+	if(st.size() < 4)
+		{
+		bot->Notice(theClient,"SYNTAX: NOGLINE <isp> <yes|no>");
+		return true;
+		}
+	if(st[2].size() > 32)
+		{
+		bot->Notice(theClient,"Isp can't exceed 32 characters");
+		return true;
+		}
+	IpLisp = bot->getIpLisp(st[2]);
+
+	if (IpLisp == 0)
+		{
+		bot->Notice(theClient,"Isp not found.");
+		return true;
+		}
+	int res;
+	if (!strcasecmp(st[3].c_str(), "yes"))
+		res = 1;
+	else if (!strcasecmp(st[3].c_str(), "no"))
+		res = 0;
+	else
+		{
+		bot->Notice(theClient,"must be yes or no");
+		return true;
+		}
+	IpLisp->setNoGline(res);
+	IpLisp->setModOn(::time(0));
+	IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
+	bot->reloadIpLisp(theClient, IpLisp);
+	if (!IpLisp->updateData())
+		{
+		bot->Notice(theClient, "SQL insertion failed.");
+		}
+	else
+		bot->Notice(theClient,"G-lines on %s %sactivated.%s", IpLisp->getName().c_str(), res ? "de" : "", res ? " Limits will keep being enforced via iauth." : "");
 	}
 else if(!strcasecmp(st[1].c_str(),"chemail"))
 	{
@@ -237,7 +283,7 @@ else if(!strcasecmp(st[1].c_str(),"group"))
 	IpLisp->setModOn(::time(0));
 	IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
 	bot->reloadIpLisp(theClient, IpLisp);
-	if (!IpLisp->updateData()) 
+	if (!IpLisp->updateData())
 		{
 		bot->Notice(theClient, "SQL insertion failed.");
 		}
@@ -277,7 +323,7 @@ else if(!strcasecmp(st[1].c_str(),"glunidented"))
 	IpLisp->setModOn(::time(0));
 	IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
 	bot->reloadIpLisp(theClient, IpLisp);
-	if (!IpLisp->updateData()) 
+	if (!IpLisp->updateData())
 		{
 		bot->Notice(theClient, "SQL insertion failed.");
 		}
@@ -317,7 +363,7 @@ else if(!strcasecmp(st[1].c_str(),"forcecount"))
 	IpLisp->setModOn(::time(0));
 	IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
 	bot->reloadIpLisp(theClient, IpLisp);
-	if (!IpLisp->updateData()) 
+	if (!IpLisp->updateData())
 		{
 		bot->Notice(theClient, "SQL insertion failed.");
 		}
@@ -351,7 +397,7 @@ else if(!strcasecmp(st[1].c_str(),"chccidr"))
 		IpLisp->setModOn(::time(0));
 		IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
 		bot->reloadIpLisp(theClient, IpLisp);
-		if (!IpLisp->updateData()) 
+		if (!IpLisp->updateData())
 			{
 			bot->Notice(theClient, "SQL insertion failed.");
 			}
@@ -388,7 +434,7 @@ else if(!strcasecmp(st[1].c_str(),"chilimit"))
 		IpLisp->setIdentLimit(atoi(st[3].c_str()));
 		IpLisp->setModOn(::time(0));
 		IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
-		if (!IpLisp->updateData()) 
+		if (!IpLisp->updateData())
 			{
 			bot->Notice(theClient, "SQL insertion failed.");
 			}
@@ -425,7 +471,7 @@ else if(!strcasecmp(st[1].c_str(),"chlimit"))
 		IpLisp->setLimit(atoi(st[3].c_str()));
 		IpLisp->setModOn(::time(0));
 		IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
-		if (!IpLisp->updateData()) 
+		if (!IpLisp->updateData())
 			{
 			bot->Notice(theClient, "SQL insertion failed.");
 			}
@@ -464,7 +510,7 @@ else if(!strcasecmp(st[1].c_str(),"chname"))
 		IpLisp->setName(ccontrol::removeSqlChars(st[3]));
 		IpLisp->setModOn(::time(0));
 		IpLisp->setModBy(ccontrol::removeSqlChars(theClient->getRealNickUserHost()));
-		if (!IpLisp->updateData()) 
+		if (!IpLisp->updateData())
 			{
 			bot->Notice(theClient, "SQL insertion failed.");
 			}

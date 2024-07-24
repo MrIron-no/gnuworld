@@ -1115,7 +1115,7 @@ Write( "%s N %s %d %d %s %s %s %s %s :%s\n",
 	fakeServer->getCharYY().c_str(),
 	fakeClient->getNickName().c_str(),
 	hopCount,
-	fakeClient->getConnectTime(),
+	fakeClient->getNickTS(),
 	fakeClient->getUserName().c_str(),
 	fakeClient->getInsecureHost().c_str(),
 	fakeClient->getStringModes().c_str(),
@@ -1784,6 +1784,18 @@ if( !chanModes.empty() &&
 				else
 					theChan->removeMode(Channel::MODE_CTCP);
 				break;
+			case 'P':
+				if (plus)
+					theChan->setMode(Channel::MODE_PART);
+				else
+					theChan->removeMode(Channel::MODE_PART);
+				break;
+			case 'M':
+				if (plus)
+					theChan->setMode(Channel::MODE_MNOREG);
+				else
+					theChan->removeMode(Channel::MODE_MNOREG);
+				break;
 
 			// TODO: Finish with polarity
 			// TODO: Add in support for modes b,v,o
@@ -2105,6 +2117,14 @@ if( theChan->getMode( Channel::MODE_CTCP ) )
 	{
 	modeVector.push_back( make_pair( false, Channel::MODE_CTCP ) ) ;
 	}
+if( theChan->getMode( Channel::MODE_PART ) )
+	{
+	modeVector.push_back( make_pair( false, Channel::MODE_PART ) ) ;
+	}
+if( theChan->getMode( Channel::MODE_MNOREG ) )
+	{
+	modeVector.push_back( make_pair( false, Channel::MODE_MNOREG ) ) ;
+	}
 if( theChan->getMode( Channel::MODE_L ) )
 	{
 	OnChannelModeL( theChan, false, 0, 0 ) ;
@@ -2268,6 +2288,8 @@ chanModes[ 't' ] = Channel::MODE_T ;
 chanModes[ 'D' ] = Channel::MODE_D ;
 chanModes[ 'c' ] = Channel::MODE_C ;
 chanModes[ 'C' ] = Channel::MODE_CTCP ;
+chanModes[ 'P' ] = Channel::MODE_PART ;
+chanModes[ 'M' ] = Channel::MODE_MNOREG ;
 
 // This vector is used for argument-less types that can be passed
 // to OnChannelMode()
@@ -2339,6 +2361,10 @@ for( ; tokenIndex < st.size() ; )
 			case 'r':
 			case 's':
 			case 't':
+			case 'c':
+			case 'C':
+			case 'P':
+			case 'M':
 			case 'D':
 //				elog	<< "xServer::Mode> General mode: "
 //					<< theChar
@@ -3285,10 +3311,16 @@ for( string::const_iterator ptr = st[ 0 ].begin() ; ptr != st[ 0 ].end() ;
 			theChan->setMode( Channel::MODE_D ) ;
 			break ;
 		case 'c':
-			theChan->setMode(Channel::MODE_C);
+			theChan->setMode( Channel::MODE_C ) ;
 			break;
 		case 'C':
-			theChan->setMode(Channel::MODE_CTCP);
+			theChan->setMode( Channel::MODE_CTCP ) ;
+			break;
+		case 'P':
+			theChan->setMode( Channel::MODE_PART ) ;
+			break;
+		case 'M':
+			theChan->setMode( Channel::MODE_MNOREG ) ;
 			break;
 		case 'k':
 			{
@@ -3457,6 +3489,28 @@ s	<< getCharYY()
 	<< " :"
 	<< message ;
 return Write( s.str() ) ;
+}
+
+bool xServer::Notice( iClient* theClient, const char* format, ... )
+{
+assert( theClient != 0 ) ;
+
+char buf[ 1024 ] = { 0 } ;
+va_list _list ;
+
+va_start( _list, format ) ;
+vsnprintf( buf, 1024, format, _list ) ;
+va_end( _list ) ;
+
+stringstream s ;
+s	<< getCharYY()
+	<< " O "
+	<< theClient->getCharYYXXX()
+	<< " :"
+	<< buf
+	<< ends ;
+
+return Write( s );
 }
 
 bool xServer::serverNotice( Channel* theChan, const char* format, ... )
