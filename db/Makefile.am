@@ -5,8 +5,8 @@ lib_LTLIBRARIES += libgnuworldDB.la
 libgnuworldDB_la_SOURCES = \
 	db/gnuworldDB.cc \
 	db/pgsqlDB.cc
-##libgnuworldDB_la_CXXFLAGS = -I$(pgsql_includedir)
-libgnuworldDB_la_LDFLAGS = -L$(pgsql_libdir) -lpq
+libgnuworldDB_la_LIBADD = $(LIBPQXX_LIBS)
+libgnuworldDB_la_CXXFLAGS = $(LIBPQXX_CFLAGS) -I${top_srcdir}/libgnuworld
 
 EXTRA_DIST += \
 	db/gnuworldDB.h \
