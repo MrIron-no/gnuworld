@@ -216,6 +216,7 @@ RegisterCommand(new SHOWIGNORECommand(this, "SHOWIGNORE", "", 3));
 RegisterCommand(new SUPPORTCommand(this, "SUPPORT", "#channel <YES|NO>", 15));
 RegisterCommand(new NOTECommand(this, "NOTE", "send <username> <message>, read all, erase <all|message id>", 10));
 RegisterCommand(new NOTECommand(this, "NOTES", "send <username> <message>, read all, erase <all|message id>", 10));
+RegisterCommand(new FINGERPRINTCommand(this, "FINGERPRINT", "<ADD|REM|LIST> [fingerprint]", 10));
 
 RegisterCommand(new OPCommand(this, "OP", "<#channel> [nick] [nick] ..", 3));
 RegisterCommand(new DEOPCommand(this, "DEOP", "<#channel> [nick] [nick] ..", 3));
@@ -371,6 +372,9 @@ preloadLevelsCache();
 
 /* Preload any user accounts we want to */
 preloadUserCache();
+
+/* Preload fingerprints */
+preloadFingerprintCache();
 
 /* Load the glines from db */
 loadGlines();
@@ -1578,6 +1582,36 @@ return 0;
 }
 
 /**
+ * Locates a cservice user record by TLS fingerprint.
+ */
+sqlUser* cservice::getUserRecordByFingerprint( const string& fingerprint )
+{
+stringstream theQuery ;
+theQuery	<< "SELECT user_id FROM "
+			<< "users_fingerprints WHERE fingerprint = '"
+			<< fingerprint
+			<< "' LIMIT 1" << endl ;
+
+#ifdef LOG_SQL
+elog	<< "cservice::getUserRecordByFingerprint::sqlQuery> "
+		<< theQuery.str()
+		<< endl ;
+#endif
+
+if( !SQLDb->Exec(theQuery, true ) )
+	{
+	elog    << "cservice::hasFP> SQL Error: "
+			<< SQLDb->ErrorMessage()
+			<< endl;
+	return nullptr ;
+	}
+
+if( SQLDb->Tuples() < 1 )
+	return nullptr ;
+
+return getUserRecord( std::stoi( SQLDb->GetValue( 0, 0 ) ) ) ;
+}
+/**
  *  Locates a cservice user record by 'id', the username of this user.
  */
 sqlUser* cservice::getUserRecord(const string& id)
@@ -1922,6 +1956,30 @@ bool cservice::hasIPR( sqlUser* theUser )
 	}
 	else
 		return true;
+}
+
+unsigned int cservice::hasFP( sqlUser* theUser )
+{
+stringstream theQuery ;
+theQuery	<< "SELECT COUNT(*) FROM "
+			<< "users_fingerprints WHERE user_id = "
+			<< theUser->getID()
+			<< endl ;
+#ifdef LOG_SQL
+elog	<< "cservice::hasFP::sqlQuery> "
+		<< theQuery.str()
+		<< endl ;
+#endif
+
+if( !SQLDb->Exec(theQuery, true ) )
+	{
+	elog    << "cservice::hasFP> SQL Error: "
+			<< SQLDb->ErrorMessage()
+			<< endl;
+	return 0 ;
+	}
+
+return SQLDb->Tuples() ;
 }
 
 /**
@@ -3121,6 +3179,7 @@ void cservice::processDBUpdates()
 	updateUsers();
 	updateLevels();
 	updateBans();
+	updateFingerprints();
 	logDebugMessage("[DB-UPDATE]: Complete.");
 }
 
@@ -3482,6 +3541,39 @@ void cservice::updateUsers()
 
 	/* Set the "Last refreshed from Users table" timestamp. */
 	lastUserRefresh = atoi(SQLDb->GetValue(0,"db_unixtime").c_str());
+}
+
+/*
+ * Check the fingerpritns table to see if there have been any updates since we last looked.
+ */
+void cservice::updateFingerprints()
+{
+const std::string theQuery = "SELECT fingerprint,user_id,added FROM users_fingerprints" ;
+
+#ifdef LOG_SQL
+elog	<< "*** [CMaster::updateFingerprints]: sqlQuery: "
+		<< theQuery
+		<< endl ;
+#endif
+
+if( !SQLDb->Exec(theQuery, true ) )
+	{
+	elog	<< "*** [CMaster::updateFingerprints]: SQL error: "
+			<< SQLDb->ErrorMessage()
+			<< endl ;
+	return;
+	}
+
+if( SQLDb->Tuples() <= 0 )
+	{
+	return ;
+	}
+
+fingerprintMap.clear() ;
+for( unsigned int i = 0 ; i < SQLDb->Tuples() ; i++ )
+	fingerprintMap.emplace( SQLDb->GetValue( i, 0 ), std::stoul( SQLDb->GetValue( i, 1 ) ) ) ;
+
+logDebugMessage("[DB-UPDATE]: Refreshed fingerprint(s)." ) ;
 }
 
 void cservice::updateBans()
@@ -7966,6 +8058,29 @@ void cservice::preloadUserCache()
 			<< endl;
 }
 
+void cservice::preloadFingerprintCache()
+{
+	stringstream theQuery;
+	theQuery	<< "SELECT fingerprint,user_id FROM users_fingerprints"
+				<< endl;
+
+	elog		<< "*** [CMaster::preloadFingerprintCache]: Loading TLS fingerprints : "
+				<< endl;
+
+	if( SQLDb->Exec(theQuery, true ) )
+	{
+		for (unsigned int i = 0 ; i < SQLDb->Tuples(); i++)
+			{
+			fingerprintMap.emplace(SQLDb->GetValue(i,0), std::stoul(SQLDb->GetValue(i,1)));
+			}
+	}
+
+	elog	<< "*** [CMaster::preloadFingerprintCache]: Done. Loaded "
+			<< SQLDb->Tuples()
+			<< " fingerprints."
+			<< endl;
+}
+
 void cservice::incStat(const string& name)
 {
 	statsMapType::iterator ptr = statsMap.find( name );
@@ -8297,6 +8412,26 @@ void cservice::doCoderStats(iClient* theClient)
         }
 	userDBTOTPIPRTotal = atoi(SQLDb->GetValue(0,0));
 
+	int userDBFPTotal = 0;
+	theQuery.str("");
+	theQuery	<< "SELECT COUNT(*) FROM users,users_fingerprints WHERE "
+				<< "users.id = users_fingerprints.user_id"
+				<< endl;
+#ifdef LOG_SQL
+	elog	<< "cservice::doCoderStats::sqlQuery> "
+		<< theQuery.str().c_str()
+		<< endl;
+#endif
+
+	if( !SQLDb->Exec(theQuery, true ) )
+	{
+		elog    << "cservice::doCoderStats> SQL Error: "
+			<< SQLDb->ErrorMessage()
+			<< endl;
+		return;
+        }
+	userDBFPTotal = atoi(SQLDb->GetValue(0,0));
+
 	float userTotal = userCacheHits + userHits;
 	float userEf = userCacheHits ? ((float)userCacheHits / userTotal * 100) : 0;
 
@@ -8369,6 +8504,7 @@ void cservice::doCoderStats(iClient* theClient)
 	Notice(theClient, "--- Total users in DB with IPR: %i (in cache: %i (%.2f%% of total))", userDBIPRTotal, iprCount, cacheIPRTotal);
 	float cacheIPRTOTPTotal = ((float)ipr_totp_Count / (float)sqlUserCache.size()) * 100;
 	Notice(theClient, "--- Total users in DB with TOTP&IPR: %i (in cache: %i (%.2f%% of total))", userDBTOTPIPRTotal, ipr_totp_Count, cacheIPRTOTPTotal);
+	Notice(theClient, "--- Total users in DB with TLS: %i (fingerprints in cache %i)", userDBFPTotal, fingerprintMap.size());
 
 	float authTotal = ((float)authCount / (float)Network->clientList_size()) * 100;
 	Notice(theClient, "--- Total Auth'd  : %i (%.2f%% of total)",
@@ -8560,143 +8696,377 @@ void cservice::loadConfigVariables()
 	UsersExpireDBDays *= daySeconds;
 }
 
-int cservice::authenticateUser(const string& username, const string& password, const string& ip, const string& ident,unsigned int& ipr_ts,sqlUser** suser)
+cservice::AuthResult cservice::authenticateUser( AuthStruct& auth )
 {
+unsigned int ipr_ts ;
+
+/* 1: Check loginDelay. */
 unsigned int useLoginDelay = getConfigVar("USE_LOGIN_DELAY")->asInt();
 unsigned int loginTime = getUplink()->getStartTime() + loginDelay;
 if ( (useLoginDelay == 1) && (loginTime >= (unsigned int)currentTime()) )
-        {
-        return TOO_EARLY_TOLOGIN;
-        }
-/*
- * Find the user record, confirm authorisation and attach the record
- * to this client.
- */
-if(username[0] == '#')
-        {
-        return AUTH_FAILED;
-        }
+    {
+    return TOO_EARLY_TOLOGIN ;
+    }
 
+/* 2: Check whether this iClient has exceeded the maximum number of failed login attempts. */
+if( auth.theClient )
+	{
+	unsigned int maxFailedLogins = getConfigVar("MAX_FAILED_LOGINS")->asInt() ;
+	unsigned int failedLogins = getFailedLogins( auth.theClient ) ;
+	if( ( maxFailedLogins > 0 ) && ( failedLogins >= maxFailedLogins ) )
+		return AUTH_FAIL_EXCEEDED ;
+	}
+
+/* 3: Check that the username exists. */
 // TODO: Force a refresh of the user's info from the db
-*suser = getUserRecord(username);
-
-sqlUser* theUser = *suser;
+sqlUser* theUser = getUserRecord( auth.username ) ;
 if( !theUser )
-        {
-        return AUTH_UNKNOWN_USER;
-        }
+    {
+	return AUTH_UNKNOWN_USER ;
+    }
 
-if (theUser->getFlag(sqlUser::F_GLOBAL_SUSPEND))
-        {
-        return AUTH_SUSPENDED_USER;
-        }
-StringTokenizer st (password);
-int pass_end = st.size();
+auth.theUser = theUser ;
+
+/* 4: Check whether the username is glbobally suspended. */
+if( theUser->getFlag( sqlUser::F_GLOBAL_SUSPEND ) )
+	{
+	return AUTH_SUSPENDED_USER ;
+	}
+
+/**
+ * 5: If the client has a fingerprint, we check whether it matches the username.
+ * If it does, we take that into account when parsing the password string to look for
+ * the TOTP token (if any). If there is no match, we treat the password string as a
+ * regular login.
+ */
+bool certAuth = false ;
+if( !auth.fingerprint.empty() )
+	{
+	auto it = fingerprintMap.find( auth.fingerprint ) ;
+	if( it != fingerprintMap.end() && it->second == theUser->getID() )
+		certAuth = true ;
+	}
+
+/* 6: If CERTONLY is set for this user, the auth fails if we did not get a fingerprint match. */
+if( theUser->getFlag( sqlUser::F_CERTONLY ) && !certAuth )
+	{
+	return AUTH_CERTONLY ;
+	}
+
+/**
+ * 7: Check whether a TOTP token has been provided.
+ * TOTP is not required for CERTAUTH if F_CERT_DISABLE_TOTP is set.
+ */
+StringTokenizer st( auth.password ) ;
+StringTokenizer::size_type pass_end = st.size() ;
 
 #ifdef TOTP_AUTH_ENABLED
-bool totp_enabled = false;
-if(totpAuthEnabled && theUser->getFlag(sqlUser::F_TOTP_ENABLED)) {
-	if(st.size() == 1 ) {
-                return AUTH_NO_TOKEN;
-        }
-        pass_end = st.size()-1;
-        totp_enabled = true;
-}
+bool totp_enabled = false ;
+
+if( totpAuthEnabled && theUser->getFlag( sqlUser::F_TOTP_ENABLED ) )
+	{
+    if( certAuth && !theUser->getFlag( sqlUser::F_CERT_DISABLE_TOTP ) ) 
+		{
+        if( st.size() < 1 )
+            return AUTH_NO_TOKEN ;
+
+        pass_end = st.size() - 1 ;
+		totp_enabled = true ;
+		}
+    else if( !certAuth )
+    	{
+        if( st.size() < 2 )
+            return AUTH_NO_TOKEN ;
+
+        pass_end = st.size() - 1 ;
+		totp_enabled = true ;
+		}
+	}
 #endif
 
-/*
- * Check if this is a privileged user, if so check against IP restrictions
+/**
+ * 8: IPR
+ * Check if this is a privileged user, if so check against IP restrictions.
  */
-if (needIPRcheck(theUser))
-{
+if( needIPRcheck( theUser ) )
+	{
 	/* ok, they have "*" access (excluding alumni's) */
-	if (!checkIPR(ip, theUser, ipr_ts))
-	{
-		return AUTH_FAILED_IPR;
+	if( !checkIPR( auth.ip, theUser, ipr_ts ) )
+		return AUTH_FAILED_IPR ;
 	}
-}
 
 /*
- * Check password, if its wrong, bye bye.
+ * 9: Check password.
+ * Password will not be checked for certAuth.
  */
-if (!isPasswordRight(theUser, st.assemble(0,pass_end)))
-        {
-        return AUTH_INVALID_PASS;
-        }
+if( !certAuth && !isPasswordRight( theUser, st.assemble( 0, pass_end ) ) )
+    {
+    return AUTH_INVALID_PASS ;
+    }
+
+/* 10: Check TOTP token. */
 #ifdef TOTP_AUTH_ENABLED
-if(totp_enabled) {
-        char* key;
-        size_t len;
-        int res  = oath_base32_decode(theUser->getTotpKey().c_str(),theUser->getTotpKey().size(),&key,&len);
-        if(res != OATH_OK) {
-                return AUTH_ERROR;
-        }
-        res=oath_totp_validate(key,len,time(NULL),30,0,1,st[st.size()-1].c_str());
-        free(key);
-        if(res < 0 ) {
-                return AUTH_INVALID_TOKEN;
-        }
-}
+if( totp_enabled )
+	{
+	char* key ;
+	size_t len ;
+	int res  = oath_base32_decode( theUser->getTotpKey().c_str(), theUser->getTotpKey().size(), &key, &len ) ;
+	if( res != OATH_OK )
+		return AUTH_ERROR ;
+
+	res = oath_totp_validate( key, len, time(NULL), 30, 0, 1, st[ pass_end ].c_str() ) ;
+	free( key ) ;
+	if( res < 0 )
+		return AUTH_INVALID_TOKEN;
+	}
 #endif
 
-/*
- * Don't exceed MAXLOGINS.
- */
-
-bool iploginallow = false;
-//unsigned long clip = xIP(ip.c_str(),false).GetLongIP();
-//string clip = xIP(xIP(ip.c_str(),false).GetLongIP()).GetNumericIP();
-string clip = fixToCIDR64(ip.c_str());
-if(theUser->networkClientList.size() + 1 > theUser->getMaxLogins()) {
-        /* They have exceeded their maxlogins setting, but check if they
-           are allowed to login from the same IP - only applies if their
-           maxlogins is set to ONE */
-        uint32_t iplogins = getConfigVar("LOGINS_FROM_SAME_IP")->asInt();
-        uint32_t iploginident = getConfigVar("LOGINS_FROM_SAME_IP_AND_IDENT")->asInt();
-        if ((theUser->getMaxLogins() == 1) && (iplogins > 1))
-        {
-                /* ok, we're using the multi-logins feature (0=disabled) */
-                if (theUser->networkClientList.size() + 1 <= iplogins)
-                {
-                        /* Check their IP from previous session against
-                           current IP.  If it matches, allow the login.
-                           As this only applies if their maxlogin is 1, we
-                           know there is only 1 entry in their clientlist */
-                		if (clip == (xIP(theUser->networkClientList.front()->getIP()).GetNumericIP(true)))	//->getIP()
-                        {
-                                if (iploginident==1)
-                                {
-                                        /* need to check ident here */
-                                        string oldident = theUser->networkClientList.front()->getUserName();
-                                        if ((oldident[0]=='~') || (oldident==ident))
-                                        {
-                                                /* idents match (or they are unidented) - allow this login */
-                                                iploginallow = true;
-                                        }
-                                } else {
-                                        /* don't need to check ident, this login is allowed */
-                                        iploginallow = true;
-                                }
-                        }
-                }
-        }
-      if (!iploginallow)
-        {
-	return AUTH_ML_EXCEEDED;
-        }
-}
-return AUTH_SUCCEEDED;
-}
-
-int cservice::authenticateUser(const string& username, const string& password, iClient* theClient,sqlUser** theUser) {
-	unsigned int ipr_ts;
-	const string ip = xIP(theClient->getIP()).GetNumericIP();
-	int res = authenticateUser(username,password, ip, theClient->getUserName(),ipr_ts,theUser);
-	if(res == AUTH_SUCCEEDED)
+/* 12: Don't exceed MAXLOGINS. */
+bool iploginallow = false ;
+string clip = fixToCIDR64( auth.ip.c_str() ) ;
+if( theUser->networkClientList.size() + 1 > theUser->getMaxLogins() )
 	{
-        setIPRts(theClient, ipr_ts);
+	/* They have exceeded their maxlogins setting, but check if they
+	 * are allowed to login from the same IP - only applies if their
+	 * maxlogins is set to ONE.
+	 */
+	uint32_t iplogins = getConfigVar("LOGINS_FROM_SAME_IP")->asInt() ;
+	uint32_t iploginident = getConfigVar("LOGINS_FROM_SAME_IP_AND_IDENT")->asInt() ;
+	if( ( theUser->getMaxLogins() == 1 ) && ( iplogins > 1 ) )
+    	{
+		/* ok, we're using the multi-logins feature (0=disabled) */
+		if( theUser->networkClientList.size() + 1 <= iplogins )
+			{
+			/* Check their IP from previous session against
+			 * current IP.  If it matches, allow the login.
+			 * As this only applies if their maxlogin is 1, we
+			 * know there is only 1 entry in their clientlist.
+			 */
+			if( clip == ( xIP( theUser->networkClientList.front()->getIP()).GetNumericIP( true ) ) )
+				{
+				if( iploginident == 1 )
+					{
+					/* need to check ident here */
+					string oldident = theUser->networkClientList.front()->getUserName() ;
+					if( ( oldident[0] =='~' ) || ( oldident == auth.ident ) )
+						{
+						/* idents match (or they are unidented) - allow this login */
+						iploginallow = true ;
+						}
+					}
+				else
+					{
+					/* don't need to check ident, this login is allowed */
+					iploginallow = true ;
+					}
+				}
+            }
+        }
+
+      if( !iploginallow )
+		return AUTH_ML_EXCEEDED;
 	}
-	return res;
+
+/* Success. */
+if( auth.theClient )
+	setIPRts( auth.theClient, ipr_ts ) ;
+
+return AUTH_SUCCEEDED ;
+}
+
+/* This function is called after authenticateUser() to process the authentication. */
+bool cservice::processAuthentication( AuthStruct auth, std::string* Message )
+{
+/* Get background variables. */
+unsigned int loginTime = getUplink()->getStartTime() + loginDelay ;
+unsigned int max_failed_logins = getConfigVar("FAILED_LOGINS")->asInt() ;
+unsigned int failed_login_rate = getConfigVar("FAILED_LOGINS_RATE")->asInt() ;
+
+/* Fetch client info. */
+string clientMask ;
+if( auth.theClient )
+	clientMask = auth.theClient->getRealNickUserHost() ;
+else
+	clientMask = auth.ident + "@" + auth.ip ;
+
+string authResponse ;
+bool retMe = false ;
+bool setFailedLogin = false ;
+
+switch( auth.result )
+	{
+	case cservice::TOO_EARLY_TOLOGIN:
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s (Unable to login during reconnection, please try again in %i seconds)",
+        	        	auth.username.c_str(), ( loginTime - currentTime() ) ) ;
+		break ;
+	case cservice::AUTH_FAILED:
+	    authResponse = TokenStringsParams( getResponse( NULL, language::auth_failed,
+						string("AUTHENTICATION FAILED as %s") ).c_str(),
+						auth.username.c_str() ) ;
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_UNKNOWN_USER:
+	    authResponse = TokenStringsParams( getResponse( NULL, language::not_registered,
+						string("AUTHENTICATION FAILED as %s") ).c_str(),
+						auth.username.c_str() ) ;
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_SUSPENDED_USER:
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s (Suspended)",
+        				auth.username.c_str() ) ;
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_NO_TOKEN:
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s (Missing TOTP token)",
+						auth.username.c_str() ) ;
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_INVALID_PASS:
+		if( failed_login_rate == 0 )
+			failed_login_rate = 900 ;
+	    authResponse = TokenStringsParams( getResponse( NULL, language::auth_failed,
+						string("AUTHENTICATION FAILED as %s") ).c_str(),
+                		auth.username.c_str() ) ;
+
+        if( ( max_failed_logins > 0 ) && ( auth.theUser->getFailedLogins() > max_failed_logins ) &&
+            ( auth.theUser->getLastFailedLoginTS() < ( time(NULL) - failed_login_rate ) ) )
+		    {
+			/* we have exceeded our maximum - alert relay channel */
+			/* work out a checksum for the password.  Yes, I could have
+				* just used a checksum of the original password, but this
+				* means it's harder to 'fool' the check digit with a real
+				* password - create MD5 from original salt stored */
+			unsigned char   checksum ;
+			md5             hash ;
+			md5Digest       digest ;
+
+			if( auth.theUser->getPassword().size() < 9 )
+				checksum = 0 ;
+			else
+				{
+				string salt = auth.theUser->getPassword().substr( 0, 8 ) ;
+				string guess = salt + auth.password ;
+
+				hash.update( (const unsigned char *)guess.c_str(), guess.size() ) ;
+				hash.report( digest ) ;
+
+				checksum = 0 ;
+				for( size_t i = 0; i < MD5_DIGEST_LENGTH; i++ )
+					{
+					/* add ascii value to check digit */
+					checksum += digest[ i ] ;
+					}
+				}
+
+			auth.theUser->setLastFailedLoginTS( time(NULL) ) ;
+			logPrivAdminMessage("%d failed logins for %s (last attempt by %s%s, checksum %d).",
+					auth.theUser->getFailedLogins(),
+					auth.theUser->getUserName().c_str(),
+					clientMask.c_str(),
+					auth.type == AuthType::XQUERY ? " (LoC)" : "",
+					checksum ) ;
+	        }
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_ERROR:
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s due to an error. Please contact a CService representative",
+						auth.username.c_str() ) ;
+		break ;
+	case cservice::AUTH_INVALID_TOKEN:
+	    authResponse = TokenStringsParams( getResponse( NULL, language::auth_failed_token,
+                        string("AUTHENTICATION FAILED as %s") ).c_str(),
+                       	auth.username.c_str() ) ;
+
+        setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_FAILED_IPR:
+		authResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (IPR)",
+						auth.username.c_str() ) ;
+
+		/* notify the relay channel */
+		logAdminMessage( "%s (%s) failed IPR check.",
+				clientMask.c_str(),
+				auth.username.c_str() ) ;
+
+		if( ( max_failed_logins > 0 ) && ( auth.theUser->getFailedLogins() > max_failed_logins ) &&
+			( auth.theUser->getLastFailedLoginTS() < ( time(NULL) - failed_login_rate ) ) )
+			{
+			/* we have exceeded our maximum - alert relay channel */
+			auth.theUser->setLastFailedLoginTS( time(NULL) ) ;
+			logPrivAdminMessage( "%d failed logins for %s (last attempt by %s).",
+					auth.theUser->getFailedLogins(),
+					auth.theUser->getUserName().c_str(),
+					clientMask.c_str() ) ;
+			}
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_CERTONLY:
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s (Password login disabled and fingerprint mismatch)",
+						auth.username.c_str() ) ;
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_ML_EXCEEDED:
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s (Maximum concurrent logins exceeded)",
+						auth.theUser->getUserName().c_str() ) ;
+
+		/* Do not list the sessions for XQUERY logins. */
+		if( auth.theClient )
+			{
+			string clientList ;
+			for( sqlUser::networkClientListType::iterator ptr = auth.theUser->networkClientList.begin() ;
+					ptr != auth.theUser->networkClientList.end() ; )
+					{
+					clientList += (*ptr)->getNickUserHost() ;
+					++ptr ;
+					if( ptr != auth.theUser->networkClientList.end() )
+						clientList += ", " ;
+					} // for()
+
+			Notice( auth.theClient, "Current Sessions: %s", clientList.c_str() ) ;
+			}
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_FAIL_EXCEEDED:
+		authResponse = TokenStringsParams( getResponse( NULL, language::max_failed_logins,
+                		string("AUTHENTICATION FAILED as %s (Exceeded maximum login failures for this session)") ).c_str(),
+                		auth.username.c_str() ) ;
+		setFailedLogin = true ;
+		break ;
+	case cservice::AUTH_SUCCEEDED:
+		retMe = true ;
+		break ;
+	default:
+		//Should never get here!
+		elog << "Response " << auth.result << " while authenticating!" << endl ;
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s (due to an error)",
+						auth.username.c_str() ) ;
+		break ;
+	}
+
+if( setFailedLogin )
+	{
+	if( auth.theClient )
+		{
+		unsigned int failedLogins = getFailedLogins( auth.theClient ) ;
+		setFailedLogins( auth.theClient, failedLogins + 1 ) ;
+		}
+
+	auth.theUser->incFailedLogins() ;
+	}
+
+/* Send response only if it fails. If it succeeds, the message is sent from doCommonAuth() */
+if( ( auth.type == AuthType::LOGIN || auth.type == AuthType::CERTAUTH ) && auth.result != AUTH_SUCCEEDED )
+	Notice( auth.theClient, authResponse ) ;
+
+/* Return authResponse. */
+if( auth.type == AuthType::XQUERY )
+	*Message = authResponse ;
+
+/* For LOGIN and CERTAUTH we doCommonAuth. For XQUERY the client will be authenticated when introduced to the network. */
+if( retMe && ( auth.type == AuthType::LOGIN || auth.type == AuthType::CERTAUTH ) )
+	doCommonAuth( auth.theClient, auth.theUser->getUserName() ) ;
+
+return retMe ;
 }
 
 bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string& Message)
@@ -8708,12 +9078,10 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 	StringTokenizer st( Message );
 	string username;
 	string password;
-	string ip = string();
-	string hostname = string();
-	string ident = string();
-	sqlUser* theUser;
-	unsigned int ipr_ts;
-	string AuthResponse = string();
+	string ip;
+	string hostname;
+	string ident;
+	string fingerprint; // Placeholder. TLS-TODO: To determine iauth implementation.
 
 	if (st[0] == "LOGIN")
 	{
@@ -8746,154 +9114,43 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 		ident = st[3];
 		elog << "cservice::doXQLogin: LOGIN2 " << ip << " " << hostname << " " << ident << " " << username << " " << password << endl;
 	}
-	int auth_res = authenticateUser(username,password,ip,ident,ipr_ts,&theUser);
-	unsigned int loginTime = getUplink()->getStartTime() + loginDelay;
-	unsigned int max_failed_logins = getConfigVar("FAILED_LOGINS")->asInt();
-	unsigned int failed_login_rate = getConfigVar("FAILED_LOGINS_RATE")->asInt();
 
-	switch(auth_res)
+	AuthStruct auth = {
+		AuthType::XQUERY, 	// auth type
+		AUTH_ERROR,			// result (placeholder)
+		username,			// username
+		password,			// password/token
+		ident,				// ident
+		ip,					// ip
+		fingerprint,		// tls fingerprint
+		nullptr,			// sqlUser (placeholder)
+		nullptr				// iClient (not in use for LoC)
+	} ;
+
+	AuthResult auth_res = authenticateUser( auth ) ;
+	auth.result = auth_res ;
+
+	/* Process result. */
+	if( auth_res == AUTH_SUCCEEDED )
 		{
-		case TOO_EARLY_TOLOGIN:
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (Unable "
-	                	"to login during reconnection, please try again in "
-		                "%i seconds)",
-	        	        username.c_str(), (loginTime - currentTime()));
-			doXResponse(theServer, Routing, AuthResponse,true);
-			elog << "cservice::doXQLogin: Auth res = TOO_EARLY_TOLOGIN" << endl;
-			break;
-		case AUTH_FAILED:
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (Erroneus username)", username.c_str());
-			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_FAILED" << endl;
-			break;
-		case AUTH_UNKNOWN_USER:
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s", username.c_str());
-			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_UNKNOWN_USER" << endl;
-			break;
-		case AUTH_SUSPENDED_USER:
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (Suspended)", theUser->getUserName().c_str());
-			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_SUSPENDED_USER" << endl;
-			break;
-		case AUTH_NO_TOKEN:
-			theUser->incFailedLogins();
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (Missing TOTP token)", theUser->getUserName().c_str());
-			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_NO_TOKEN" << endl;
-			break;
-		case AUTH_INVALID_PASS:
-			if (failed_login_rate==0)
-			        failed_login_rate = 900;
-			AuthResponse = TokenStringsParams(getResponse(theUser,
-						language::auth_failed,
-						string("AUTHENTICATION FAILED as %s")).c_str(),
-				theUser->getUserName().c_str());
-			doXResponse(theServer, Routing, AuthResponse, true);	// <- this will be removed!
-			elog << "cservice::doXQLogin: Auth res = AUTH_INVALID_PASS" << endl;
-			/* increment failed logins counter */
-			theUser->incFailedLogins();
-			if ((max_failed_logins > 0) && (theUser->getFailedLogins() > max_failed_logins) &&
-					(theUser->getLastFailedLoginTS() < (time(NULL) - failed_login_rate)))
-				{
-					/* we have exceeded our maximum - alert relay channel */
-					/* work out a checksum for the password.  Yes, I could have
-					 * just used a checksum of the original password, but this
-					 * means it's harder to 'fool' the check digit with a real
-					 * password - create MD5 from original salt stored */
-					unsigned char   checksum;
-					md5             hash;
-					md5Digest       digest;
-
-					if (theUser->getPassword().size() < 9)
-					{
-							checksum = 0;
-					} else {
-							string salt = theUser->getPassword().substr(0, 8);
-							string guess = salt + st.assemble(2);
-
-							hash.update( (const unsigned char *)guess.c_str(), guess.size() );
-							hash.report( digest );
-
-							checksum = 0;
-							for (size_t i = 0; i < MD5_DIGEST_LENGTH; i++)
-							{
-									/* add ascii value to check digit */
-									checksum += digest[i];
-							}
-					}
-					theUser->setLastFailedLoginTS(time(NULL));
-					logPrivAdminMessage("%d failed logins for %s (last attempt by %s@%s (LoC), checksum %d).",
-							theUser->getFailedLogins(),
-							theUser->getUserName().c_str(),
-							ident.c_str(),
-							ip.c_str(),
-							checksum);
-			}
-			break;
-		case AUTH_ERROR:
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s due to an error, please contact CService represetitive", username.c_str());
-			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_ERROR" << endl;
-			break;
-		case AUTH_INVALID_TOKEN:
-            theUser->incFailedLogins();
-            AuthResponse = TokenStringsParams(getResponse(theUser,
-	                 	language::auth_failed_token,
-	                        string("AUTHENTICATION FAILED as %s (Invalid Token)")).c_str(),
-	                        theUser->getUserName().c_str());
-			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_INVALID_TOKEN" << endl;
-			break;
-		case AUTH_FAILED_IPR:
-            /* increment failed logins counter */
-            theUser->incFailedLogins();
-            AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (IPR)", theUser->getUserName().c_str());
-	                /* notify the relay channel */
-	                logAdminMessage("%s@%s (%s) failed IPR check.",
-	                        ident.c_str(),
-	                        ip.c_str(),
-	                        theUser->getUserName().c_str());
-	                if ((max_failed_logins > 0) && (theUser->getFailedLogins() > max_failed_logins) &&
-	                        (theUser->getLastFailedLoginTS() < (time(NULL) - failed_login_rate)))
-	                {
-	                        /* we have exceeded our maximum - alert relay channel */
-	                        theUser->setLastFailedLoginTS(time(NULL));
-	                        logPrivAdminMessage("%d failed logins for %s (last attempt by %s@%s).",
-	                                theUser->getFailedLogins(),
-	                                theUser->getUserName().c_str(),
-	                                ident.c_str(), ip.c_str());
-	                }
-   			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_FAILED_IPR" << endl;
-			break;
-		case AUTH_ML_EXCEEDED:
-            /* increment failed logins counter */
-            theUser->incFailedLogins();
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (Maximum "
-	                        "concurrent logins exceeded).",
-	                        theUser->getUserName().c_str());
-   			doXResponse(theServer, Routing, AuthResponse, true);
-			elog << "cservice::doXQLogin: Auth res = AUTH_ML_EXCEEDED" << endl;
-			break;
-		case AUTH_SUCCEEDED:
-			doXResponse(theServer, Routing, theUser->getUserName() + ":" + std::to_string(theUser->getID()) + ":" + std::to_string(makeAccountFlags(theUser)));
-			elog    << "cservice::doXQLogin: "
-					<< "Succesful auth for "
-					<< username
-					<< endl;
-			return true;
-			break;
-		default:
-			//Should never get here!
-			elog << "Response " << auth_res << " while authenticating!\n";
-			AuthResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (due to an error)\n", username.c_str());
-   			doXResponse(theServer, Routing, AuthResponse, true);
-			break;
+		doXResponse(theServer, Routing, auth.theUser->getUserName() + ":" +
+						std::to_string(auth.theUser->getID()) + ":" +
+						std::to_string(makeAccountFlags(auth.theUser)));
+		elog    << "cservice::doXQLogin: "
+				<< "Succesful auth for "
+				<< username
+				<< endl;
+		return true;
 		}
-elog << "cservice::doXQLogin: FAILED login for " << username << endl;
 
-return true;
+	/* The authentication failed. Process and send correct message. */
+	string AuthResponse;
+	processAuthentication(auth, &AuthResponse);
+
+	/* Send response. */
+	doXResponse(theServer, Routing, AuthResponse, true);
+
+	return true;
 }
 
 void cservice::doXQToAllServices(const string& Routing, const string& Message)

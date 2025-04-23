@@ -53,6 +53,12 @@ using std::string ;
 using std::vector ;
 using std::map ;
 
+enum class AuthType {
+	LOGIN,
+	XQUERY,
+	CERTAUTH
+} ;
+
 /*
  * Class for the configuration variables extracted from the database.
  * An attempted conversion to a number is stored in 'int_value' for
@@ -108,7 +114,7 @@ public:
 	unsigned int connectCheckFreq;
 	unsigned int connectRetry;
 	unsigned int limitCheckPeriod;
-	enum {
+	enum AuthResult {
 		AUTH_SUCCEEDED,
 		AUTH_FAILED,
 		TOO_EARLY_TOLOGIN,
@@ -119,8 +125,12 @@ public:
 		AUTH_ERROR,
 		AUTH_INVALID_TOKEN,
 		AUTH_FAILED_IPR,
-		AUTH_ML_EXCEEDED
+		AUTH_CERTONLY,
+		AUTH_ML_EXCEEDED,
+		AUTH_FAIL_EXCEEDED,
+		ERROR
 	};
+
 	void checkDbConnectionStatus();
 	string pendingPageURL;
 
@@ -205,6 +215,8 @@ public:
 	glineIterator gline_end()
 	        { return glineList.end() ; }
 
+	typedef map< string, unsigned int > fpMapType ;
+	fpMapType		fingerprintMap;
 
 	/* returns true is IPR checking is required for this user */
 	bool needIPRcheck( sqlUser* );
@@ -232,6 +244,11 @@ public:
 	 */
 	bool hasIPR( sqlUser* );
 
+	/* Checks if a user has an existing TLS fingerprint for it's username
+	 * Returns the COUNT(*) 
+	 */
+	unsigned int hasFP( sqlUser* );
+
 	/* Checks a user against IP restrictions */
 	bool checkIPR(const string&, sqlUser*, unsigned int& );
 	bool checkIPR( iClient*, sqlUser* );
@@ -253,6 +270,9 @@ public:
 
 	/* Fetch a user record for a userId. */
 	sqlUser* getUserRecord( int );
+
+	/* Fetch a user record for a fingerprint. */
+	sqlUser* getUserRecordByFingerprint( const string& ) ;
 
 	/* Checks if this client is logged in, returns a sqlUser if true.
 	 * If "bool" is true, send a notice to the client telling them off. */
@@ -291,8 +311,20 @@ public:
 	unsigned int getOutputTotal(const iClient* theClient);
 	bool hasOutputFlooded(iClient*);
 
-	int authenticateUser(const string& username, const string& password, const string& ip, const string& ident,unsigned int&, sqlUser**);
-	int authenticateUser(const string& username, const string& password, iClient*, sqlUser**);
+	using AuthStruct = struct {
+		AuthType type ;
+		unsigned int result ;
+		std::string username ;
+		std::string password ;
+		std::string ident ;
+		std::string ip ;
+		std::string fingerprint ;
+		sqlUser* theUser ;
+		iClient* theClient ;
+	} ;
+
+	AuthResult authenticateUser( AuthStruct& ) ;
+	bool processAuthentication( AuthStruct, std::string* Message = nullptr ) ;
 
 	bool doXQLogin(iServer* , const string&, const string&);
 	bool doXQIsCheck(iServer*, const string&, const string&, const string&);
@@ -721,12 +753,14 @@ public:
 	void preloadChannelCache();
 	void preloadLevelsCache();
 	void preloadUserCache();
+	void preloadFingerprintCache();
 
 	bool loadGlines();
 
 	void updateChannels();
 	void updateUsers();
 	void updateUserLevels(sqlUser* );
+	void updateFingerprints();
 	void updateLevels(int channelId = 0);
 	vector<sqlUser*> getChannelManager(int channelId);
 	void updateBans();
@@ -847,11 +881,14 @@ void sendAccountFlags( sqlUser*, iClient* ) const ;
 /**
  * Array of sqlUser flags and the corresponding accountFlags.
  */
-static constexpr std::array< std::pair< sqlUser::flagType, iClient::flagType >, 4 > flagMap = { {
+static constexpr std::array< std::pair< sqlUser::flagType, iClient::flagType >, 7 > flagMap = { {
 	{ sqlUser::F_TOTP_ENABLED, iClient::X_TOTP_ENABLED },
 	{ sqlUser::F_TOTP_REQ_IPR, iClient::X_TOTP_REQ_IPR },
 	{ sqlUser::F_GLOBAL_SUSPEND, iClient::X_GLOBAL_SUSPEND },
-	{ sqlUser::F_FRAUD, iClient::X_FRAUD }
+	{ sqlUser::F_FRAUD, iClient::X_FRAUD },
+	{ sqlUser::F_CERTONLY, iClient::X_CERTONLY },
+	{ sqlUser::F_CERT_DISABLE_TOTP, iClient::X_CERT_DISABLE_TOTP },
+	{ sqlUser::F_WEB_DISABLE_TOTP, iClient::X_WEB_DISABLE_TOTP }
 } } ;
 
 } ;

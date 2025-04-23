@@ -86,7 +86,7 @@ eraseMap.clear() ;
 for( handlerMapIterator handlerItr = handlerMap.begin() ;
 	handlerItr != handlerMap.end() ; ++handlerItr )
 	{
-	for( connectionMapIterator connectionItr = 
+	for( connectionMapIterator connectionItr =
 		handlerItr->second.begin() ;
 		connectionItr != handlerItr->second.end() ;
 		++connectionItr )
@@ -185,6 +185,7 @@ addr->sin_addr.s_addr = inet_addr( newConnection->getIP().c_str() ) ;
 // Update the new Connection object
 newConnection->setSockFD( sockFD ) ;
 
+#ifdef HAVE_LIBSSL
 if (tlsEnabled) {
 	SSL* state = SSL_new(sslCtx);
 	if (!state) {
@@ -192,11 +193,13 @@ if (tlsEnabled) {
 		return 0;
 	}
 	newConnection->setTlsState(state);
+	newConnection->setNegotiatingTLS();
 	SSL_set_fd(state, sockFD);
 	BIO_set_nbio(SSL_get_rbio(state), 1);
 	BIO_set_nbio(SSL_get_wbio(state), 1);
 	SSL_set_connect_state(state);
 }
+#endif
 
 // Attempt to initiate the connect.
 // The socket is non-blocking, so a failure is expected
@@ -565,6 +568,25 @@ elog	<< "ConnectionManager::Disconnect> Scheduling connection "
 // to Poll()
 scheduleErasure( hPtr, connectionItr ) ;
 
+// Flush buffer.
+cPtr->Flush() ;
+
+#ifdef HAVE_LIBSSL
+// Attempt to shutdown TLS connection.
+if( cPtr->isTLS() && !cPtr->isNegotiatingTLS() )
+	{
+	// Flag the connections as shutting down.
+	cPtr->setShuttingDownTLS() ;
+
+	int res = SSL_shutdown( cPtr->getTlsState() ) ;
+	if( res > 0 )
+		{
+		elog << "ConnectionManager::Disconnect> TLS connection gracefully shut down." << endl ;
+		SSL_free( cPtr->getTlsState() ) ;
+		}
+	}
+#endif
+
 // Connection located and scheduled for erasure, return success
 return true ;
 }
@@ -882,6 +904,25 @@ for( eraseMapIterator eraseItr = eraseMap.begin(),
 //			<< *connectionPtr
 //			<< endl ;
 
+#ifdef HAVE_LIBSSL
+		// Attempt to shutdown TLS connection if not already closed.
+		if( connectionPtr->isTLS() && !connectionPtr->isNegotiatingTLS() )
+			{
+			int res = SSL_shutdown( connectionPtr->getTlsState() ) ;
+			if( res > 0 )
+				{
+				elog << "ConnectionManager::Poll> TLS connection gracefully shut down." << endl ;
+				SSL_free( connectionPtr->getTlsState() ) ;
+				}
+			else
+				{
+                elog	<< "ConnectionManager::Poll> TLS failed to shut down gracefully (" << res << "): "
+                        << ERR_error_string( ERR_get_error(), nullptr )
+                        << endl ;
+				}
+			}
+#endif
+
 		// Close the Connection's socket (file) descriptor
 		closeSocket( connectionPtr->getSockFD() ) ;
 
@@ -905,11 +946,11 @@ for( handlerMapIterator handlerItr = handlerMap.begin() ;
 	handlerItr != handlerMap.end() ; ++handlerItr )
 	{
 	// From SGI STL website:
-	// Map has the important property that inserting a new element 
-	// into a map does not invalidate iterators that point to 
+	// Map has the important property that inserting a new element
+	// into a map does not invalidate iterators that point to
 	// existing elements.  Erasing an element from a map also does
-	// not invalidate any iterators, except, of course, for iterators 
-	// that actually point to the element that is being erased. 
+	// not invalidate any iterators, except, of course, for iterators
+	// that actually point to the element that is being erased.
 	if( handlerItr->second.empty() )
 		{
 		// The connectionMap for this handler is empty
@@ -1024,6 +1065,17 @@ void ConnectionManager::closeSocket( int fd )
 bool ConnectionManager::handleRead( ConnectionHandler* hPtr,
 	Connection* cPtr )
 {
+// Don't allow reads if the connection is shutting down.
+if( cPtr->isTLS() && cPtr->isShuttingDownTLS() )
+	return true ;
+
+#ifdef HAVE_LIBSSL
+// Don't allow reads until TLS handshake is complete
+if( cPtr->isTLS() && cPtr->isNegotiatingTLS() )
+	{
+	return negotiateTLS( hPtr, cPtr ) ;
+	}
+#endif
 // protected member, no error checking
 
 // Attempt the read from the socket
@@ -1038,15 +1090,42 @@ if( cPtr->isFile() )
 		inputBufferSize ) ;
 	}
 else
-{
+	{
 	// Network connection
-	if (cPtr->isTLS()) {
-		readResult = SSL_read(cPtr->getTlsState(), inputBuffer, inputBufferSize);
-	} else {
-	readResult = ::recv( cPtr->getSockFD(), inputBuffer,
-		inputBufferSize, 0 ) ;
+	if( cPtr->isTLS() )
+		{
+#ifdef HAVE_LIBSSL
+		readResult = SSL_read( cPtr->getTlsState(), inputBuffer, inputBufferSize ) ;
+		if( readResult <= 0 )
+			{
+			int err = SSL_get_error( cPtr->getTlsState(), readResult ) ;
+			switch( err )
+				{
+				case SSL_ERROR_WANT_READ:
+				case SSL_ERROR_WANT_WRITE:
+					// Not ready - try again later
+					return true ;
+
+				case SSL_ERROR_ZERO_RETURN:
+					// Clean shutdown
+					hPtr->OnDisconnect( cPtr ) ;
+					return false ;
+
+				default:
+					elog << "ConnectionManager::handleRead> TLS read error: "
+						 << ERR_error_string( ERR_get_error(), nullptr ) << endl ;
+					hPtr->OnDisconnect( cPtr ) ;
+					return false ;
+				}
+			}
+#endif
+		}
+	else
+		{
+		readResult = ::recv( cPtr->getSockFD(), inputBuffer,
+			inputBufferSize, 0 ) ;
+		}
 	}
-}
 
 if( EAGAIN == errno )
 	{
@@ -1100,6 +1179,18 @@ return true ;
 bool ConnectionManager::handleWrite( ConnectionHandler* hPtr,
 	Connection* cPtr )
 {
+// Don't allow reads if the connection is shutting down.
+if( cPtr->isTLS() && cPtr->isShuttingDownTLS() )
+	return true ;
+
+#ifdef HAVE_LIBSSL
+// Don't allow writes until TLS handshake is complete
+if( cPtr->isTLS() && cPtr->isNegotiatingTLS() )
+	{
+	return negotiateTLS( hPtr, cPtr ) ;
+	}
+#endif
+
 // protected member, no error checking
 
 // Attempt the write to the socket
@@ -1111,6 +1202,12 @@ bool ConnectionManager::handleWrite( ConnectionHandler* hPtr,
 // the send(), and the system will send() as much as it can
 // The above applies to NONBLOCKING sockets.
 //
+
+#ifdef HAVE_LIBSSL
+// This function returns false if TLS handshake negotiations are not completed.
+if( !negotiateTLS( hPtr, cPtr ) )
+	return false ;
+#endif
 
 // Does this Connection represent a file?
 if( cPtr->isFile() )
@@ -1126,30 +1223,37 @@ if( cPtr->isFlush() )
 	}
 
 errno = 0 ;
-int writeResult = 0;
-if ( !cPtr->isTLS()) {
+int writeResult = 0 ;
+if ( !cPtr->isTLS() ) {
 	writeResult = ::send( cPtr->getSockFD(),
 		cPtr->outputBuffer.data(),
 		cPtr->outputBuffer.size(),
 		0 ) ;
 } else {
-	writeResult = SSL_write(cPtr->getTlsState(),
+#ifdef HAVE_LIBSSL
+	writeResult = SSL_write( cPtr->getTlsState(),
 		cPtr->outputBuffer.data(),
-		cPtr->outputBuffer.size()) ;
-	if (writeResult < 0) {
-		int err = SSL_get_error(cPtr->getTlsState(), writeResult);
-
-		switch (err)
+		cPtr->outputBuffer.size() ) ;
+	if( writeResult < 0 )
+		{
+		int err = SSL_get_error( cPtr->getTlsState(), writeResult) ;
+		switch( err )
 		{
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
-		case SSL_ERROR_SYSCALL:
-		default:
-			elog << "ConnectionManager::HandleWrite> Fatal TLS error encountered. Are you sure you're connecting to the uplink on an encrypted port?" << endl;
+			return true ; /* Retry when the socket is ready. */
+		case SSL_ERROR_ZERO_RETURN:
+			// Clean shutdown
 			hPtr->OnDisconnect( cPtr ) ;
-			return false;
+			return false ;
+		default:
+			elog << "ConnectionManager::handleWrite> TLS write error: "
+				 << ERR_error_string( ERR_get_error(), nullptr ) << endl ;
+			hPtr->OnDisconnect( cPtr ) ;
+			return false ;
 		}
 	}
+#endif
 }
 
 if( (ENOBUFS == errno) || (EWOULDBLOCK == errno) || (EAGAIN == errno) )
@@ -1197,6 +1301,12 @@ bool ConnectionManager::handleFlush( ConnectionHandler* hPtr,
 {
 // protected member, no error checking
 
+#ifdef HAVE_LIBSSL
+// This function returns false if TLS handshake negotiations are not completed.
+if( !negotiateTLS( hPtr, cPtr ) )
+	return false ;
+#endif
+
 // Make sure the Connection's F_FLUSH flag is cleared, so do it first
 cPtr->removeFlag( Connection::F_FLUSH ) ;
 
@@ -1235,10 +1345,39 @@ if( ::fcntl( cPtr->getSockFD(), F_SETFL, flags ) < 0 )
 while( !cPtr->outputBuffer.empty() )
 	{
 	errno = 0 ;
-	int writeResult = ::send( cPtr->getSockFD(),
-		cPtr->outputBuffer.data(),
-		cPtr->outputBuffer.size(),
-		0 ) ;
+	int writeResult = 0 ;
+	if( !cPtr->isTLS())
+		writeResult = ::send( cPtr->getSockFD(),
+			cPtr->outputBuffer.data(),
+			cPtr->outputBuffer.size(),
+			0 ) ;
+	#ifdef HAVE_LIBSSL
+	else
+		{
+		writeResult = SSL_write( cPtr->getTlsState(),
+			cPtr->outputBuffer.data(),
+			cPtr->outputBuffer.size() ) ;
+		if( writeResult < 0 )
+			{
+			int err = SSL_get_error( cPtr->getTlsState(), writeResult ) ;
+
+			switch( err )
+				{
+				case SSL_ERROR_WANT_READ:
+				case SSL_ERROR_WANT_WRITE:
+					return true ; // Retry when the socket is ready.
+				case SSL_ERROR_ZERO_RETURN:
+					// Clean shutdown
+					hPtr->OnDisconnect( cPtr ) ;
+					return false ;
+				default:
+					elog << "ConnectionManager::HandleFlush> Fatal TLS error encountered." << endl ;
+					hPtr->OnDisconnect( cPtr ) ;
+					return false ;
+				}
+			}
+		}
+	#endif
 
 	if( (ENOBUFS == errno) || (EWOULDBLOCK == errno) || (EAGAIN == errno) )
 		{
@@ -1771,4 +1910,49 @@ if( hItr == handlerMap.end() )
 return hItr->second.size() ;
 }
 
+#ifdef HAVE_LIBSSL
+bool ConnectionManager::negotiateTLS( ConnectionHandler* hPtr, Connection* cPtr )
+{
+/* Return true if negotiations are completed. */
+if( !cPtr->isNegotiatingTLS() )
+	return true ;
+
+if( ::time( 0 ) > ( cPtr->connectTime + 5 ) )
+	{
+	elog << "ConnectionManager::negotiateTLS> TLS handshake timed out" << endl ;
+	hPtr->OnDisconnect( cPtr ) ;
+	return false ;
+	}
+
+int res = SSL_connect( cPtr->getTlsState() ) ;
+if( res == 1 )
+	{
+	elog	<< "ConnectionManager::negotiateTLS> TLS handshake completed successfully." << endl ;
+	cPtr->clrNegotiatingTLS() ;
+	return true ;
+	}
+
+int err = SSL_get_error( cPtr->getTlsState(), res ) ;
+switch( err )
+	{
+	case SSL_ERROR_WANT_READ:
+	case SSL_ERROR_WANT_WRITE:
+		// This is normal for non-blocking - return true to continue in next poll
+		return true  ;
+
+	case SSL_ERROR_ZERO_RETURN:
+		// Clean shutdown
+		elog << "ConnectionManager::negotiateTLS> TLS connection closed cleanly" << endl ;
+		hPtr->OnDisconnect( cPtr ) ;
+		return false ;
+
+	default:
+		// Fatal error
+		elog << "ConnectionManager::negotiateTLS> TLS handshake failed: "
+			<< ERR_error_string( ERR_get_error(), nullptr ) << endl ;
+		hPtr->OnDisconnect( cPtr ) ;
+		return false ;
+	}
+}
+#endif
 } // namespace gnuworld

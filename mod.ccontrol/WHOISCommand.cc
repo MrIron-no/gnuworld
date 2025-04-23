@@ -107,6 +107,8 @@ if (Target->isModeR())
 		accountFlags += "TOTP_REQ_IPR ";
 	if(Target->getAccountFlag(iClient::X_FRAUD))
 		accountFlags += "FRAUD ";
+	if(Target->getAccountFlag(iClient::X_CERTONLY))
+		accountFlags += "CERTONLY ";
 
 	/* client is authed - show it here */
 	bot->Notice(theClient, "%s is authed as [%s]",
@@ -122,6 +124,14 @@ bot->Notice( theClient, "Numeric: %s, UserModes: %s, Server Numeric: %s (%s)",
 	targetServer->getCharYY().c_str(),
 	targetServer->getName().c_str()
 	) ;
+
+if( Target->isModeZ() )
+	{
+	bot->Notice( theClient, "%s is connected using TLS",
+		st[ 1 ].c_str()) ;
+	if( Target->hasTlsFingerprint() )
+		bot->Notice( theClient, "   Fingerprint: %s", compactToCanonical( Target->getTlsFingerprint() ).c_str() ) ;
+	}
 
 if( Target->isOper() )
 	{

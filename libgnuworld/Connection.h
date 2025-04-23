@@ -33,12 +33,15 @@
 #include	<string>
 #include	<iostream>
 
+#include	"Buffer.h"
+#include	"ELog.h"
+#include	"defs.h"
+
+#ifdef HAVE_LIBSSL
 #include	<openssl/err.h>
 #include	<openssl/rand.h>
 #include	<openssl/ssl.h>
-
-#include	"Buffer.h"
-#include	"ELog.h"
+#endif
 
 namespace gnuworld
 {
@@ -106,13 +109,13 @@ public:
 	 * This flag is true if the connection is currently fully
 	 * connected.
 	 */
-	static const flagType		F_CONNECTED ;
+	static constexpr flagType		F_CONNECTED = 0x01 ;
 
 	/**
 	 * This flag is true if the connection is still pending,
 	 * not yet complete.
 	 */
-	static const flagType		F_PENDING ;
+	static constexpr flagType		F_PENDING = 0x02 ;
 
 	/**
 	 * This flag is true if this Connection represents a
@@ -121,7 +124,7 @@ public:
 	 * The F_INCOMING flag exists throughout the life ot
 	 * the Connection.
 	 */
-	static const flagType		F_INCOMING ;
+	static constexpr flagType		F_INCOMING = 0x04 ;
 
 	/**
 	 * This flag is true if this Connection represents a
@@ -129,20 +132,31 @@ public:
 	 * This flag exists for the life of this connection.
 	 * A listening Connection is never connected.
 	 */
-	static const flagType		F_LISTEN ;
+	static constexpr flagType		F_LISTEN = 0x08 ;
 
 	/**
 	 * This flag is true when the Connection represents a
 	 * connection to a file, rather than a network connection.
 	 */
-	static const flagType		F_FILE ;
+	static constexpr flagType		F_FILE = 0x10 ;
 
 	/**
 	 * This flag will be set if the next write is to flush all
 	 * data from the output buffer.
 	 * The flag will be reset after the send().
 	 */
-	static const flagType		F_FLUSH ;
+	static constexpr flagType		F_FLUSH = 0x20 ;
+
+	/**
+	 * This flag will be set upon initiating a TLS connection.
+	 * The flag will be reset after the handshake is completed.
+	 */
+	static constexpr flagType		F_TLS_HANDSHAKING =  0x40 ;
+
+	/**
+	 * This flag will be set upon shutting down a TLS connection.
+	 */
+	static constexpr flagType		F_TLS_SHUTTING_DOWN =  0x80 ;
 
 	/**
 	 * Append a string to the Connection's output buffer.
@@ -210,6 +224,19 @@ public:
 	 */
 	inline bool	isFlush() const
 		{ return (flags & F_FLUSH) ; }
+
+	/**
+	 * Return true if the negotiating TLS flag is set, indicating that
+	 * the TLS handshake has not completed.
+	 */
+	inline bool	isNegotiatingTLS() const
+		{ return (flags & F_TLS_HANDSHAKING) ; }
+
+	/**
+	 * Return true if the TLS connection has initiating shutdown.
+	 */
+	inline bool	isShuttingDownTLS() const
+		{ return (flags & F_TLS_SHUTTING_DOWN) ; }
 
 	/**
 	 * Return the total number of bytes read from this
@@ -370,6 +397,24 @@ protected:
 		{ setFlag( F_FILE ) ; }
 
 	/**
+	 * Mark that this Connection as pending TLS negotiation.
+	 */
+	inline void	setNegotiatingTLS()
+		{ setFlag( F_TLS_HANDSHAKING ) ; }
+
+	/**
+	 * Mark that this Connection as pending TLS negotiation.
+	 */
+	inline void	clrNegotiatingTLS()
+		{ removeFlag( F_TLS_HANDSHAKING ) ; }
+
+	/**
+	 * Mark that this Connection as pending TLS negotiation.
+	 */
+	inline void	setShuttingDownTLS()
+		{ setFlag( F_TLS_SHUTTING_DOWN ) ; }
+
+	/**
 	 * Set this connection's local port number
 	 */
 	inline void	setLocalPort(
@@ -426,6 +471,7 @@ protected:
 	inline time_t	getAbsTimeout() const
 		{ return absTimeout ; }
 	
+#ifdef HAVE_LIBSSL
 	/**
 	 * Return the current TLS state for this connection
 	 */
@@ -434,6 +480,7 @@ protected:
 	
 	inline void		setTlsState(SSL* newState)
 		{ tlsState = newState ; }
+#endif
 
 	/**
 	 * The remote hostname of this connection
@@ -460,6 +507,11 @@ protected:
 	 * The output buffer for this connection
 	 */
 	Buffer			outputBuffer ;
+
+	/**
+	 * Whether or not this connection is encrypted
+	 */
+	bool 			tlsEnabled ;
 
 	/**
 	 * The remote IP of this connection
@@ -504,15 +556,12 @@ protected:
 	 */
 	size_t			bytesWritten ;
 
-	/**
-	 * Whether or not this connection is encrypted
-	 */
-	bool 			tlsEnabled ;
-
+#ifdef HAVE_LIBSSL
 	/**
 	 * The current OpenSSL TLS state for this connection
 	 */
 	SSL*			tlsState ;
+#endif
 } ;
 
 } // namespace gnuworld

@@ -34,12 +34,14 @@
 
 #include	<ctime>
 
+#include	"Connection.h"
+#include	"ConnectionHandler.h"
+
+#ifdef HAVE_LIBSSL
 #include	<openssl/err.h>
 #include	<openssl/rand.h>
 #include	<openssl/ssl.h>
-
-#include	"Connection.h"
-#include	"ConnectionHandler.h"
+#endif
 
 namespace gnuworld
 {
@@ -339,10 +341,12 @@ protected:
 	 */
 	char*		inputBuffer ;
 
+#ifdef HAVE_LIBSSL
 	/**
 	 * The OpenSSL context for TLS connections
 	 */
 	SSL_CTX*	sslCtx ;
+#endif
 
 	/**
 	 * Open a socket.
@@ -431,6 +435,9 @@ protected:
 	 */
 	virtual bool	disconnectAll( ConnectionHandler* ) ;
 
+#ifdef HAVE_LIBSSL
+	virtual bool 	negotiateTLS( ConnectionHandler*, Connection* ) ;
+#endif
 } ;
 
 } // namespace gnuworld

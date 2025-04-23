@@ -1,0 +1,228 @@
+/**
+ * FINGERPRINTCommand.cc
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
+ * USA.
+ *
+ */
+
+#include	<string>
+#include	"cservice.h"
+#include	"StringTokenizer.h"
+#include	"ELog.h"
+#include	"responses.h"
+
+namespace gnuworld
+{
+/* TLS-TODO: Add language. */
+
+bool FINGERPRINTCommand::Exec( iClient* theClient, const string& Message )
+{
+bot->incStat("COMMANDS.FINGERPRINT");
+
+StringTokenizer st( Message ) ;
+if( st.size() < 2 )
+	{
+	Usage( theClient ) ;
+	return true ;
+	}
+
+sqlUser* theUser = bot->isAuthed( theClient, true ) ;
+if( !theUser )
+	{
+	return false ;
+ 	}
+
+string Command = string_upper( st[ 1 ] ) ;
+if( ( Command != "ADD" ) && ( Command != "REM" ) && ( Command != "LIST" ) )
+	{
+	Usage( theClient ) ;
+	return true ;
+	}
+
+if( Command == "LIST" )
+	{
+    bot->Notice( theClient, "+-------------------------------------------------------------------------------------------------+------------------------------------------+--------------+" ) ;
+    bot->Notice( theClient, "| %-95s | %-40s | %-12s |", "TLS Fingerprint", "Added By", "Last Updated" ) ;
+    bot->Notice( theClient, "+-------------------------------------------------------------------------------------------------+------------------------------------------+--------------+" ) ;
+
+	std::stringstream theQuery ;
+	theQuery	<< "SELECT fingerprint, added_by, added FROM users_fingerprints WHERE user_id = "
+				<< theClient->getAccountID()
+				<< " ORDER BY added" ;
+
+	if( !bot->SQLDb->Exec( theQuery, true ) )
+		{
+		elog	<< "cservice::FINGERPRINTCommand> SQL Error: "
+				<< bot->SQLDb->ErrorMessage()
+				<< std::endl ;
+		return false ;
+		}
+
+	if( bot->SQLDb->Tuples() > 0 )
+		{
+		for( unsigned int i = 0 ; i < bot->SQLDb->Tuples() ; i++ )
+			bot->Notice( theClient, "| %-95s | %-40s | %-12s |",
+				compactToCanonical( bot->SQLDb->GetValue( i, 0 ) ).c_str(),
+				bot->SQLDb->GetValue( i, 1 ).c_str(),
+				prettyTime( std::stoul( bot->SQLDb->GetValue( i, 2 ) ), false ).c_str() ) ;
+    	bot->Notice( theClient, "+-------------------------------------------------------------------------------------------------+------------------------------------------+--------------+" ) ;
+		bot->Notice( theClient, "Finished listing %d fingerprint%s.",
+			bot->SQLDb->Tuples(), bot->SQLDb->Tuples() > 1 ? "s" : "" ) ;
+		}
+	else
+		{
+		bot->Notice( theClient, "No fingerprints found." ) ;
+		}
+
+	if( theClient->hasTlsFingerprint() )
+		{
+		bot->Notice( theClient, "Your current fingerprint is: %s",
+			compactToCanonical( theClient->getTlsFingerprint() ).c_str() ) ;
+		}
+
+	return true ;
+	}
+
+if( Command == "ADD" )
+	{
+	/* Check whether this user already has reached the limit of fingerprints. */
+	if( bot->hasFP( theUser) > 10 )
+		{
+		bot->Notice( theClient, "You already have 10 fingerprints added to your username." ) ;
+		return true ;
+		}
+
+	string fingerPrint ;
+
+	/* No fingerprint been provided. Use current, if any. */
+	if( st.size() < 3 )
+		{
+		if( theClient->hasTlsFingerprint() )
+			fingerPrint = theClient->getTlsFingerprint() ;
+		else
+			{
+			Usage( theClient ) ;
+			return true ;
+			}
+		}
+	else
+		{
+		if( !isValidSHA256Fingerprint( st[ 2 ] ) )
+			{
+			bot->Notice( theClient, "Invalid fingerprint." ) ;
+			return true ;
+			}
+
+		fingerPrint = canonicalToCompact( st[ 2 ] ) ;
+		}
+
+	/* Add to cache. This will return false if the fingerprint already exists. */
+	auto result = bot->fingerprintMap.emplace( canonicalToCompact( fingerPrint ), theClient->getAccountID() ) ;
+	if( !result.second )
+		{
+		bot->Notice( theClient, "That fingerprint is already added to a username." ) ;
+		return true ;
+		}
+
+	/* Add to SQL. */
+	std::stringstream theQuery ;
+	theQuery	<< "INSERT INTO users_fingerprints (user_id, fingerprint, added, added_by) VALUES ("
+				<< theClient->getAccountID() << ", '"
+				<< fingerPrint
+				<< "', date_part('epoch', CURRENT_TIMESTAMP)::int, '"
+				<< theClient->getRealNickUserHost() << "')"
+				<< std::endl ;
+
+	if( !bot->SQLDb->Exec( theQuery, true ) )
+		{
+		elog	<< "cservice::FINGERPRINTCommand> SQL Error: "
+				<< bot->SQLDb->ErrorMessage()
+				<< std::endl ;
+		return false ;
+		}
+
+	bot->Notice( theClient, "Successfully added '%s' to your username.",
+		compactToCanonical( fingerPrint ).c_str() ) ;
+
+	return true ;
+	}
+
+if( Command == "REM" )
+	{
+	string fingerPrint ;
+
+	/* No fingerprint been provided. Use current, if any. */
+	if( st.size() < 3 )
+		{
+		if( theClient->hasTlsFingerprint() )
+			fingerPrint = theClient->getTlsFingerprint() ;
+		else
+			{
+			Usage( theClient ) ;
+			return true ;
+			}
+		}
+	else
+		{
+		if( !isValidSHA256Fingerprint( st[ 2 ] ) )
+			{
+			bot->Notice( theClient, "Invalid fingerprint." ) ;
+			return true ;
+			}
+
+		fingerPrint = canonicalToCompact( st[ 2 ] ) ;
+		}
+
+	/* Don't remove last fingerprint if CERTONLY is ON. */
+	if( bot->hasFP( theUser) == 1 && theUser->getFlag( sqlUser::F_CERTONLY ) )
+		{
+		bot->Notice( theClient, "You cannot remove that fingerprint unless you disable CERTONLY or add another fingerprint." ) ;
+		return true ;
+		}
+
+	auto it = bot->fingerprintMap.find( fingerPrint ) ;
+	if( it == bot->fingerprintMap.end() || it->second != theClient->getAccountID() )
+		{
+		bot->Notice( theClient, "I cannot find that fingerprint added to your username." ) ;
+		return true ;
+		}
+
+	/* Remove from SQL. */
+	std::stringstream theQuery ;
+	theQuery	<< "DELETE FROM users_fingerprints WHERE fingerprint ='"
+				<< fingerPrint << "'"
+				<< std::endl ;
+
+	if( !bot->SQLDb->Exec( theQuery, true ) )
+		{
+		elog	<< "cservice::FINGERPRINTCommand> SQL Error: "
+				<< bot->SQLDb->ErrorMessage()
+				<< std::endl ;
+		return false ;
+		}
+	/* Remove from cache. */
+	bot->fingerprintMap.erase( it ) ;
+
+	bot->Notice( theClient, "Successfully removed '%s' from your username.",
+		compactToCanonical( fingerPrint ).c_str() ) ;
+
+	return true ;
+	}
+
+return true ;
+}
+
+} // namespace gnuworld.

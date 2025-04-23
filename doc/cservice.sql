@@ -3,6 +3,8 @@
 -- Channel service DB SQL file for PostgreSQL.
 
 -- ChangeLog:
+-- 2025-04-23: MrIron
+--			   Added table for TLS fingerprints.
 -- 2024-08-05: MrIron
 --             Added columns for the JOINLIM feature written by Telac.
 -- 2017-01-24:Empus
@@ -249,6 +251,15 @@ CREATE INDEX users_username_idx ON users( lower(user_name) );
 CREATE INDEX users_email_idx ON users( lower(email) );
 CREATE INDEX users_signup_ts_idx ON users( signup_ts );
 CREATE INDEX users_signup_ip_idx ON users( signup_ip );
+
+-- This table used to store TLS fingerprints.
+
+CREATE TABLE users_fingerprints (
+    user_id INT4 NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    fingerprint VARCHAR(128) NOT NULL UNIQUE,
+    added BIGINT NOT NULL,
+    added_by VARCHAR(128) NOT NULL
+);
 
 -- This table used to store the "Last Seen" informatation previously
 -- routinely updated in the users table.

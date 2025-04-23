@@ -149,6 +149,46 @@ if( st[1][0] != '#' ) // Didn't find a hash?
 		return true;
 	}
 
+	if (option == "CERTONLY")
+	{
+		if (value == "ON")
+		{
+			if (!bot->hasFP(theUser))
+			{
+				bot->Notice(theClient,
+					bot->getResponse(theUser,
+						language::no_fingerprint,
+						string("You currently don't have any fingerprints added to your account. For more information, use '/msg X help fingerprint'")));
+				return true;
+			}
+			theUser->setFlag(sqlUser::F_CERTONLY);
+			theUser->commit(theClient);
+			bot->Notice(theClient,
+				bot->getResponse(theUser,
+					language::certonly_on,
+					string("Your CERTONLY setting is now ON.")));
+			return true;
+		}
+
+		if (value == "OFF")
+		{
+			theUser->removeFlag(sqlUser::F_CERTONLY);
+			theUser->commit(theClient);
+			bot->Notice(theClient,
+				bot->getResponse(theUser,
+					language::certonly_off,
+					string("Your CERTONLY setting is now OFF.")));
+			return true;
+		}
+
+		bot->Notice(theClient,
+			bot->getResponse(theUser,
+				language::set_cmd_syntax_on_off,
+				string("value of %s must be ON or OFF")).c_str(),
+			option.c_str());
+		return true;
+	}
+
 #ifdef USE_NOTES
 	if (option == "NONOTES")
 	{

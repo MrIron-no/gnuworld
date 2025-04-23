@@ -245,6 +245,13 @@ void stripModes( std::string& , const std::string& ) ;
 /* Returns the memory usage of gnuworld in KB. */
 size_t getMemoryUsage() ;
 
+std::string compactToCanonical( const std::string& ) ;
+
+// Converts "12:AS:B2:3B..." back to "12asb23b..."
+std::string canonicalToCompact( const std::string& ) ;
+
+bool isValidSHA256Fingerprint( const std::string& ) ;
+
 } // namespace gnuworld
 
 #endif /* __MISC__ */

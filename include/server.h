@@ -1296,16 +1296,6 @@ protected:
 	 */
 	bool			tlsEnabled ;
 
-	bool			sslV2 ;
-
-	bool			sslV3 ;
-
-	bool			tlsV1P0 ;
-
-	bool			tlsV1P1 ;
-
-	bool			tlsV1P2	;
-
 	/**
 	 * This variable is true when this server is bursting.
 	 */

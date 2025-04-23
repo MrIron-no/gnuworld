@@ -230,7 +230,8 @@ namespace gnuworld
 		const int reason_must =				192;
 		const int susp_reason =				193;
 		const int unsusp_reason =			194;
-
+		const int certonly_on =				195;
+		const int certonly_off =			196;
 		// Allow for merge of other features
 
 		const int welcome_max_len = 			205;
@@ -255,6 +256,8 @@ namespace gnuworld
 		const int mode_banset = 222;
 		const int mode_wrongkey = 223;
 		const int mode_keylength = 224;
+
+		const int no_fingerprint = 225;
 
 		const int greeting = 				9998;
 		const int motd =				9999;

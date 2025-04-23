@@ -265,6 +265,7 @@ pingUpdateInterval = static_cast< time_t >( atoi(
 	conf.Require( "pingupdateinterval" )->second.c_str() ) ) ;
 
 // Check TLS configuration settings
+#ifdef HAVE_LIBSSL
 EConfig::const_iterator tlsItr = conf.Find( "tls" ) ;
 if ( tlsItr == conf.end() || tlsItr->second != "yes" )
 {
@@ -276,51 +277,30 @@ if ( tlsItr == conf.end() || tlsItr->second != "yes" )
 	tlsKeyFile = conf.Require( "tlsKeyFile" )->second ;
 	tlsCertFile = conf.Require( "tlsCertFile" )->second ;
 
-	tlsItr = conf.Find( "sslV2" ) ;
-	sslV2 = (tlsItr != conf.end() && tlsItr->second == "yes" );
-
-	tlsItr = conf.Find( "sslV3" ) ;
-	sslV3 = (tlsItr != conf.end() && tlsItr->second == "yes" );
-
-	tlsItr = conf.Find( "tlsV1P0" ) ;
-	tlsV1P0 = (tlsItr != conf.end() && tlsItr->second == "yes" );
-
-	tlsItr = conf.Find( "tlsV1P1" ) ;
-	tlsV1P1 = (tlsItr != conf.end() && tlsItr->second == "yes" );
-
-	tlsItr = conf.Find( "tlsV1P2" ) ;
-	tlsV1P2 = (tlsItr != conf.end() && tlsItr->second == "yes" );
-
 	if (!initTls()) {
 		elog << "TLS initialization error. Exiting." << endl;
 		::exit(1);
 	}
 }
-
+#endif
 return true ;
 }
 
+/**
+ * This function is only called if TLS is enabled in config. We exit if gnuworld
+ * is not compiled with TLS support.
+ */
+#ifdef HAVE_LIBSSL
 bool xServer::initTls()
 {
 	elog << "xServer::initTls - Spinning up TLS" << endl;
 	SSL_library_init();
 	SSL_load_error_strings();
-	if (!RAND_poll()) {
-		elog << "xServer::initTls - RAND_poll() failed" << endl;
-		return false;
-	}
-	sslCtx = SSL_CTX_new(SSLv23_method());
+	sslCtx = SSL_CTX_new(TLS_method());
 
-	if (sslV2)
-		SSL_CTX_set_options(sslCtx, SSL_OP_NO_SSLv2);
-	if (sslV3)
-		SSL_CTX_set_options(sslCtx, SSL_OP_NO_SSLv3);
-	if (tlsV1P0)
-		SSL_CTX_set_options(sslCtx, SSL_OP_NO_TLSv1);
-	if (tlsV1P1)
-		SSL_CTX_set_options(sslCtx, SSL_OP_NO_TLSv1_1);
-	if (tlsV1P2)
-		SSL_CTX_set_options(sslCtx, SSL_OP_NO_TLSv1_2);
+	SSL_CTX_set_min_proto_version(sslCtx, TLS1_2_VERSION); // Allow TLS 1.2 and above
+	SSL_CTX_set_max_proto_version(sslCtx, TLS1_3_VERSION); // Allow up to TLS 1.3
+	SSL_CTX_set_verify(sslCtx, SSL_VERIFY_NONE, NULL);
 
 	int res = SSL_CTX_use_certificate_chain_file(sslCtx, tlsCertFile.c_str());
 	if (res != 1) {
@@ -346,6 +326,7 @@ bool xServer::initTls()
 	SSL_CTX_set_cipher_list(sslCtx, SSL_DEFAULT_CIPHER_LIST);
 	return true;
 }
+#endif
 
 bool xServer::loadCommandHandlers()
 {
@@ -1031,6 +1012,7 @@ iClient* theIClient = new (std::nothrow) iClient(
 	string(),
 	0,
 	0,
+	string(),
 	string(),
 	string(),
 	Client->getDescription(),
@@ -1885,6 +1867,12 @@ if( !chanModes.empty() &&
 				else
 					theChan->removeMode(Channel::MODE_MNOREG);
 				break;
+			case 'Z':
+				if (plus)
+					theChan->setMode(Channel::MODE_Z);
+				else
+					theChan->removeMode(Channel::MODE_Z);
+				break;
 
 			// TODO: Finish with polarity
 			// TODO: Add in support for modes b,v,o
@@ -2214,6 +2202,10 @@ if( theChan->getMode( Channel::MODE_MNOREG ) )
 	{
 	modeVector.push_back( make_pair( false, Channel::MODE_MNOREG ) ) ;
 	}
+if( theChan->getMode( Channel::MODE_Z ) )
+	{
+	modeVector.push_back( make_pair( false, Channel::MODE_Z ) ) ;
+	}
 if( theChan->getMode( Channel::MODE_L ) )
 	{
 	OnChannelModeL( theChan, false, 0, 0 ) ;
@@ -2379,6 +2371,7 @@ chanModes[ 'c' ] = Channel::MODE_C ;
 chanModes[ 'C' ] = Channel::MODE_CTCP ;
 chanModes[ 'u' ] = Channel::MODE_PART ;
 chanModes[ 'M' ] = Channel::MODE_MNOREG ;
+chanModes[ 'Z' ] = Channel::MODE_Z ;
 
 // This vector is used for argument-less types that can be passed
 // to OnChannelMode()
@@ -2455,6 +2448,7 @@ for( ; tokenIndex < st.size() ; )
 			case 'u':
 			case 'M':
 			case 'D':
+			case 'Z':
 //				elog	<< "xServer::Mode> General mode: "
 //					<< theChar
 //					<< ", polarity: "
@@ -3413,6 +3407,9 @@ for( string::const_iterator ptr = st[ 0 ].begin() ; ptr != st[ 0 ].end() ;
 			break;
 		case 'M':
 			theChan->setMode( Channel::MODE_MNOREG ) ;
+			break;
+		case 'Z':
+			theChan->setMode( Channel::MODE_Z ) ;
 			break;
 		case 'k':
 			{

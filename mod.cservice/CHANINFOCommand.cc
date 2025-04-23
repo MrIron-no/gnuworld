@@ -143,7 +143,7 @@ if( string::npos == st[ 1 ].find_first_of( '#' ) )
 	/* build up a flag string */
 	string flagsSet;
 
-	if (theUser->getFlag(sqlUser::F_GLOBAL_SUSPEND)) 
+	if (theUser->getFlag(sqlUser::F_GLOBAL_SUSPEND))
 		flagsSet += "SUSPEND ";
 	if (theUser->getFlag(sqlUser::F_INVIS))
 		flagsSet += "INVISIBLE ";
@@ -171,10 +171,20 @@ if( string::npos == st[ 1 ].find_first_of( '#' ) )
 
 	if (adminAccess || (tmpUser == theUser))
 	{
-		if (theUser->getFlag(sqlUser::F_TOTP_REQ_IPR))
-			flagsSet += "TOTP_REQ_IPR ";
-		else if (theUser->getFlag(sqlUser::F_TOTP_ENABLED))
-			flagsSet += "TOTP ";
+		if (theUser->getFlag(sqlUser::F_TOTP_REQ_IPR) || theUser->getFlag(sqlUser::F_TOTP_ENABLED))
+		{
+			flagsSet += (theUser->getFlag(sqlUser::F_TOTP_REQ_IPR)) ? "TOTP_REQ_IPR " : "TOTP ";
+
+			// Check for disabled methods
+			std::string disabled;
+			if (theUser->getFlag(sqlUser::F_WEB_DISABLE_TOTP))
+				disabled += (disabled.empty() ? "WEB" : ",WEB");
+			if (theUser->getFlag(sqlUser::F_CERT_DISABLE_TOTP))
+				disabled += (disabled.empty() ? "CERT" : ",CERT");
+
+			if (!disabled.empty())
+				flagsSet += "(DISABLE=" + disabled + ") ";
+		}
 	}
 	/* flags with variables */
 	if (langString.size() > 0)
@@ -188,7 +198,7 @@ if( string::npos == st[ 1 ].find_first_of( '#' ) )
 //			<< ends ;
 		if (maxLogins > 1)
 			flagsSet += "MAXLOGINS=" + ss.str() + " ";
-	
+
 		stringstream autoInviteQuery;
 
 		autoInviteQuery	<< "SELECT channel_id from levels"
@@ -415,10 +425,10 @@ if( string::npos == st[ 1 ].find_first_of( '#' ) )
 			bot->Notice(theClient, "Last Hostmask: %s",
 				theUser->getLastHostMask().c_str());
 			//Show ip only to admins
-			if(adminAccess > 0) 
+			if(adminAccess > 0)
 				{
 				bot->Notice(theClient, "Last IP: %s",
-					theUser->getLastIP().c_str());			
+					theUser->getLastIP().c_str());
 				}
 		}
 
@@ -445,7 +455,7 @@ if( string::npos == st[ 1 ].find_first_of( '#' ) )
 		bot->outputChannelAccesses(theClient, theUser, tmpUser, 500);
 	}
 
-	
+
 	return true;
 }
 stringstream theQuery;
@@ -664,7 +674,7 @@ if( !theChan )
                 	if (bot->SQLDb->Tuples() > 0)
                         	comCount = atoi(bot->SQLDb->GetValue(0,0));
 		}
-                
+
                 // output additional information if user is admin, supporter, or applicant)
                 if (showsupplist)
                 {

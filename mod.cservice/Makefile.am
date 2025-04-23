@@ -27,6 +27,7 @@ libcservice_la_SOURCES = \
 	mod.cservice/CLEARMODECommand.cc \
 	mod.cservice/DEOPCommand.cc \
 	mod.cservice/DEVOICECommand.cc \
+	mod.cservice/FINGERPRINTCommand.cc \
 	mod.cservice/FORCECommand.cc \
 	mod.cservice/HELPCommand.cc \
 	mod.cservice/HELLOCommand.cc \

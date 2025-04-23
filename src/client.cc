@@ -2668,10 +2668,15 @@ for( string::size_type modePos = 0 ; modePos < modes.size() ; ++modePos )
 			modeVector.push_back(make_pair(false,
 				Channel::MODE_PART));
 			break;
-		case 'M':  // mode to prevent part messages
+		case 'M':  // mode to moderate for non-authed users
 			theChan->removeMode(Channel::MODE_MNOREG);
 			modeVector.push_back(make_pair(false,
 				Channel::MODE_MNOREG));
+			break;
+		case 'Z':  // TLS only?
+			theChan->removeMode(Channel::MODE_Z);
+			modeVector.push_back(make_pair(false,
+				Channel::MODE_Z));
 			break;
 		case 'A':  // Apass for oplevels
 			if (theChan->getMode(Channel::MODE_A))
