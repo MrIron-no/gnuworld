@@ -216,7 +216,7 @@ RegisterCommand(new SHOWIGNORECommand(this, "SHOWIGNORE", "", 3));
 RegisterCommand(new SUPPORTCommand(this, "SUPPORT", "#channel <YES|NO>", 15));
 RegisterCommand(new NOTECommand(this, "NOTE", "send <username> <message>, read all, erase <all|message id>", 10));
 RegisterCommand(new NOTECommand(this, "NOTES", "send <username> <message>, read all, erase <all|message id>", 10));
-RegisterCommand(new FINGERPRINTCommand(this, "FINGERPRINT", "<ADD|REM|LIST> [fingerprint]", 10));
+RegisterCommand(new CERTCommand(this, "CERT", "<ADD|REM|LIST> [fingerprint] [note]", 10));
 
 RegisterCommand(new OPCommand(this, "OP", "<#channel> [nick] [nick] ..", 3));
 RegisterCommand(new DEOPCommand(this, "DEOP", "<#channel> [nick] [nick] ..", 3));
@@ -3548,7 +3548,7 @@ void cservice::updateUsers()
  */
 void cservice::updateFingerprints()
 {
-const std::string theQuery = "SELECT fingerprint,user_id,added FROM users_fingerprints" ;
+const std::string theQuery = "SELECT fingerprint,user_id FROM users_fingerprints" ;
 
 #ifdef LOG_SQL
 elog	<< "*** [CMaster::updateFingerprints]: sqlQuery: "

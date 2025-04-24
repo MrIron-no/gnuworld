@@ -23,11 +23,11 @@ libcservice_la_SOURCES = \
 	mod.cservice/ADDUSERCommand.cc \
 	mod.cservice/BANCommand.cc \
 	mod.cservice/BANLISTCommand.cc \
+	mod.cservice/CERTCommand.cc \
 	mod.cservice/CHANINFOCommand.cc \
 	mod.cservice/CLEARMODECommand.cc \
 	mod.cservice/DEOPCommand.cc \
 	mod.cservice/DEVOICECommand.cc \
-	mod.cservice/FINGERPRINTCommand.cc \
 	mod.cservice/FORCECommand.cc \
 	mod.cservice/HELPCommand.cc \
 	mod.cservice/HELLOCommand.cc \

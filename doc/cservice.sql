@@ -257,8 +257,9 @@ CREATE INDEX users_signup_ip_idx ON users( signup_ip );
 CREATE TABLE users_fingerprints (
     user_id INT4 NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     fingerprint VARCHAR(128) NOT NULL UNIQUE,
-    added BIGINT NOT NULL,
-    added_by VARCHAR(128) NOT NULL
+    added_ts BIGINT NOT NULL,
+    added_by VARCHAR(128) NOT NULL,
+	note TEXT
 );
 
 -- This table used to store the "Last Seen" informatation previously

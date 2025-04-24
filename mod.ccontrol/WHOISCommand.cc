@@ -99,12 +99,22 @@ bot->Notice(theClient, "%s has been connected for %s [since %ld]",
 if (Target->isModeR())
 {
 	string accountFlags;
+	if( Target->getAccountFlag( iClient::X_TOTP_REQ_IPR ) || Target->getAccountFlag(iClient::X_TOTP_ENABLED ) )
+		{
+		accountFlags += ( Target->getAccountFlag( iClient::X_TOTP_REQ_IPR ) ) ? "TOTP_REQ_IPR " : "TOTP ";
+
+		// Check for disabled methods
+		std::string disabled;
+		if( Target->getAccountFlag( iClient::X_WEB_DISABLE_TOTP ) )
+			disabled += ( disabled.empty() ? "WEB" : ",WEB" ) ;
+		if( Target->getAccountFlag( iClient::X_CERT_DISABLE_TOTP ) )
+			disabled += ( disabled.empty() ? "CERT" : ",CERT" ) ;
+		if( !disabled.empty() )
+			accountFlags += "(DISABLE=" + disabled + ") ";
+		}
+
 	if(Target->getAccountFlag(iClient::X_GLOBAL_SUSPEND))
 		accountFlags += "SUSPENDED ";
-	if(Target->getAccountFlag(iClient::X_TOTP_ENABLED))
-		accountFlags += "TOTP ";
-	if(Target->getAccountFlag(iClient::X_TOTP_REQ_IPR))
-		accountFlags += "TOTP_REQ_IPR ";
 	if(Target->getAccountFlag(iClient::X_FRAUD))
 		accountFlags += "FRAUD ";
 	if(Target->getAccountFlag(iClient::X_CERTONLY))

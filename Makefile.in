@@ -566,18 +566,17 @@ am__libcservice_la_SOURCES_DIST = mod.cservice/banMatcher.cc \
 	mod.cservice/ACCESSCommand.cc \
 	mod.cservice/ADDCOMMENTCommand.cc \
 	mod.cservice/ADDUSERCommand.cc mod.cservice/BANCommand.cc \
-	mod.cservice/BANLISTCommand.cc mod.cservice/CHANINFOCommand.cc \
+	mod.cservice/BANLISTCommand.cc mod.cservice/CERTCommand.cc \
+	mod.cservice/CHANINFOCommand.cc \
 	mod.cservice/CLEARMODECommand.cc mod.cservice/DEOPCommand.cc \
-	mod.cservice/DEVOICECommand.cc \
-	mod.cservice/FINGERPRINTCommand.cc \
-	mod.cservice/FORCECommand.cc mod.cservice/HELPCommand.cc \
-	mod.cservice/HELLOCommand.cc mod.cservice/INVITECommand.cc \
-	mod.cservice/ISREGCommand.cc mod.cservice/JOINCommand.cc \
-	mod.cservice/KICKCommand.cc mod.cservice/LBANLISTCommand.cc \
-	mod.cservice/LOGINCommand.cc mod.cservice/MODINFOCommand.cc \
-	mod.cservice/MOTDCommand.cc mod.cservice/NEWPASSCommand.cc \
-	mod.cservice/NOTECommand.cc mod.cservice/OPCommand.cc \
-	mod.cservice/OPERJOINCommand.cc \
+	mod.cservice/DEVOICECommand.cc mod.cservice/FORCECommand.cc \
+	mod.cservice/HELPCommand.cc mod.cservice/HELLOCommand.cc \
+	mod.cservice/INVITECommand.cc mod.cservice/ISREGCommand.cc \
+	mod.cservice/JOINCommand.cc mod.cservice/KICKCommand.cc \
+	mod.cservice/LBANLISTCommand.cc mod.cservice/LOGINCommand.cc \
+	mod.cservice/MODINFOCommand.cc mod.cservice/MOTDCommand.cc \
+	mod.cservice/NEWPASSCommand.cc mod.cservice/NOTECommand.cc \
+	mod.cservice/OPCommand.cc mod.cservice/OPERJOINCommand.cc \
 	mod.cservice/OPERPARTCommand.cc mod.cservice/PARTCommand.cc \
 	mod.cservice/PURGECommand.cc mod.cservice/QUOTECommand.cc \
 	mod.cservice/RANDOMCommand.cc mod.cservice/REGISTERCommand.cc \
@@ -613,11 +612,11 @@ am__libcservice_la_SOURCES_DIST = mod.cservice/banMatcher.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-ADDUSERCommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-BANCommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-BANLISTCommand.lo \
+@COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-CERTCommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-CHANINFOCommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-CLEARMODECommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-DEOPCommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-DEVOICECommand.lo \
-@COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-FINGERPRINTCommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-FORCECommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-HELPCommand.lo \
 @COND_MODCSERVICE_TRUE@	mod.cservice/libcservice_la-HELLOCommand.lo \
@@ -1101,11 +1100,11 @@ am__depfiles_remade = db/$(DEPDIR)/gnuworldDB.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-ADDUSERCommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-BANCommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-BANLISTCommand.Plo \
+	mod.cservice/$(DEPDIR)/libcservice_la-CERTCommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-CHANINFOCommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-CLEARMODECommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-DEOPCommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-DEVOICECommand.Plo \
-	mod.cservice/$(DEPDIR)/libcservice_la-FINGERPRINTCommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-FORCECommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-HELLOCommand.Plo \
 	mod.cservice/$(DEPDIR)/libcservice_la-HELPCommand.Plo \
@@ -1943,11 +1942,11 @@ gnuworld_LDADD = libgnuworld.la libgnuworldcore.la $(LIBLTDL)
 @COND_MODCSERVICE_TRUE@	mod.cservice/ADDUSERCommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/BANCommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/BANLISTCommand.cc \
+@COND_MODCSERVICE_TRUE@	mod.cservice/CERTCommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/CHANINFOCommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/CLEARMODECommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/DEOPCommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/DEVOICECommand.cc \
-@COND_MODCSERVICE_TRUE@	mod.cservice/FINGERPRINTCommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/FORCECommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/HELPCommand.cc \
 @COND_MODCSERVICE_TRUE@	mod.cservice/HELLOCommand.cc \
@@ -2726,6 +2725,9 @@ mod.cservice/libcservice_la-BANCommand.lo:  \
 mod.cservice/libcservice_la-BANLISTCommand.lo:  \
 	mod.cservice/$(am__dirstamp) \
 	mod.cservice/$(DEPDIR)/$(am__dirstamp)
+mod.cservice/libcservice_la-CERTCommand.lo:  \
+	mod.cservice/$(am__dirstamp) \
+	mod.cservice/$(DEPDIR)/$(am__dirstamp)
 mod.cservice/libcservice_la-CHANINFOCommand.lo:  \
 	mod.cservice/$(am__dirstamp) \
 	mod.cservice/$(DEPDIR)/$(am__dirstamp)
@@ -2736,9 +2738,6 @@ mod.cservice/libcservice_la-DEOPCommand.lo:  \
 	mod.cservice/$(am__dirstamp) \
 	mod.cservice/$(DEPDIR)/$(am__dirstamp)
 mod.cservice/libcservice_la-DEVOICECommand.lo:  \
-	mod.cservice/$(am__dirstamp) \
-	mod.cservice/$(DEPDIR)/$(am__dirstamp)
-mod.cservice/libcservice_la-FINGERPRINTCommand.lo:  \
 	mod.cservice/$(am__dirstamp) \
 	mod.cservice/$(DEPDIR)/$(am__dirstamp)
 mod.cservice/libcservice_la-FORCECommand.lo:  \
@@ -3508,11 +3507,11 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-ADDUSERCommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-BANCommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-BANLISTCommand.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-CERTCommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-CHANINFOCommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-CLEARMODECommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-DEOPCommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-DEVOICECommand.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-FINGERPRINTCommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-FORCECommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-HELLOCommand.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mod.cservice/$(DEPDIR)/libcservice_la-HELPCommand.Plo@am__quote@ # am--include-marker
@@ -4727,6 +4726,13 @@ mod.cservice/libcservice_la-BANLISTCommand.lo: mod.cservice/BANLISTCommand.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -c -o mod.cservice/libcservice_la-BANLISTCommand.lo `test -f 'mod.cservice/BANLISTCommand.cc' || echo '$(srcdir)/'`mod.cservice/BANLISTCommand.cc
 
+mod.cservice/libcservice_la-CERTCommand.lo: mod.cservice/CERTCommand.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -MT mod.cservice/libcservice_la-CERTCommand.lo -MD -MP -MF mod.cservice/$(DEPDIR)/libcservice_la-CERTCommand.Tpo -c -o mod.cservice/libcservice_la-CERTCommand.lo `test -f 'mod.cservice/CERTCommand.cc' || echo '$(srcdir)/'`mod.cservice/CERTCommand.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) mod.cservice/$(DEPDIR)/libcservice_la-CERTCommand.Tpo mod.cservice/$(DEPDIR)/libcservice_la-CERTCommand.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='mod.cservice/CERTCommand.cc' object='mod.cservice/libcservice_la-CERTCommand.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -c -o mod.cservice/libcservice_la-CERTCommand.lo `test -f 'mod.cservice/CERTCommand.cc' || echo '$(srcdir)/'`mod.cservice/CERTCommand.cc
+
 mod.cservice/libcservice_la-CHANINFOCommand.lo: mod.cservice/CHANINFOCommand.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -MT mod.cservice/libcservice_la-CHANINFOCommand.lo -MD -MP -MF mod.cservice/$(DEPDIR)/libcservice_la-CHANINFOCommand.Tpo -c -o mod.cservice/libcservice_la-CHANINFOCommand.lo `test -f 'mod.cservice/CHANINFOCommand.cc' || echo '$(srcdir)/'`mod.cservice/CHANINFOCommand.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) mod.cservice/$(DEPDIR)/libcservice_la-CHANINFOCommand.Tpo mod.cservice/$(DEPDIR)/libcservice_la-CHANINFOCommand.Plo
@@ -4754,13 +4760,6 @@ mod.cservice/libcservice_la-DEVOICECommand.lo: mod.cservice/DEVOICECommand.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='mod.cservice/DEVOICECommand.cc' object='mod.cservice/libcservice_la-DEVOICECommand.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -c -o mod.cservice/libcservice_la-DEVOICECommand.lo `test -f 'mod.cservice/DEVOICECommand.cc' || echo '$(srcdir)/'`mod.cservice/DEVOICECommand.cc
-
-mod.cservice/libcservice_la-FINGERPRINTCommand.lo: mod.cservice/FINGERPRINTCommand.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -MT mod.cservice/libcservice_la-FINGERPRINTCommand.lo -MD -MP -MF mod.cservice/$(DEPDIR)/libcservice_la-FINGERPRINTCommand.Tpo -c -o mod.cservice/libcservice_la-FINGERPRINTCommand.lo `test -f 'mod.cservice/FINGERPRINTCommand.cc' || echo '$(srcdir)/'`mod.cservice/FINGERPRINTCommand.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) mod.cservice/$(DEPDIR)/libcservice_la-FINGERPRINTCommand.Tpo mod.cservice/$(DEPDIR)/libcservice_la-FINGERPRINTCommand.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='mod.cservice/FINGERPRINTCommand.cc' object='mod.cservice/libcservice_la-FINGERPRINTCommand.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -c -o mod.cservice/libcservice_la-FINGERPRINTCommand.lo `test -f 'mod.cservice/FINGERPRINTCommand.cc' || echo '$(srcdir)/'`mod.cservice/FINGERPRINTCommand.cc
 
 mod.cservice/libcservice_la-FORCECommand.lo: mod.cservice/FORCECommand.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcservice_la_CXXFLAGS) $(CXXFLAGS) -MT mod.cservice/libcservice_la-FORCECommand.lo -MD -MP -MF mod.cservice/$(DEPDIR)/libcservice_la-FORCECommand.Tpo -c -o mod.cservice/libcservice_la-FORCECommand.lo `test -f 'mod.cservice/FORCECommand.cc' || echo '$(srcdir)/'`mod.cservice/FORCECommand.cc
@@ -6631,11 +6630,11 @@ distclean: distclean-recursive
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-ADDUSERCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-BANCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-BANLISTCommand.Plo
+	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-CERTCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-CHANINFOCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-CLEARMODECommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-DEOPCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-DEVOICECommand.Plo
-	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-FINGERPRINTCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-FORCECommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-HELLOCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-HELPCommand.Plo
@@ -7002,11 +7001,11 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-ADDUSERCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-BANCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-BANLISTCommand.Plo
+	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-CERTCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-CHANINFOCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-CLEARMODECommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-DEOPCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-DEVOICECommand.Plo
-	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-FINGERPRINTCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-FORCECommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-HELLOCommand.Plo
 	-rm -f mod.cservice/$(DEPDIR)/libcservice_la-HELPCommand.Plo
