@@ -5420,19 +5420,19 @@ switch( theEvent )
 		 */
 		if (tmpUser->isModeR())
 		{
-			iServer* tmpServer = Network->findServer(tmpUser->getIntYY());
-			if ((this->getUplink()->isBursting()) || (tmpServer->isBursting()))
+			/* Lookup this user account, if its not there.. trouble */
+			sqlUser* theUser = getUserRecord(tmpUser->getAccount());
+			if (theUser)
 			{
-				/* Lookup this user account, if its not there.. trouble */
-				sqlUser* theUser = getUserRecord(tmpUser->getAccount());
-				if (theUser)
-				{
-					newData->currentUser = theUser;
-					theUser->addAuthedClient(tmpUser);
+				/* This function check whether the account flags are correct, if not send update. */
+				sendAccountFlags(theUser, tmpUser);
+			}
 
-					/* This function check whether the account flags are correct, if not send update. */
-					sendAccountFlags(theUser, tmpUser);
-				}
+			iServer* tmpServer = Network->findServer(tmpUser->getIntYY());
+			if ((this->getUplink()->isBursting() || tmpServer->isBursting()) && theUser)
+			{
+				newData->currentUser = theUser;
+				theUser->addAuthedClient(tmpUser);
 			}
 			else
 				doCommonAuth(tmpUser);
@@ -9803,7 +9803,8 @@ bool cservice::doCommonAuth(iClient* theClient, string username)
 	for (const auto& theChan : theClient->channels())
 	{
 		sqlChannel* sqlChan = getChannelRecord(theChan->getName());
-		if (sqlChan)
+		/* Do not attempt to enforce bans if I am not in the channel */
+		if (sqlChan && sqlChan->getInChan())
 		{
 			checkBansOnJoin(theChan, sqlChan, theClient);
 		}

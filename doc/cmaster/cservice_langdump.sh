@@ -13,10 +13,13 @@ echo "Dumping languages table...";
 {
   echo "$header";
   echo "";
+  echo "-- Zap everything!"
+  echo "DELETE FROM languages;"
+  echo "";
   echo "COPY languages FROM stdin;";
   psql -d $database -c "COPY (SELECT * FROM languages ORDER BY id) TO STDOUT;"
   echo "\.";
-} > languages.sql
+} > cservice.languages.sql
 
 echo "Dumping translations table...";
 {
@@ -28,7 +31,7 @@ echo "Dumping translations table...";
   echo "COPY translations FROM stdin;";
   psql -d $database -c "COPY (SELECT * FROM translations ORDER BY language_id, response_id) TO STDOUT;"
   echo "\.";
-} > language_table.sql
+} > cservice.translations.sql
 
 echo "Dumping help table...";
 {
