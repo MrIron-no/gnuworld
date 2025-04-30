@@ -1935,7 +1935,7 @@ for (xNetwork::channelIterator ptr = Network->channels_begin(); ptr != Network->
    bool hasService = false;
 
    // Do not autofix +R channels
-   if (thisChan->getMode(Channel::MODE_REG))
+   if (thisChan->getMode(Channel::MODE_R))
      continue;
 
    if (thisChan->size() >= minClients && !isBeingFixed(thisChan)) {
@@ -1998,22 +1998,22 @@ if (useBurstToFix && thisChan->getCreationTime() > 1) {
     MyUplink->setBursting(true);
 
   xServer::modeVectorType modeVector;
-  if (thisChan->getMode(Channel::MODE_I))
-    modeVector.push_back(std::make_pair(false, Channel::MODE_I));
-  if (thisChan->getMode(Channel::MODE_K))
+  if (thisChan->getMode(Channel::MODE_i))
+    modeVector.push_back(std::make_pair(false, Channel::MODE_i));
+  if (thisChan->getMode(Channel::MODE_k))
     MyUplink->OnChannelModeK(thisChan, false, 0, std::string());
-  if (thisChan->getMode(Channel::MODE_L))
+  if (thisChan->getMode(Channel::MODE_l))
     MyUplink->OnChannelModeL(thisChan, false, 0, 0);
-  if (thisChan->getMode(Channel::MODE_R))
-    modeVector.push_back(std::make_pair(false, Channel::MODE_R));
+  if (thisChan->getMode(Channel::MODE_r))
+    modeVector.push_back(std::make_pair(false, Channel::MODE_r));
   if (thisChan->getMode(Channel::MODE_D))
     modeVector.push_back(std::make_pair(false, Channel::MODE_D));
   /* Due to a bug in .11, we need to set at least one mode. */
   if (version < 12) {
-    if (!thisChan->getMode(Channel::MODE_N))
-      modeVector.push_back(std::make_pair(true, Channel::MODE_N));
-    if (!thisChan->getMode(Channel::MODE_T))
-      modeVector.push_back(std::make_pair(true, Channel::MODE_T));
+    if (!thisChan->getMode(Channel::MODE_n))
+      modeVector.push_back(std::make_pair(true, Channel::MODE_n));
+    if (!thisChan->getMode(Channel::MODE_t))
+      modeVector.push_back(std::make_pair(true, Channel::MODE_t));
   }
   if (!modeVector.empty())
     MyUplink->OnChannelMode(thisChan, 0, modeVector);
@@ -2166,11 +2166,11 @@ for (chanOpsType::iterator opPtr = myOps.begin(); opPtr != myOps.end();
 std::stringstream chanStatus;
 std::stringstream chanModes;
 
-if (netChan->getMode(Channel::MODE_I)) chanModes << "i";
-if (netChan->getMode(Channel::MODE_K)) chanModes << "k";
-if (netChan->getMode(Channel::MODE_L)) chanModes << "l";
-if (netChan->getMode(Channel::MODE_R)) chanModes << "r";
-if (netChan->getMode(Channel::MODE_D)) chanModes << "d";
+if (netChan->getMode(Channel::MODE_i)) chanModes << "i";
+if (netChan->getMode(Channel::MODE_k)) chanModes << "k";
+if (netChan->getMode(Channel::MODE_l)) chanModes << "l";
+if (netChan->getMode(Channel::MODE_r)) chanModes << "r";
+if (netChan->getMode(Channel::MODE_D)) chanModes << "D";
 
 
 chanStatus      << "* Channel Status for "
@@ -2187,10 +2187,10 @@ if ((!numClientsToOp || maxScore < min_score) &&
   if (autofix && !sqlChan->getSimModesRemoved()) {
 
     if (netChan->banList_size() ||
-        netChan->getMode(Channel::MODE_I) ||
-        netChan->getMode(Channel::MODE_K) ||
-        netChan->getMode(Channel::MODE_L) ||
-        netChan->getMode(Channel::MODE_R) ||
+        netChan->getMode(Channel::MODE_i) ||
+        netChan->getMode(Channel::MODE_k) ||
+        netChan->getMode(Channel::MODE_l) ||
+        netChan->getMode(Channel::MODE_r) ||
         netChan->getMode(Channel::MODE_D)) {
 
       sqlChan->setSimModesRemoved(true);
@@ -2693,10 +2693,10 @@ bool chanfix::needsModesRemoved(Channel* theChan)
  * for now.
  */
 if (theChan->banList_size() ||
-    theChan->getMode(Channel::MODE_I) ||
-    theChan->getMode(Channel::MODE_K) ||
-    theChan->getMode(Channel::MODE_L) ||
-    theChan->getMode(Channel::MODE_R) ||
+    theChan->getMode(Channel::MODE_i) ||
+    theChan->getMode(Channel::MODE_k) ||
+    theChan->getMode(Channel::MODE_l) ||
+    theChan->getMode(Channel::MODE_r) ||
     theChan->getMode(Channel::MODE_D))
   return true;
 

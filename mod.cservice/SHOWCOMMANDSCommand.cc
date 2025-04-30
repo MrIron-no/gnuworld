@@ -30,7 +30,7 @@ namespace gnuworld
 {
 using std::string ;
 
-static const char* lvl_1000_cmds = "\002Level 1000\002: anything";
+static const char* lvl_1000_cmds = "aaaa\002Level 1000\002: anything";
 static const char* lvl_900_cmds = "\002Level  900\002: shutdown rehash";
 static const char* lvl_800_cmds = "\002Level  800\002: say servnotice";
 static const char* lvl_750_cmds = "\002Level  750\002: register purge removeall";
@@ -46,7 +46,7 @@ static const char* lvl_42_cmds = "\002Level   42\002: PANIC";
 static const char* lvl_25_cmds = "\002Level   25\002: voice devoice";
 static const char* lvl_1_cmds = "\002Level    1\002: banlist status%s";
 static const char* lvl_adm_cmds = "\002Level    *\002: force unforce stats";
-static const char* lvl_0_cmds = "\002Level    0\002: access chaninfo info help* lbanlist login motd* newpass showcommands showignore verify suspendme";
+static const char* lvl_0_cmds = "aaaaa \002Level    0\002: access chaninfo info help* lbanlist login motd* newpass showcommands showignore verify suspendme";
 
 #ifdef USE_OPERPARTJOIN
 static const char* lvl_oper_cmds = "\002Level Oper\002: operjoin* operpart*";

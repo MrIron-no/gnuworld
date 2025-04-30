@@ -5901,7 +5901,7 @@ switch( whichEvent )
 		/* This is a registered channel, check it is set +R.
 		 * If not, set it to +R (channel creation)
 		 */
-		if (!theChan->getMode(Channel::MODE_REG)) {
+		if (!theChan->getMode(Channel::MODE_R)) {
 			stringstream tmpTS;
 			tmpTS << reggedChan->getChannelTS();
 			string channelTS = tmpTS.str();
@@ -6329,7 +6329,7 @@ void cservice::undoJoinLimits(sqlChannel *reggedChan)
 	{
 		if (c == 'k')
 		{ // Key
-			theChan->removeMode(Channel::MODE_K);
+			theChan->removeMode(Channel::MODE_k);
 			theChan->setKey("");
 			parmcount++;
 		}
@@ -6343,19 +6343,19 @@ void cservice::undoJoinLimits(sqlChannel *reggedChan)
 			if (c == 'D')
 				theChan->removeMode(Channel::MODE_D);
 			if (c == 'c')
-				theChan->removeMode(Channel::MODE_C);
+				theChan->removeMode(Channel::MODE_c);
 			if (c == 'C')
-				theChan->removeMode(Channel::MODE_CTCP);
+				theChan->removeMode(Channel::MODE_C);
 			if (c == 'i')
-				theChan->removeMode(Channel::MODE_I);
+				theChan->removeMode(Channel::MODE_i);
 			if (c == 'm')
-				theChan->removeMode(Channel::MODE_M);
-			// if (c == 'M') theChan->removeMode(Channel::MODE_MNOREG);
-			// if (c == 'u') theChan->removeMode(Channel::MODE_PART);
+				theChan->removeMode(Channel::MODE_m);
+			// if (c == 'M') theChan->removeMode(Channel::MODE_M);
+			// if (c == 'u') theChan->removeMode(Channel::MODE_u);
 			if (c == 'r')
-				theChan->removeMode(Channel::MODE_R);
+				theChan->removeMode(Channel::MODE_r);
 			if (c == 's')
-				theChan->removeMode(Channel::MODE_S);
+				theChan->removeMode(Channel::MODE_s);
 		}
 	}
 
@@ -6451,7 +6451,7 @@ void cservice::doJoinLimit(sqlChannel *reggedChan, Channel *theChan)
 		{
 			if (c == 'k')
 			{ // Key
-				theChan->setMode(Channel::MODE_K);
+				theChan->setMode(Channel::MODE_k);
 				theChan->setKey(parms[parmcount]);
 				parmcount++;
 			}
@@ -6466,19 +6466,19 @@ void cservice::doJoinLimit(sqlChannel *reggedChan, Channel *theChan)
 				if (c == 'D')
 					theChan->setMode(Channel::MODE_D);
 				if (c == 'c')
-					theChan->setMode(Channel::MODE_C);
+					theChan->setMode(Channel::MODE_c);
 				if (c == 'C')
-					theChan->setMode(Channel::MODE_CTCP);
+					theChan->setMode(Channel::MODE_C);
 				if (c == 'i')
-					theChan->setMode(Channel::MODE_I);
+					theChan->setMode(Channel::MODE_i);
 				if (c == 'm')
-					theChan->setMode(Channel::MODE_M);
-				// if (c == 'M') theChan->setMode(Channel::MODE_MNOREG);
-				// if (c == 'u') theChan->setMode(Channel::MODE_PART);
+					theChan->setMode(Channel::MODE_m);
+				// if (c == 'M') theChan->setMode(Channel::MODE_M);
+				// if (c == 'u') theChan->setMode(Channel::MODE_u);
 				if (c == 'r')
-					theChan->setMode(Channel::MODE_R);
+					theChan->setMode(Channel::MODE_r);
 				if (c == 's')
-					theChan->setMode(Channel::MODE_S);
+					theChan->setMode(Channel::MODE_s);
 			}
 		}
 
@@ -6549,7 +6549,7 @@ void cservice::doFloatingLimit(sqlChannel* reggedChan, Channel* theChan)
 	if (!tmpBotUser) return;
 	if (!tmpBotUser->getMode(ChannelUser::MODE_O)) return;
 
-	theChan->setMode(Channel::MODE_L);
+	theChan->setMode(Channel::MODE_l);
 	theChan->setLimit(newLimit);
 	reggedChan->setLastLimitCheck(currentTime());
 

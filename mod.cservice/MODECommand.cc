@@ -177,7 +177,7 @@ for( string::size_type charPos = 0 ; charPos < st[ 2 ].size() ; ++charPos )
 
 			if( plus )
 				{
-				if( tmpChan->getMode( Channel::MODE_K ) ) /* Do not update key if chan is already +k */
+				if( tmpChan->getMode( Channel::MODE_k ) ) /* Do not update key if chan is already +k */
 					{
 					argPos++ ;
 					break ;
@@ -198,7 +198,7 @@ for( string::size_type charPos = 0 ; charPos < st[ 2 ].size() ; ++charPos )
 				}
 			else
 				{
-				if( !tmpChan->getMode( Channel::MODE_K ) ) /* Not +k? */
+				if( !tmpChan->getMode( Channel::MODE_k ) ) /* Not +k? */
 					{
 					argPos++ ;
 					break ;
@@ -233,7 +233,7 @@ for( string::size_type charPos = 0 ; charPos < st[ 2 ].size() ; ++charPos )
 				{
 				// No args needed
 				modeString += st[ 2 ][ charPos ] ;
-				tmpChan->removeMode( Channel::MODE_L ) ;
+				tmpChan->removeMode( Channel::MODE_l ) ;
 				break ;
 				}
 
@@ -245,7 +245,7 @@ for( string::size_type charPos = 0 ; charPos < st[ 2 ].size() ; ++charPos )
 				return true ;
 				}
 
-			tmpChan->setMode( Channel::MODE_L ) ;
+			tmpChan->setMode( Channel::MODE_l ) ;
 			tmpChan->setLimit( atoi( st[ argPos ].c_str() ) ) ;
 
 			// Save position of argument
@@ -257,61 +257,69 @@ for( string::size_type charPos = 0 ; charPos < st[ 2 ].size() ; ++charPos )
 			break ;
 		case 'i':  //Invite?
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_I ) ;
+				tmpChan->removeMode( Channel::MODE_i ) ;
 			else
-				tmpChan->setMode( Channel::MODE_I ) ;
+				tmpChan->setMode( Channel::MODE_i ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 'p':  //Private?
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_P ) ;
+				tmpChan->removeMode( Channel::MODE_p ) ;
 			else
-				tmpChan->setMode( Channel::MODE_P ) ;
+				tmpChan->setMode( Channel::MODE_p ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 'r':  //Moderated for non-authed users?
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_R ) ;
+				tmpChan->removeMode( Channel::MODE_r ) ;
 			else
-				tmpChan->setMode( Channel::MODE_R ) ;
+				tmpChan->setMode( Channel::MODE_r ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 's':  //Secret?
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_S ) ;
+				tmpChan->removeMode( Channel::MODE_s ) ;
 			else
-				tmpChan->setMode( Channel::MODE_S ) ;
+				tmpChan->setMode( Channel::MODE_s ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 'm':  //Moderated?
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_M ) ;
+				tmpChan->removeMode( Channel::MODE_m ) ;
 			else
-				tmpChan->setMode( Channel::MODE_M ) ;
+				tmpChan->setMode( Channel::MODE_m ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 'n':  //No External Messages?
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_N ) ;
+				tmpChan->removeMode( Channel::MODE_n ) ;
 			else
-				tmpChan->setMode( Channel::MODE_N ) ;
+				tmpChan->setMode( Channel::MODE_n ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 't':  //Topic?
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_T ) ;
+				tmpChan->removeMode( Channel::MODE_t ) ;
 			else
-				tmpChan->setMode( Channel::MODE_T ) ;
+				tmpChan->setMode( Channel::MODE_t ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 'c': //Colours
+			if( !plus )
+				tmpChan->removeMode( Channel::MODE_c ) ;
+			else
+				tmpChan->setMode( Channel::MODE_c ) ;
+
+			modeString += st[ 2 ][ charPos ] ;
+			break ;
+		case 'C': //CTCP
 			if( !plus )
 				tmpChan->removeMode( Channel::MODE_C ) ;
 			else
@@ -319,27 +327,19 @@ for( string::size_type charPos = 0 ; charPos < st[ 2 ].size() ; ++charPos )
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
-		case 'C': //CTCP
-			if( !plus )
-				tmpChan->removeMode( Channel::MODE_CTCP ) ;
-			else
-				tmpChan->setMode( Channel::MODE_CTCP ) ;
-
-			modeString += st[ 2 ][ charPos ] ;
-			break ;
 		/*case 'u': //No part msg
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_PART ) ;
+				tmpChan->removeMode( Channel::MODE_u ) ;
 			else
-				tmpChan->setMode( Channel::MODE_PART ) ;
+				tmpChan->setMode( Channel::MODE_u ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;
 		case 'M': //Moderated for non-registered users
 			if( !plus )
-				tmpChan->removeMode( Channel::MODE_MNOREG ) ;
+				tmpChan->removeMode( Channel::MODE_M ) ;
 			else
-				tmpChan->setMode( Channel::MODE_MNOREG ) ;
+				tmpChan->setMode( Channel::MODE_M ) ;
 
 			modeString += st[ 2 ][ charPos ] ;
 			break ;*/
@@ -406,12 +406,12 @@ if( modeString.size() > 1 || limitPos > 0 )
 		{
 		if ( keyPos > 0 )
 			{
-			tmpChan->setMode( Channel::MODE_K ) ;
+			tmpChan->setMode( Channel::MODE_k ) ;
 			tmpChan->setKey( st [ keyPos ] ) ;
 			}
 		else
 			{
-			tmpChan->removeMode( Channel::MODE_K ) ;
+			tmpChan->removeMode( Channel::MODE_k ) ;
 			tmpChan->setKey( "" ) ;
 			}
 		}

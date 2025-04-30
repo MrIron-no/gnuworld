@@ -74,55 +74,56 @@ public:
 	typedef unsigned int modeType ;
 
 	/// Bit representing channel mode +t
-	static const modeType	MODE_T ;
+	static constexpr modeType	MODE_t = 0x00001 ;
 
 	/// Bit representing channel mode +n
-	static const modeType	MODE_N ;
+	static constexpr modeType	MODE_n = 0x00002 ;
 
 	/// Bit representing channel mode +s
-	static const modeType	MODE_S ;
+	static constexpr modeType	MODE_s = 0x00004 ;
 
 	/// Bit representing channel mode +p
-	static const modeType	MODE_P ;
+	static constexpr modeType	MODE_p = 0x00008 ;
 
 	/// Bit representing channel mode +k
-	static const modeType	MODE_K ;
+	static constexpr modeType	MODE_k = 0x00010 ;
 
 	/// Bit representing channel mode +l
-	static const modeType	MODE_L ;
+	static constexpr modeType	MODE_l = 0x00020 ;
 
 	/// Bit representing channel mode +m
-	static const modeType	MODE_M ;
+	static constexpr modeType	MODE_m = 0x00040 ;
 
 	/// Bit representing channel mode +i
-	static const modeType	MODE_I ;
+	static constexpr modeType	MODE_i = 0x00080 ;
 
 	/// Bit representing channel mode +r
-	static const modeType	MODE_R ;
-
-	/// Bit representing channel mode +R
-	static const modeType	MODE_REG ;
+	static constexpr modeType	MODE_r = 0x00100 ;
 
 	/// Bit representing channel mode +D
-	static const modeType	MODE_D ;
-
-	/// Bit representing channel mode +c
-	static const modeType	MODE_C ;
-
-	/// Bit representing channel mode +C
-	static const modeType	MODE_CTCP ;
-
-	/// Bit representing channel mode +P
-	static const modeType	MODE_PART ;
-
-	/// Bit representing channel mode +M
-	static const modeType	MODE_MNOREG ;
+	static constexpr modeType	MODE_D = 0x00200 ;
 
 	/// Bit representing channel mode +A
-	static const modeType	MODE_A ;
+	static constexpr modeType	MODE_A = 0x00400 ;
 
 	/// Bit representing channel mode +U
-	static const modeType	MODE_U ;
+	static constexpr modeType	MODE_U = 0x00800 ;
+
+	/// Bit representing channel mode +R
+	static constexpr modeType	MODE_R = 0x01000 ;
+
+	/// Bit representing channel mode +c
+	static constexpr modeType	MODE_c = 0x02000 ;
+
+	/// Bit representing channel mode +C
+	static constexpr modeType	MODE_C = 0x04000 ;
+
+	/// Bit representing channel mode +u
+	static constexpr modeType	MODE_u = 0x08000 ;
+
+	/// Bit representing channel mode +M
+	static constexpr modeType	MODE_M = 0x10000 ;
+
 
 	/// Type used to store number of clients in channel
 	typedef userListType::size_type size_type ;

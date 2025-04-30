@@ -73,7 +73,7 @@ if (!netChan) {
   return;
 }
 
-if (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REG)) {
+if (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_R)) {
   bot->SendTo(theClient,
 	      bot->getResponse(theUser,
 			       language::registered_channel,

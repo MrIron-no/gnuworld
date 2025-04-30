@@ -182,35 +182,35 @@ for( const char* modePtr = Param[ 2 ] ; *modePtr ; ++modePtr )
 			break ;
 		case 't':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_T ) ) ;
+				make_pair( polarity, Channel::MODE_t ) ) ;
 			break ;
 		case 'n':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_N ) ) ;
+				make_pair( polarity, Channel::MODE_n ) ) ;
 			break ;
 		case 's':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_S ) ) ;
+				make_pair( polarity, Channel::MODE_s ) ) ;
 			break ;
 		case 'p':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_P ) ) ;
+				make_pair( polarity, Channel::MODE_p ) ) ;
 			break ;
 		case 'm':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_M ) ) ;
+				make_pair( polarity, Channel::MODE_m ) ) ;
 			break ;
 		case 'i':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_I ) ) ;
+				make_pair( polarity, Channel::MODE_i ) ) ;
 			break ;
 		case 'r':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_R ) ) ;
+				make_pair( polarity, Channel::MODE_r ) ) ;
 			break ;
 		case 'R':
 			modeVector.push_back(
-				make_pair( polarity, Channel::MODE_REG ) ) ;
+				make_pair( polarity, Channel::MODE_R ) ) ;
 			break ;
 		case 'D':
 			modeVector.push_back(
@@ -218,19 +218,19 @@ for( const char* modePtr = Param[ 2 ] ; *modePtr ; ++modePtr )
 			break;
 		case 'c':
 			modeVector.push_back(
-				make_pair(polarity, Channel::MODE_C));
+				make_pair(polarity, Channel::MODE_c));
 			break;
 		case 'C':
 			modeVector.push_back(
-				make_pair(polarity, Channel::MODE_CTCP));
+				make_pair(polarity, Channel::MODE_C));
 			break;
 		case 'u':
 			modeVector.push_back(
-				make_pair(polarity, Channel::MODE_PART));
+				make_pair(polarity, Channel::MODE_u));
 			break;
 		case 'M':
 			modeVector.push_back(
-				make_pair(polarity, Channel::MODE_MNOREG));
+				make_pair(polarity, Channel::MODE_M));
 			break;
 		// Channel mode l only has an argument if
 		// it is being added, but not removed

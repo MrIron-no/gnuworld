@@ -1159,9 +1159,9 @@ bool xServer::DetachClient( const string& moduleName,
 for( clientModuleListType::const_iterator ptr = clientModuleList.begin() ;
 	ptr != clientModuleList.end() ; ++ptr )
 	{
-//	elog	<< "xServer::DetachClient> moduleName: "
-//		<< (*ptr)->getModuleName()
-//		<< endl ;
+	elog	<< "xServer::DetachClient> moduleName: "
+		<< (*ptr)->getModuleName()
+		<< endl ;
 
 	if( !strcasecmp( (*ptr)->getModuleName(), moduleName ) )
 		{
@@ -1729,51 +1729,51 @@ if( !chanModes.empty() &&
 				break ;
 			case 't':
 				if( plus )
-					theChan->setMode( Channel::MODE_T ) ;
+					theChan->setMode( Channel::MODE_t ) ;
 				else
-					theChan->removeMode( Channel::MODE_T ) ;
+					theChan->removeMode( Channel::MODE_t ) ;
 				break ;
 			case 'n':
 				if( plus )
-					theChan->setMode( Channel::MODE_N ) ;
+					theChan->setMode( Channel::MODE_n ) ;
 				else
-					theChan->removeMode( Channel::MODE_N ) ;
+					theChan->removeMode( Channel::MODE_n ) ;
 				break ;
 			case 's':
 				if( plus )
-					theChan->setMode( Channel::MODE_S ) ;
+					theChan->setMode( Channel::MODE_s ) ;
 				else
-					theChan->removeMode( Channel::MODE_S ) ;
+					theChan->removeMode( Channel::MODE_s ) ;
 				break ;
 			case 'p':
 				if( plus )
-					theChan->setMode( Channel::MODE_P ) ;
+					theChan->setMode( Channel::MODE_p ) ;
 				else
-					theChan->removeMode( Channel::MODE_P ) ;
+					theChan->removeMode( Channel::MODE_p ) ;
 				break ;
 			case 'm':
 				if( plus )
-					theChan->setMode( Channel::MODE_M ) ;
+					theChan->setMode( Channel::MODE_m ) ;
 				else
-					theChan->removeMode( Channel::MODE_M ) ;
+					theChan->removeMode( Channel::MODE_m ) ;
 				break ;
 			case 'i':
 				if( plus )
-					theChan->setMode( Channel::MODE_I ) ;
+					theChan->setMode( Channel::MODE_i ) ;
 				else
-					theChan->removeMode( Channel::MODE_I ) ;
+					theChan->removeMode( Channel::MODE_i ) ;
 				break ;
 			case 'r':
+				if( plus )
+					theChan->setMode( Channel::MODE_r ) ;
+				else
+					theChan->removeMode( Channel::MODE_r ) ;
+				break ;
+			case 'R':
 				if( plus )
 					theChan->setMode( Channel::MODE_R ) ;
 				else
 					theChan->removeMode( Channel::MODE_R ) ;
-				break ;
-			case 'R':
-				if( plus )
-					theChan->setMode( Channel::MODE_REG ) ;
-				else
-					theChan->removeMode( Channel::MODE_REG ) ;
 				break ;
 			case 'D':
 				if( plus )
@@ -1783,27 +1783,27 @@ if( !chanModes.empty() &&
 				break ;
 			case 'c':
 				if (plus)
+					theChan->setMode(Channel::MODE_c);
+				else
+					theChan->removeMode(Channel::MODE_c);
+				break;
+			case 'C':
+				if (plus)
 					theChan->setMode(Channel::MODE_C);
 				else
 					theChan->removeMode(Channel::MODE_C);
 				break;
-			case 'C':
-				if (plus)
-					theChan->setMode(Channel::MODE_CTCP);
-				else
-					theChan->removeMode(Channel::MODE_CTCP);
-				break;
 			case 'u':
 				if (plus)
-					theChan->setMode(Channel::MODE_PART);
+					theChan->setMode(Channel::MODE_u);
 				else
-					theChan->removeMode(Channel::MODE_PART);
+					theChan->removeMode(Channel::MODE_u);
 				break;
 			case 'M':
 				if (plus)
-					theChan->setMode(Channel::MODE_MNOREG);
+					theChan->setMode(Channel::MODE_M);
 				else
-					theChan->removeMode(Channel::MODE_MNOREG);
+					theChan->removeMode(Channel::MODE_M);
 				break;
 
 			// TODO: Finish with polarity
@@ -1821,7 +1821,7 @@ if( !chanModes.empty() &&
 					break ;
 					}
 				/* if there is already a key, update it */
-				if (theChan->getMode(Channel::MODE_K))
+				if (theChan->getMode(Channel::MODE_k))
 				{
 					/* only update it if it is different! */
 					if (strcmp(theChan->getKey().c_str(), st[argPos].c_str()))
@@ -2082,63 +2082,63 @@ void xServer::removeAllChanModes( Channel* theChan )
 modeVectorType modeVector ;
 
 // This is a protected method, theChan is non-NULL
-if( theChan->getMode( Channel::MODE_T ) )
+if( theChan->getMode( Channel::MODE_t ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_T ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_t ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_N ) )
+if( theChan->getMode( Channel::MODE_n ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_N ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_n ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_S ) )
+if( theChan->getMode( Channel::MODE_s ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_S ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_s ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_P ) )
+if( theChan->getMode( Channel::MODE_p ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_P ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_p ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_M ) )
+if( theChan->getMode( Channel::MODE_m ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_M ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_m ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_I ) )
+if( theChan->getMode( Channel::MODE_i ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_I ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_i ) ) ;
+	}
+if( theChan->getMode( Channel::MODE_r ) )
+	{
+	modeVector.push_back( make_pair( false, Channel::MODE_r ) ) ;
 	}
 if( theChan->getMode( Channel::MODE_R ) )
 	{
 	modeVector.push_back( make_pair( false, Channel::MODE_R ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_REG ) )
-	{
-	modeVector.push_back( make_pair( false, Channel::MODE_REG ) ) ;
-	}
 if( theChan->getMode( Channel::MODE_D ) )
 	{
 	modeVector.push_back( make_pair( false, Channel::MODE_D ) ) ;
+	}
+if( theChan->getMode( Channel::MODE_c ) )
+	{
+	modeVector.push_back( make_pair( false, Channel::MODE_c ) ) ;
 	}
 if( theChan->getMode( Channel::MODE_C ) )
 	{
 	modeVector.push_back( make_pair( false, Channel::MODE_C ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_CTCP ) )
+if( theChan->getMode( Channel::MODE_u ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_CTCP ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_u ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_PART ) )
+if( theChan->getMode( Channel::MODE_M ) )
 	{
-	modeVector.push_back( make_pair( false, Channel::MODE_PART ) ) ;
+	modeVector.push_back( make_pair( false, Channel::MODE_M ) ) ;
 	}
-if( theChan->getMode( Channel::MODE_MNOREG ) )
-	{
-	modeVector.push_back( make_pair( false, Channel::MODE_MNOREG ) ) ;
-	}
-if( theChan->getMode( Channel::MODE_L ) )
+if( theChan->getMode( Channel::MODE_l ) )
 	{
 	OnChannelModeL( theChan, false, 0, 0 ) ;
 	}
-if( theChan->getMode( Channel::MODE_K ) )
+if( theChan->getMode( Channel::MODE_k ) )
 	{
 	OnChannelModeK( theChan, false, 0, string() ) ;
 	}
@@ -2286,19 +2286,19 @@ string modesAndArgsString( modes + ' ' + args ) ;
 //	<< endl ;
 
 std::map< char, Channel::modeType > chanModes ;
-chanModes[ 'i' ] = Channel::MODE_I ;
-chanModes[ 'm' ] = Channel::MODE_M ;
-chanModes[ 'n' ] = Channel::MODE_N ;
-chanModes[ 'p' ] = Channel::MODE_P ;
-chanModes[ 'r' ] = Channel::MODE_R ;
-chanModes[ 'R' ] = Channel::MODE_REG ;
-chanModes[ 's' ] = Channel::MODE_S ;
-chanModes[ 't' ] = Channel::MODE_T ;
+chanModes[ 'i' ] = Channel::MODE_i ;
+chanModes[ 'm' ] = Channel::MODE_m ;
+chanModes[ 'n' ] = Channel::MODE_n ;
+chanModes[ 'p' ] = Channel::MODE_p ;
+chanModes[ 'r' ] = Channel::MODE_r ;
+chanModes[ 'R' ] = Channel::MODE_R ;
+chanModes[ 's' ] = Channel::MODE_s ;
+chanModes[ 't' ] = Channel::MODE_t ;
 chanModes[ 'D' ] = Channel::MODE_D ;
-chanModes[ 'c' ] = Channel::MODE_C ;
-chanModes[ 'C' ] = Channel::MODE_CTCP ;
-chanModes[ 'u' ] = Channel::MODE_PART ;
-chanModes[ 'M' ] = Channel::MODE_MNOREG ;
+chanModes[ 'c' ] = Channel::MODE_c ;
+chanModes[ 'C' ] = Channel::MODE_C ;
+chanModes[ 'u' ] = Channel::MODE_u ;
+chanModes[ 'M' ] = Channel::MODE_M ;
 
 // This vector is used for argument-less types that can be passed
 // to OnChannelMode()
@@ -2426,7 +2426,7 @@ for( ; tokenIndex < st.size() ; )
 				std::string chanKey = st[ nextArgIndex ] ;
 				++nextArgIndex ;
 
-				if( theChan->getMode( Channel::MODE_K ) )
+				if( theChan->getMode( Channel::MODE_k ) )
 					{
 					// +k already set
 					if( polarityBool )
@@ -3296,43 +3296,43 @@ for( string::const_iterator ptr = st[ 0 ].begin() ; ptr != st[ 0 ].end() ;
 	switch(  *ptr )
 		{
 		case 't':
-			theChan->setMode( Channel::MODE_T ) ;
+			theChan->setMode( Channel::MODE_t ) ;
 			break ;
 		case 'n':
-			theChan->setMode( Channel::MODE_N ) ;
+			theChan->setMode( Channel::MODE_n ) ;
 			break ;
 		case 's':
-			theChan->setMode( Channel::MODE_S ) ;
+			theChan->setMode( Channel::MODE_s ) ;
 			break ;
 		case 'p':
-			theChan->setMode( Channel::MODE_P ) ;
+			theChan->setMode( Channel::MODE_p ) ;
 			break ;
 		case 'm':
-			theChan->setMode( Channel::MODE_M ) ;
+			theChan->setMode( Channel::MODE_m ) ;
 			break ;
 		case 'i':
-			theChan->setMode( Channel::MODE_I ) ;
+			theChan->setMode( Channel::MODE_i ) ;
 			break ;
 		case 'r':
-			theChan->setMode( Channel::MODE_R ) ;
+			theChan->setMode( Channel::MODE_r ) ;
 			break ;
 		case 'R':
-			theChan->setMode( Channel::MODE_REG ) ;
+			theChan->setMode( Channel::MODE_R ) ;
 			break ;
 		case 'D':
 			theChan->setMode( Channel::MODE_D ) ;
 			break ;
 		case 'c':
-			theChan->setMode( Channel::MODE_C ) ;
+			theChan->setMode( Channel::MODE_c ) ;
 			break;
 		case 'C':
-			theChan->setMode( Channel::MODE_CTCP ) ;
+			theChan->setMode( Channel::MODE_C ) ;
 			break;
 		case 'u':
-			theChan->setMode( Channel::MODE_PART ) ;
+			theChan->setMode( Channel::MODE_u ) ;
 			break;
 		case 'M':
-			theChan->setMode( Channel::MODE_MNOREG ) ;
+			theChan->setMode( Channel::MODE_M ) ;
 			break;
 		case 'k':
 			{

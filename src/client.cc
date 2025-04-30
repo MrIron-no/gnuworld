@@ -1996,7 +1996,7 @@ ChannelUser* theUser = theChan->findUser( getInstance() ) ;
 // channel, but check to be sure.
 assert( theUser != 0 ) ;
 
-if( theChan->getMode( Channel::MODE_T ) && !theUser->isModeO() )
+if( theChan->getMode( Channel::MODE_t ) && !theUser->isModeO() )
 	{
 	// Mode +t, and bot is mode -o
 	// Op the bot
@@ -2589,59 +2589,59 @@ for( string::size_type modePos = 0 ; modePos < modes.size() ; ++modePos )
 			}
 			break;
 		case 'k':  //Key?
-			if(theChan->getMode(Channel::MODE_K))
+			if(theChan->getMode(Channel::MODE_k))
 				{
 				chanKey = " ";
 				chanKey += theChan->getKey();
-				theChan->removeMode(Channel::MODE_K);
+				theChan->removeMode(Channel::MODE_k);
 				theChan->setKey( "" );
 				MyUplink->OnChannelModeK( theChan,
 					false, 0, string() ) ;
 				}
 			break;
 		case 'i':  //Invite?
-			theChan->removeMode(Channel::MODE_I);
+			theChan->removeMode(Channel::MODE_i);
 			modeVector.push_back( make_pair( false,
-				Channel::MODE_I ) ) ;
+				Channel::MODE_i ) ) ;
 			break;
 		case 'l': //Limit?
-			if(theChan->getMode(Channel::MODE_L))
+			if(theChan->getMode(Channel::MODE_l))
 				{
-				theChan->removeMode(Channel::MODE_L);
+				theChan->removeMode(Channel::MODE_l);
 				theChan->setLimit( 0 );
 				MyUplink->OnChannelModeL( theChan,
 					false, 0, 0 ) ;
 				}
 			break;
 		case 'p':  //Private?
-			theChan->removeMode(Channel::MODE_P);
+			theChan->removeMode(Channel::MODE_p);
 			modeVector.push_back( make_pair( false,
-				Channel::MODE_P ) ) ;
+				Channel::MODE_p ) ) ;
 			break;
 		case 's':  //Secret?
-			theChan->removeMode(Channel::MODE_S);
+			theChan->removeMode(Channel::MODE_s);
 			modeVector.push_back( make_pair( false,
-				Channel::MODE_S ) ) ;
+				Channel::MODE_s ) ) ;
 			break;
 		case 'm':  //Moderated?
-			theChan->removeMode(Channel::MODE_M);
+			theChan->removeMode(Channel::MODE_m);
 			modeVector.push_back( make_pair( false,
-				Channel::MODE_M ) ) ;
+				Channel::MODE_m ) ) ;
 			break;
 		case 'n':  //No External Messages?
-			theChan->removeMode(Channel::MODE_N);
+			theChan->removeMode(Channel::MODE_n);
 			modeVector.push_back( make_pair( false,
-				Channel::MODE_N ) ) ;
+				Channel::MODE_n ) ) ;
 			break;
 		case 't':  //Topic?
-			theChan->removeMode(Channel::MODE_T);
+			theChan->removeMode(Channel::MODE_t);
 			modeVector.push_back( make_pair( false,
-				Channel::MODE_T ) ) ;
+				Channel::MODE_t ) ) ;
 			break;
 		case 'r':  //Registered Only?
-			theChan->removeMode(Channel::MODE_R);
+			theChan->removeMode(Channel::MODE_r);
 			modeVector.push_back( make_pair( false,
-				Channel::MODE_R ) ) ;
+				Channel::MODE_r ) ) ;
 			break;
 		// Do not remove 'R' mode (Channel::MODE_REG)
 		case 'D':  // new .12 mode for busy channels
@@ -2650,24 +2650,24 @@ for( string::size_type modePos = 0 ; modePos < modes.size() ; ++modePos )
 				Channel::MODE_D ) ) ;
 			break;
 		case 'c':  // new u2.10.12.15 mode to prevent chan colours
+			theChan->removeMode(Channel::MODE_c);
+			modeVector.push_back(make_pair(false,
+				Channel::MODE_c));
+			break;
+		case 'C':  // new u2.10.12.15 mode to prevent chan CTCPs (except ACTION)
 			theChan->removeMode(Channel::MODE_C);
 			modeVector.push_back(make_pair(false,
 				Channel::MODE_C));
 			break;
-		case 'C':  // new u2.10.12.15 mode to prevent chan CTCPs (except ACTION)
-			theChan->removeMode(Channel::MODE_CTCP);
-			modeVector.push_back(make_pair(false,
-				Channel::MODE_CTCP));
-			break;
 		case 'u':  // mode to prevent part messages
-			theChan->removeMode(Channel::MODE_PART);
+			theChan->removeMode(Channel::MODE_u);
 			modeVector.push_back(make_pair(false,
-				Channel::MODE_PART));
+				Channel::MODE_u));
 			break;
 		case 'M':  // mode to prevent part messages
-			theChan->removeMode(Channel::MODE_MNOREG);
+			theChan->removeMode(Channel::MODE_M);
 			modeVector.push_back(make_pair(false,
-				Channel::MODE_MNOREG));
+				Channel::MODE_M));
 			break;
 		case 'A':  // Apass for oplevels
 			if (theChan->getMode(Channel::MODE_A))

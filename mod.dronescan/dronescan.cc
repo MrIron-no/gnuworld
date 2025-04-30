@@ -1630,16 +1630,16 @@ bool dronescan::checkChannel( const Channel *theChannel , const iClient *theClie
 		{
 		/* This channel is voted abnormal. */
 		std::stringstream chanStat, chanParams;
-		if(theChannel->getMode(Channel::MODE_I)) chanStat << "i";
-		if(theChannel->getMode(Channel::MODE_R)) chanStat << "r";
+		if(theChannel->getMode(Channel::MODE_i)) chanStat << "i";
+		if(theChannel->getMode(Channel::MODE_r)) chanStat << "r";
 
-		if(theChannel->getMode(Channel::MODE_K)) {
+		if(theChannel->getMode(Channel::MODE_k)) {
 			chanStat << "k";
 			chanParams << theChannel->getKey();
 		}
-		if(theChannel->getMode(Channel::MODE_L)) {
+		if(theChannel->getMode(Channel::MODE_l)) {
 			chanStat << "l";
-			if(theChannel->getMode(Channel::MODE_K)) chanParams << " ";
+			if(theChannel->getMode(Channel::MODE_k)) chanParams << " ";
 			chanParams << theChannel->getLimit();
 		}
 

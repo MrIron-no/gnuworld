@@ -72,13 +72,13 @@ if(Chan)
         return false;
         }
 
-if(theChan->getMode(Channel::MODE_M))
+if(theChan->getMode(Channel::MODE_m))
 	{
 	bot->Notice( theClient,"Channel %s is already moderated",st[ 1 ].c_str());
 	return false;
 	}
 
-//theChan->setMode(Channel::MODE_M);
+//theChan->setMode(Channel::MODE_m);
 bot->Mode( theChan, "+m", string(), true );
 return true;
 }

@@ -115,19 +115,19 @@ for( std::string::size_type i = 0 ; i < Modes.size() ; i++ )
 			break ;
 		case 's':
 			modeVector.push_back( make_pair(
-				false, Channel::MODE_S ) ) ;
+				false, Channel::MODE_s ) ) ;
 //			elog	<< tmpChan->getName()
 //				<< "msg_CM> Doing CLEAR_SECRET"
 //				<< endl;
 			break ;
 		case 'r':
 			modeVector.push_back( make_pair(
-				false, Channel::MODE_R ) ) ;
+				false, Channel::MODE_r ) ) ;
 //			elog	<< tmpChan->getName()
 //				<< "msg_CM> Doing CLEAR_REGISTER"
 //				<< endl;
 			break ;
-		// Do not remove mode R (Channel::MODE_REG)
+		// Do not remove mode R (Channel::MODE_R)
 		case 'D':
 			modeVector.push_back( make_pair(
 				false, Channel::MODE_D ) ) ;
@@ -137,51 +137,65 @@ for( std::string::size_type i = 0 ; i < Modes.size() ; i++ )
 			break ;
 		case 'c':
 			modeVector.push_back(make_pair(
-				false, Channel::MODE_C));
+				false, Channel::MODE_c));
 			//			elog	<< tmpChan->getName()
 			//				<< "msg_CM> Doing CLEAR_MODE_C"
 			//				<< endl;
 			break;
 		case 'C':
 			modeVector.push_back(make_pair(
-				false, Channel::MODE_CTCP));
+				false, Channel::MODE_C));
 			//			elog	<< tmpChan->getName()
 			//				<< "msg_CM> Doing CLEAR_MODE_CTCP"
 			//				<< endl;
 			break;
 		case 'm':
 			modeVector.push_back( make_pair(
-				false, Channel::MODE_M ) ) ;
+				false, Channel::MODE_m ) ) ;
 //			elog	<< tmpChan->getName()
 //				<< "msg_CM> Doing CLEAR_MODERATED"
 //				<< endl;
 			break ;
 		case 't':
 			modeVector.push_back( make_pair(
-				false, Channel::MODE_T ) ) ;
+				false, Channel::MODE_t ) ) ;
 //			elog	<< tmpChan->getName()
 //				<< "msg_CM> Doing CLEAR_TOPICLIMIT"
 //				<< endl;
 			break ;
 		case 'i':
 			modeVector.push_back( make_pair(
-				false, Channel::MODE_I ) ) ;
+				false, Channel::MODE_i ) ) ;
 //			elog	<< tmpChan->getName()
 //				<< "msg_CM> Doing CLEAR_INVITEONLY"
 //				<< endl;
 			break ;
 		case 'n':
 			modeVector.push_back( make_pair(
-				false, Channel::MODE_N ) ) ;
+				false, Channel::MODE_n ) ) ;
 //			elog	<< tmpChan->getName()
 //				<< "msg_CM> Doing CLEAR_NOPRIVMSGS"
 //				<< endl;
 			break ;
 		case 'p':
 			modeVector.push_back( make_pair(
-				false, Channel::MODE_P ) ) ;
+				false, Channel::MODE_p ) ) ;
 //			elog	<< tmpChan->getName()
 //				<< "msg_CM> Doing CLEAR_NOPRIVMSGS"
+//				<< endl;
+			break ;
+		case 'u':
+			modeVector.push_back( make_pair(
+				false, Channel::MODE_u ) ) ;
+//			elog	<< tmpChan->getName()
+//				<< "msg_CM> Doing CLEAR_u"
+//				<< endl;
+			break ;
+		case 'M':
+			modeVector.push_back( make_pair(
+				false, Channel::MODE_M ) ) ;
+//			elog	<< tmpChan->getName()
+//				<< "msg_CM> Doing CLEAR_M"
 //				<< endl;
 			break ;
 		case 'k':

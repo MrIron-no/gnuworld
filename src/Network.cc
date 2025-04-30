@@ -1615,7 +1615,7 @@ list<const Channel*> xNetwork::getChannelsWithKey(const string& key) const
 
 	for (const_channelIterator cptr = channels_begin(); (cptr != channels_end()); cptr++)
 	{
-		if ((cptr->second->getMode(Channel::MODE_K)) && (!match(key,cptr->second->getKey())))
+		if ((cptr->second->getMode(Channel::MODE_k)) && (!match(key,cptr->second->getKey())))
 			retMe.push_back(cptr->second);
 	}
 	return retMe;
@@ -1651,71 +1651,71 @@ list<const Channel*> xNetwork::getChannelsWithModes(const string& modes) const
 			/* check modes */
 			switch (ch) {
 				case 'k':	/* keyed */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_K))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_K)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_k))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_k)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'l':	/* limit */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_L))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_L)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_l))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_l)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'i':	/* invite */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_I))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_I)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_i))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_i)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'm':	/* moderated */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_M))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_M)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_m))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_m)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'n':	/* no outside messages */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_N))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_N)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_n))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_n)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'p':	/* private */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_P))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_P)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_p))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_p)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 's':	/* secret */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_S))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_S)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_s))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_s)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 't':	/* no outside topics */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_T))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_T)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_t))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_t)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'r':	/* registered users only */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_R))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_R)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_r))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_r)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'R':	/* registered channel */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_REG))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_REG)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_R))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_R)))
 						{
 							foundMatch = false;
 						}
@@ -1728,29 +1728,29 @@ list<const Channel*> xNetwork::getChannelsWithModes(const string& modes) const
 						}
 						break;
 				case 'c':	/* new u2.10.12.15 mode to prevent chan colours */
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_c))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_c)))
+						{
+							foundMatch = false;
+						}
+						break;
+				case 'C':	/* new u2.10.12.15 mode to prevent chan CTCPs (except ACTION) */
 						if ((!modeflag && cptr->second->getMode(Channel::MODE_C))
 							|| (modeflag && !cptr->second->getMode(Channel::MODE_C)))
 						{
 							foundMatch = false;
 						}
 						break;
-				case 'C':	/* new u2.10.12.15 mode to prevent chan CTCPs (except ACTION) */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_CTCP))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_CTCP)))
-						{
-							foundMatch = false;
-						}
-						break;
 				case 'u':	/* mode to prevent part messages */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_PART))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_PART)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_u))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_u)))
 						{
 							foundMatch = false;
 						}
 						break;
 				case 'M':	/* mode to prevent part messages */
-						if ((!modeflag && cptr->second->getMode(Channel::MODE_MNOREG))
-							|| (modeflag && !cptr->second->getMode(Channel::MODE_MNOREG)))
+						if ((!modeflag && cptr->second->getMode(Channel::MODE_M))
+							|| (modeflag && !cptr->second->getMode(Channel::MODE_M)))
 						{
 							foundMatch = false;
 						}

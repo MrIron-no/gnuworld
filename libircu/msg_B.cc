@@ -187,35 +187,35 @@ if( '+' == Param[ whichToken ][ 0 ] )
 			{
 			case 't':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_T ) ) ;
+					true, Channel::MODE_t ) ) ;
 				break ;
 			case 'n':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_N ) ) ;
+					true, Channel::MODE_n ) ) ;
 				break ;
 			case 'm':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_M ) ) ;
+					true, Channel::MODE_m ) ) ;
 				break ;
 			case 'p':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_P ) ) ;
+					true, Channel::MODE_p ) ) ;
 				break ;
 			case 's':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_S ) ) ;
+					true, Channel::MODE_s ) ) ;
 				break ;
 			case 'i':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_I ) ) ;
+					true, Channel::MODE_i ) ) ;
 				break ;
 			case 'r':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_R ) ) ;
+					true, Channel::MODE_r ) ) ;
 				break ;
 			case 'R':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_REG ) ) ;
+					true, Channel::MODE_R ) ) ;
 				break ;
 			case 'D':
 				modeVector.push_back( make_pair(
@@ -223,19 +223,19 @@ if( '+' == Param[ whichToken ][ 0 ] )
 				break ;
 			case 'c':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_C ) ) ;
+					true, Channel::MODE_c ) ) ;
 				break ;
 			case 'C':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_CTCP ) ) ;
+					true, Channel::MODE_C ) ) ;
 				break ;
 			case 'u':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_PART ) ) ;
+					true, Channel::MODE_u ) ) ;
 				break ;
 			case 'M':
 				modeVector.push_back( make_pair(
-					true, Channel::MODE_MNOREG ) ) ;
+					true, Channel::MODE_M ) ) ;
 				break ;
  			case 'l':
 				theServer->OnChannelModeL( theChan, true, 

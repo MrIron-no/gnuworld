@@ -68,7 +68,7 @@ if( NULL == theChan )
 	return true ;
 	}
 
-if(!theChan->getMode(Channel::MODE_M))
+if(!theChan->getMode(Channel::MODE_m))
 	{
 	bot->Notice( theClient,"Channel %s is not moderated",
 		st[ 1 ].c_str());

@@ -850,14 +850,14 @@ if( theClone->findChannel( theChan ) )
   return 0 ;
 
 /* Check channel modes. */
-if( theChan->getMode( Channel::MODE_I )
-  || theChan->getMode( Channel::MODE_K )
-  || ( theChan->getMode( Channel::MODE_L )
+if( theChan->getMode( Channel::MODE_i )
+  || theChan->getMode( Channel::MODE_k )
+  || ( theChan->getMode( Channel::MODE_l )
   && theChan->getLimit() < theChan->size() ) )
   return 0 ;
 
 /* Chanmode +r? */
-if( theChan->getMode( Channel::MODE_R )
+if( theChan->getMode( Channel::MODE_r )
   && !theClone->getMode( iClient::MODE_REGISTERED ) )
   return 0 ;
 

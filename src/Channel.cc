@@ -42,24 +42,6 @@ using std::string ;
 using std::endl ;
 using std::stringstream ;
 
-const Channel::modeType Channel::MODE_T	      = 0x00001 ;
-const Channel::modeType Channel::MODE_N       = 0x00002 ;
-const Channel::modeType Channel::MODE_S       = 0x00004 ;
-const Channel::modeType Channel::MODE_P       = 0x00008 ;
-const Channel::modeType Channel::MODE_K       = 0x00010 ;
-const Channel::modeType Channel::MODE_L       = 0x00020 ;
-const Channel::modeType Channel::MODE_M       = 0x00040 ;
-const Channel::modeType Channel::MODE_I       = 0x00080 ;
-const Channel::modeType Channel::MODE_R       = 0x00100 ;
-const Channel::modeType Channel::MODE_D       = 0x00200 ;
-const Channel::modeType Channel::MODE_A       = 0x00400 ;
-const Channel::modeType Channel::MODE_U       = 0x00800 ;
-const Channel::modeType Channel::MODE_REG     = 0x01000 ;
-const Channel::modeType Channel::MODE_C       = 0x02000 ;
-const Channel::modeType Channel::MODE_CTCP    = 0x04000 ;
-const Channel::modeType Channel::MODE_PART    = 0x08000 ;
-const Channel::modeType Channel::MODE_MNOREG  = 0x10000 ;
-
 Channel::Channel( const string& _name,
 	const time_t& _creationTime )
  : name( _name ),
@@ -316,12 +298,12 @@ void Channel::onModeL( bool polarity, const unsigned int& newLimit )
 {
 if( polarity )
 	{
-	setMode( MODE_L ) ;
+	setMode( MODE_l ) ;
 	setLimit( newLimit ) ;
 	}
 else
 	{
-	removeMode( MODE_L ) ;
+	removeMode( MODE_l ) ;
 	setLimit( 0 ) ;
 	}
 }
@@ -330,12 +312,12 @@ void Channel::onModeK( bool polarity, const string& newKey )
 {
 if( polarity )
 	{
-	setMode( MODE_K ) ;
+	setMode( MODE_k ) ;
 	setKey( newKey ) ;
 	}
 else
 	{
-	removeMode( MODE_K ) ;
+	removeMode( MODE_k ) ;
 	setKey( string() ) ;
 	}
 }
@@ -349,7 +331,7 @@ if( polarity )
 	}
 else
 	{
-	removeMode( MODE_K ) ;
+	removeMode( MODE_A ) ;
 	setApass( string() ) ;
 	}
 }
@@ -479,27 +461,27 @@ const string Channel::getModeString() const
 string modeString( "+" ) ;
 string argString ;
 
-if( modes & MODE_T )		modeString += 't' ;
-if( modes & MODE_N )		modeString += 'n' ;
-if( modes & MODE_S )		modeString += 's' ;
-if( modes & MODE_P )		modeString += 'p' ;
-if( modes & MODE_M )		modeString += 'm' ;
-if( modes & MODE_I )		modeString += 'i' ;
-if( modes & MODE_R )		modeString += 'r' ;
-if( modes & MODE_REG )		modeString += 'R' ;
+if( modes & MODE_t )		modeString += 't' ;
+if( modes & MODE_n )		modeString += 'n' ;
+if( modes & MODE_s )		modeString += 's' ;
+if( modes & MODE_p )		modeString += 'p' ;
+if( modes & MODE_m )		modeString += 'm' ;
+if( modes & MODE_i )		modeString += 'i' ;
+if( modes & MODE_r )		modeString += 'r' ;
+if( modes & MODE_R )		modeString += 'R' ;
 if( modes & MODE_D )		modeString += 'D' ;
-if( modes & MODE_C )		modeString += 'c';
-if( modes & MODE_CTCP )		modeString += 'C';
-if( modes & MODE_PART )		modeString += 'u';
-if( modes & MODE_MNOREG )	modeString += 'M';
+if( modes & MODE_c )		modeString += 'c';
+if( modes & MODE_C )		modeString += 'C';
+if( modes & MODE_u )		modeString += 'u';
+if( modes & MODE_M )		modeString += 'M';
 
-if( modes & MODE_K )
+if( modes & MODE_k )
 	{
 	modeString += 'k' ;
 	argString += getKey() + ' ' ;
 	}
 
-if( modes & MODE_L )
+if( modes & MODE_l )
 	{
 	modeString += 'l' ;
 

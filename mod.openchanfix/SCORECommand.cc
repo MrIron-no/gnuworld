@@ -54,7 +54,7 @@ Channel* netChan = Network->findChannel(st[1]);
 
 // If netchan is not null, AND either canScoreChan is false or the chan is +R
 // reject the request
-if ((netChan) && (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REG))) {
+if ((netChan) && (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_R))) {
   if (compact)
     bot->SendTo(theClient, "~! %s", netChan->getName().c_str());
   else

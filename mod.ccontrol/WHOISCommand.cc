@@ -153,7 +153,7 @@ for( iClient::const_channelIterator ptr = Target->channels_begin() ;
         tChannel = theChannel->getName();
         if(theChannelUser->getMode(gnuworld::ChannelUser::MODE_V)) tChannel = "+" + tChannel;
         if(theChannelUser->getMode(gnuworld::ChannelUser::MODE_O)) tChannel = "@" + tChannel;
-	if ((theChannel->getMode(Channel::MODE_S)) || (theChannel->getMode(Channel::MODE_P)))
+	if ((theChannel->getMode(Channel::MODE_s)) || (theChannel->getMode(Channel::MODE_p)))
 		tChannel = "!" + tChannel;
 
 	hasCC = false;
