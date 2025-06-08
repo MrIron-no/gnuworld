@@ -582,7 +582,6 @@ if( cPtr->isTLS() && !cPtr->isNegotiatingTLS() )
 	if( res > 0 )
 		{
 		elog << "ConnectionManager::Disconnect> TLS connection gracefully shut down." << endl ;
-		SSL_free( cPtr->getTlsState() ) ;
 		}
 	}
 #endif
@@ -912,7 +911,6 @@ for( eraseMapIterator eraseItr = eraseMap.begin(),
 			if( res > 0 )
 				{
 				elog << "ConnectionManager::Poll> TLS connection gracefully shut down." << endl ;
-				SSL_free( connectionPtr->getTlsState() ) ;
 				}
 			else
 				{
