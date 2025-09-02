@@ -87,6 +87,26 @@ class Command;
 
 class cservice : public xClient
 {
+private:
+    enum class SaslMechanism {
+        PLAIN,
+		EXTERNAL
+    } ;
+
+    struct SaslRequest {
+		iServer* theServer ;
+		time_t added_ts ;
+		time_t last_ts ;
+        string routing ;
+		string ip ;
+		string ident ;
+		string fingerprint ;
+        SaslMechanism mechanism ;
+        string credentials ;
+    } ;
+
+    std::vector< SaslRequest > saslRequests ;
+
 protected:
 
 	EConfig* cserviceConfig; /* Configfile */
@@ -327,6 +347,7 @@ public:
 	bool processAuthentication( AuthStruct, std::string* Message = nullptr ) ;
 
 	bool doXQLogin(iServer* , const string&, const string&);
+	bool doXQSASL(iServer* , const string&, const string&);
 	bool doXQIsCheck(iServer*, const string&, const string&, const string&);
 	void doXQToAllServices(const string&, const string&);
 

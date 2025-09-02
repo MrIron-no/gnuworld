@@ -191,9 +191,11 @@ if( '+' == params[ currentArgIndex ][ 0 ] )
 			case 'f':
 				fakehost = params[ currentArgIndex++ ] ;
 				break ;
+#ifndef NO_FINGERPRINT_BURST
 			case 'z':
 				tlsFingerprint = params[ currentArgIndex++ ] ;
 				break ;
+#endif
 			default: break ;
 			} // switch( *modePtr )
 		} // for()

@@ -81,6 +81,12 @@
  */
 #define TOPIC_TRACK
 
+/** 
+ * NO_FINGERPRINT_BURST
+ * Disable this if gnuworld is linked to a hub that doesn't support fingerprint burst. 
+ */
+#undef NO_FINGERPRINT_BURST
+
 /**
  * DAEMON
  * Set this to make GNUWorld fork into the background when run.

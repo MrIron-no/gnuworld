@@ -36,6 +36,8 @@
 #include	<cstdarg>
 #include	<chrono>
 
+#include	<openssl/evp.h>
+
 #include	"client.h"
 #include	"cservice.h"
 #include	"EConfig.h"
@@ -5313,6 +5315,10 @@ switch( theEvent )
 			{
 			doXQIsCheck(theServer, Routing, Command, Message);
 			}
+		if (Command == "SASL")
+			{
+			doXQSASL(theServer, Routing, Message);
+			}
 		break;
 		}
 	case EVT_XREPLY:
@@ -9067,6 +9073,194 @@ if( retMe && ( auth.type == AuthType::LOGIN || auth.type == AuthType::CERTAUTH )
 	doCommonAuth( auth.theClient, auth.theUser->getUserName() ) ;
 
 return retMe ;
+}
+
+bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string& Message )
+{
+	elog << "cservice::doXQSASL: Routing: " << Routing << " Message: " << Message << "\n" ;
+
+	StringTokenizer st( Message ) ;
+	if( st.size() < 1 )
+		{
+		elog << "Received empty SASL message... Ignoring." << endl;
+		return false ;
+		}
+
+	// Delete timed out requests.
+	auto it = saslRequests.begin() ;
+	while( it != saslRequests.end() )
+		{
+		if( currentTime() - it->last_ts > 30 ) // TODO: Make configurable
+			it = saslRequests.erase(it) ;
+		else
+			++it ;
+		}
+
+	// Check if we have an existing entry with this routing and server
+    it = std::find_if(
+        saslRequests.begin(),
+        saslRequests.end(),
+        [&]( const SaslRequest& req )
+			{ return req.routing == Routing && req.theServer == theServer ; }
+    ) ;
+
+	/* Found existing challenge. */
+	if( it != saslRequests.end() )
+    	{
+        elog << "Found matching SASL request for Routing: " << Routing << "\n" ;
+		string username;
+		string password;
+		string authMessage = st[ 1 ] ;
+
+		it->last_ts = currentTime() ;
+
+		// If the message is 400 bytes long we add it to the struct and wait for the next message.
+		if( authMessage.size() == 400 )
+			{
+			it->credentials += authMessage ;
+			return true ;
+			}
+
+		if( authMessage != "+" )
+			it->credentials += authMessage ;
+
+		if( it->mechanism == SaslMechanism::PLAIN )
+			{
+			std::vector< unsigned char > buffer( it->credentials.size() ) ;
+			int len = EVP_DecodeBlock( buffer.data(),
+					reinterpret_cast< const unsigned char* >( it->credentials.data() ),
+					it->credentials.size() ) ;
+			if( len < 0 )
+				{
+				doXResponse( theServer, Routing, "Invalid credentials", true ) ;
+				saslRequests.erase( it ) ;
+				return false ;
+				}
+
+			string decodedString = std::string( reinterpret_cast< char* >( buffer.data() ), len ) ;
+			size_t p1 = decodedString.find( '\0' ) ;
+			size_t p2 = decodedString.find( '\0', p1 + 1 ) ;
+			username = decodedString.substr( p1 + 1, p2 - ( p1 + 1 ) ) ;
+			password = decodedString.substr( p2 + 1 ) ;
+			}
+		else if( it->mechanism == SaslMechanism::EXTERNAL )
+			{
+			// A client certificate has to be provided.
+			if( it->fingerprint.empty() )
+				{
+				doXResponse( theServer, Routing, "Client certificate required for EXTERNAL mechanism", true ) ;
+				saslRequests.erase( it ) ;
+				return false ;
+				}
+
+			// We only support EXTERNAL if a username has been provided.
+			if( it->credentials.empty() )
+				{
+				doXResponse( theServer, Routing, "Username required for EXTERNAL mechanism", true ) ;
+				saslRequests.erase( it ) ;
+				return false ;
+				}
+
+			std::vector< unsigned char > buffer( it->credentials.size() ) ;
+			int len = EVP_DecodeBlock( buffer.data(),
+					reinterpret_cast< const unsigned char* >( it->credentials.data() ),
+					it->credentials.size() ) ;
+			if( len < 0 )
+				{
+				doXResponse( theServer, Routing, "Invalid username", true ) ;
+				saslRequests.erase( it ) ;
+				return false ;
+				}
+
+			string decodedString = std::string( reinterpret_cast< char* >( buffer.data() ), len ) ;
+			size_t p1 = decodedString.find( '\0' ) ;
+			size_t p2 = decodedString.find( '\0', p1 + 1 ) ;
+			username = decodedString.substr( p1 + 1, p2 - ( p1 + 1 ) ) ;
+			password = decodedString.substr( p2 + 1 ) ; // We check for password in case a TOTP token has been provided.
+			}
+
+		elog << "Authenticating with username " << username << " and password " << password << "\n" ;
+		AuthStruct auth = {
+			AuthType::XQUERY, 	// auth type
+			AUTH_ERROR,			// result (placeholder)
+			username,			// username
+			password,			// password/token
+			it->ident,			// ident (currently empty)
+			it->ip,				// ip
+			it->fingerprint,	// tls fingerprint
+			nullptr,			// sqlUser (placeholder)
+			nullptr				// iClient (not in use for LoC)
+		} ;
+
+		AuthResult auth_res = authenticateUser( auth ) ;
+		auth.result = auth_res ;
+
+		/* Process result. */
+		if( auth_res == AUTH_SUCCEEDED )
+			{
+			doXResponse( theServer, Routing, auth.theUser->getUserName() + ":" +
+							std::to_string( auth.theUser->getID() ) + ":" +
+							std::to_string( makeAccountFlags( auth.theUser ) ) ) ;
+			elog    << "cservice::doXQSASL: "
+					<< "Succesful auth for "
+					<< username
+					<< endl ;
+			return true;
+			}
+
+		/* The authentication failed. Process and send correct message. */
+		string AuthResponse ;
+		processAuthentication( auth, &AuthResponse ) ;
+
+		/* Send response. */
+		doXResponse( theServer, Routing, AuthResponse, true ) ;
+
+		saslRequests.erase( it ) ;
+		return false ;
+    	}
+	// It is the initial message consisting of the mechanism.
+	else
+    	{
+		if( st.size() < 2 )
+			{
+			elog << "Received SASL message without IP and fingerprint." << endl ;
+			doXResponse( theServer, Routing, "An error has occurred", true ) ;
+			return false ;
+			}
+
+		string IP = st[ 1 ] ;
+		string fingerprint = st[ 2 ] ;
+		string authMessage = string_upper( st[ 3 ] ) ;
+
+		// First message shall contain the mechanism.
+
+		// Invalid mechanism? 
+		if( authMessage != "EXTERNAL" && authMessage != "PLAIN")
+			{
+			elog << "Received invalid mechanism." << endl ;
+			MyUplink->XReply( theServer, Routing, "MECHS external,plain") ;
+			return false ;
+			}
+
+		// Valid mechanism - store in cache for further use.
+		elog << "Received valid SASL mechanism: " << authMessage << " from IP: " << IP << endl;
+		SaslRequest newRequest ;
+		newRequest.routing = Routing ;
+		newRequest.theServer = theServer ;
+		newRequest.ip = IP ;
+		newRequest.added_ts = currentTime() ;
+		newRequest.last_ts = currentTime() ;
+		newRequest.fingerprint = fingerprint == "_" ? "" : fingerprint ;
+		if( authMessage == "EXTERNAL" )
+    			newRequest.mechanism = SaslMechanism::EXTERNAL ;
+		else if( authMessage == "PLAIN" )
+    			newRequest.mechanism = SaslMechanism::PLAIN ;
+
+		saslRequests.push_back( newRequest ) ;
+
+		MyUplink->XReply( theServer, Routing, "SASL +" ) ;
+	}
+    return true;
 }
 
 bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string& Message)
