@@ -9205,6 +9205,8 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 					<< "Succesful auth for "
 					<< username
 					<< endl ;
+
+			saslRequests.erase( it ) ;
 			return true;
 			}
 
