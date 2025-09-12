@@ -25,6 +25,7 @@
 
 #include	<iostream>
 #include	<string>
+#include	<string_view>
 #include	<vector>
 #include	<map>
 #include	<array>
@@ -45,6 +46,7 @@
 #include	"sqlPendingChannel.h"
 #include	"csGline.h"
 #include	"dbHandle.h"
+#include	"cservice_crypt.h"
 
 namespace gnuworld
 {
@@ -56,7 +58,8 @@ using std::map ;
 enum class AuthType {
 	LOGIN,
 	XQUERY,
-	CERTAUTH
+	CERTAUTH,
+	SCRAM
 } ;
 
 /*
@@ -88,12 +91,32 @@ class Command;
 class cservice : public xClient
 {
 private:
+    /*
+     * Declare SASL mechanisms once using an X-macro list. Each entry:
+     *   X(EnumName, CanonicalName)
+     * CanonicalName may be any consistent casing; helpers will convert as needed.
+     */
+#define CSERVICE_SASL_MECH_LIST \
+	X( PLAIN,          "PLAIN" ) \
+	X( SCRAM_SHA_256,  "SCRAM-SHA-256" ) \
+	X( EXTERNAL,       "EXTERNAL" )
+
     enum class SaslMechanism {
-        PLAIN,
-		EXTERNAL
+#define X(NAME, NAME_STR) NAME,
+        CSERVICE_SASL_MECH_LIST
+#undef X
     } ;
 
-    struct SaslRequest {
+    enum class SaslState {
+		INITIAL,            // Waiting for the first client message
+		CLIENT_FIRST,       // Received client-first-message (SCRAM step 1)
+		SERVER_FIRST,       // Sent server-first-message, waiting for client-final-message (SCRAM step 2)
+		CLIENT_FINAL,       // Received client-final-message (SCRAM step 3)
+		COMPLETE,           // Authentication complete (success or failure)
+		FAILED              // Authentication failed
+    } ;
+
+	struct SaslRequest {
 		iServer* theServer ;
 		time_t added_ts ;
 		time_t last_ts ;
@@ -101,11 +124,23 @@ private:
 		string ip ;
 		string ident ;
 		string fingerprint ;
+		string username ;
+		string password ;
         SaslMechanism mechanism ;
         string credentials ;
+		string client_nonce ;
+		string server_nonce ;
+		string client_first ;
+		string server_first ;
+		string client_final ;
+		SaslState state = SaslState::INITIAL ;
+		ScramParsed scram ;
     } ;
 
     std::vector< SaslRequest > saslRequests ;
+	static bool parseSaslMechanism( const std::string&, SaslMechanism& ) ;
+	static std::string saslMechanismToString( cservice::SaslMechanism ) ;
+    static std::string saslMechsAdvertiseList() ;
 
 protected:
 
@@ -818,6 +853,8 @@ public:
 	unsigned int partIdleChan;
 
 	unsigned int MAXnotes;
+
+	unsigned int saslTimeout;
 
 	void doCoderStats(iClient* theClient);
 

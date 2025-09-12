@@ -46,7 +46,7 @@ static const char* lvl_42_cmds = "\002Level   42\002: PANIC";
 static const char* lvl_25_cmds = "\002Level   25\002: voice devoice";
 static const char* lvl_1_cmds = "\002Level    1\002: banlist status%s";
 static const char* lvl_adm_cmds = "\002Level    *\002: force unforce stats";
-static const char* lvl_0_cmds = "\002Level    0\002: access chaninfo cert info help* lbanlist login motd* newpass showcommands showignore verify suspendme";
+static const char* lvl_0_cmds = "\002Level    0\002: access chaninfo info help* lbanlist login motd* newpass showcommands showignore verify suspendme";
 
 #ifdef USE_OPERPARTJOIN
 static const char* lvl_oper_cmds = "\002Level Oper\002: operjoin* operpart*";

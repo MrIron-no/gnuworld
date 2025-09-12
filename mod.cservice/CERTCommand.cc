@@ -32,18 +32,25 @@ bool CERTCommand::Exec( iClient* theClient, const string& Message )
 {
 bot->incStat("COMMANDS.CERT");
 
+sqlUser* theUser = bot->isAuthed( theClient, true ) ;
+if( !theUser )
+	{
+	return false ;
+ 	}
+
+// For now, only allow admins to use this command.
+int admLevel = bot->getAdminAccessLevel(theUser);
+if (admLevel < 1000)
+	{
+	return false;
+	}
+
 StringTokenizer st( Message ) ;
 if( st.size() < 2 )
 	{
 	Usage( theClient ) ;
 	return true ;
 	}
-
-sqlUser* theUser = bot->isAuthed( theClient, true ) ;
-if( !theUser )
-	{
-	return false ;
- 	}
 
 string Command = string_upper( st[ 1 ] ) ;
 if( ( Command != "ADD" ) && ( Command != "REM" ) && ( Command != "LIST" ) )

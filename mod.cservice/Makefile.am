@@ -10,6 +10,7 @@ libcservice_la_CXXFLAGS = -I$(top_srcdir)/db -I${top_srcdir}/include \
 libcservice_la_SOURCES = \
 	mod.cservice/banMatcher.cc \
 	mod.cservice/cservice.cc \
+	mod.cservice/cservice_crypt.cc \
 	mod.cservice/networkData.cc \
 	mod.cservice/sqlChannel.cc \
 	mod.cservice/sqlUser.cc \

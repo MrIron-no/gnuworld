@@ -117,3 +117,8 @@ INSERT INTO translations (language_id, response_id, text, last_updated) VALUES(1
 INSERT INTO translations (language_id, response_id, text, last_updated) VALUES(1, 225, 'You currently don''t have any fingerprints added to your account. For more information, use ''/msg X help cert''', 31337);
 
 INSERT INTO help VALUES ('CERT', '1', E'/msg X cert <add|rem|list> [fingerprint] [note]\nThis command allows you to add, remove and list TLS fingerprints added to your username.\nBy connecting to Undernet using TLS and a certificate, you may login to X without using a password if the certificate''s fingerprint has been added to your username.\nTo login to X with a fingerprint, use ''/msg X@channels.undernet.org login <username> [TOTP token]''.\nUsing CERT ADD or REM without specifying a fingerprint will add or remove the fingerprint you are currently connected with (if any).\nA specified fingerprint must be in a SHA-256 format (i.e. AB:CD:12:ED:34 ...).\nWhen having a fingerprint added to your account, you may deactivate password login on IRC using ''SET CERTONLY ON/OFF''. You will still be able to login to the website with your password.');
+
+-- 2025-09-04: MrIron
+--			   Added column for scram records.
+ALTER TABLE users
+  ADD COLUMN scram_record text;

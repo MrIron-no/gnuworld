@@ -252,6 +252,10 @@ std::string canonicalToCompact( const std::string& ) ;
 
 bool isValidSHA256Fingerprint( const std::string& ) ;
 
+/* Masks a string for logging purposes. Typically used for passwords. */
+inline std::string mask( const std::string& s )
+	{ return std::string( s.size(), '*' ) ; }
+
 } // namespace gnuworld
 
 #endif /* __MISC__ */

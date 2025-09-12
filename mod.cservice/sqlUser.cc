@@ -68,6 +68,7 @@ sqlUser::sqlUser(dbHandle* _SQLDb)
    notes_sent(0),
    failed_logins(0),
    failed_login_ts(0),
+   scram_record(),
    SQLDb( _SQLDb )
 {
 }
@@ -192,22 +193,25 @@ verifdata = SQLDb->GetValue(row, 11);
 failed_logins = 0;
 failed_login_ts = 0;
 totp_key = SQLDb->GetValue(row, 12);
+scram_record = SQLDb->GetValue(row, 13);
 /* Fetch the "Last Seen" time from the users_lastseen table. */
 
 }
 
 bool sqlUser::commit(iClient* who)
 {
+if(who)
+	return commit(who->getNickUserHost());
+else
+	return commit("Marvin, the paranoid android.");
+}
+
+bool sqlUser::commit(std::string last_updated_by)
+{
 /*
  *  Build an SQL statement to commit the transient data in this storage class
  *  back into the database.
  */
-if(who)
-{
-	last_updated_by = who->getNickUserHost();
-} else {
-	last_updated_by = "Marvin, the paranoid android.";
-}
 
 static const char* queryHeader =    "UPDATE users ";
 static const char* queryCondition = "WHERE id = ";
@@ -220,7 +224,8 @@ queryString	<< queryHeader
 		<< "maxlogins = " << maxlogins << ", "
 		<< "last_updated = date_part('epoch', CURRENT_TIMESTAMP)::int, "
 		<< "last_updated_by = '" << escapeSQLChars(last_updated_by) << "', "
-		<< "totp_key = '" << escapeSQLChars(totp_key) << "' "
+		<< "totp_key = '" << escapeSQLChars(totp_key) << "', "
+		<< "scram_record = '" << escapeSQLChars(scram_record) << "' "
 		<< queryCondition << id
 		<< ends;
 
@@ -511,7 +516,7 @@ bool sqlUser::Insert()
  */
 static const char* queryHeader =  "INSERT INTO users "
 	"(user_name,password,language_id,flags,last_updated_by,last_"
-	"updated,post_forms,signup_ts,email) VALUES ('";
+	"updated,post_forms,signup_ts,email,scram_record) VALUES ('";
 
 stringstream queryString;
 queryString	<< queryHeader
@@ -526,6 +531,7 @@ queryString	<< queryHeader
 		<< "(date_part('epoch', CURRENT_TIMESTAMP)::int + 432000),"
 		<< "date_part('epoch', CURRENT_TIMESTAMP)::int,'"
 		<< escapeSQLChars(email)
+		<< "','" << escapeSQLChars(scram_record)
 		<< "')"
 		<< ends;
 

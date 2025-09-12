@@ -153,6 +153,9 @@ public:
 	inline const std::string&	getTotpKey() const
 		{ return totp_key ; }
 
+	inline const std::string&	getScramRecord() const
+		{ return scram_record ; }
+
 	/*
 	 *  Methods to set data atrributes.
 	 */
@@ -221,12 +224,17 @@ public:
 
 	inline void setTotpKey( const std::string& _totp_key )
 		{ totp_key = _totp_key ; }
+
+	inline void setScramRecord( const std::string& _scram_record )
+		{ scram_record = _scram_record ; }
+
 	/*
 	 * Method to perform a SQL 'UPDATE' and commit changes to this
 	 * object back to the database.
 	 */
 
-	bool commit(iClient* who);
+	bool commit(iClient*);
+	bool commit(std::string);
 	bool commitLastSeen();
 	bool commitLastSeenWithoutMask();
 	time_t	getLastSeen();
@@ -270,6 +278,7 @@ protected:
 	unsigned int	failed_logins;
 	unsigned int	failed_login_ts;
 	std::string	totp_key;
+	std::string	scram_record;
 
 	dbHandle*	SQLDb;
 } ;

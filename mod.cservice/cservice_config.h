@@ -147,4 +147,16 @@
  */
 #undef USE_AC_XFLAGS
 
+/**
+ * Define the number of iterations for the SCRAM record generation.
+ * Must not exceed 4096.
+ */
+#define CRYPT_ITERATIONS 4096
+
+/**
+ * Define the length of the salt for the SCRAM record generation.
+ * Must be in the range of 12 to 64 bytes.
+ */
+#define CRYPT_SALT_LEN 16
+
 #endif // __CSERVICE_CONFIG_H

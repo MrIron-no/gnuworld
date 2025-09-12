@@ -3,6 +3,8 @@
 -- Channel service DB SQL file for PostgreSQL.
 
 -- ChangeLog:
+-- 2025-09-04: MrIron
+--			   Added column for scram records.
 -- 2025-04-23: MrIron
 --             Added table for TLS fingerprints.
 -- 2025-04-01: Empus
@@ -243,6 +245,7 @@ CREATE TABLE users (
 	signup_ts INT4,
 	signup_ip VARCHAR(15),
 	maxlogins INT4 DEFAULT 1,
+	scram_record TEXT,
 	totp_key  VARCHAR(60) DEFAULT '',
 	PRIMARY KEY ( id )
 ) ;
