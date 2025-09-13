@@ -64,15 +64,16 @@ if (tmpUser)
 	}
 
 cservice::AuthStruct auth = {
-	AuthType::LOGIN, 							// auth type
-	cservice::AUTH_ERROR,						// result (placeholder)
-	st[ 1 ],									// username
-	st.assemble( 2 ),							// password/token
-	theClient->getUserName(),					// ident
+	AuthType::LOGIN, 				// auth type
+	cservice::AUTH_ERROR,				// result (placeholder)
+	st[ 1 ],					// username
+	st.assemble( 2 ),				// password/token
+	theClient->getUserName(),			// ident
 	xIP( theClient->getIP() ).GetNumericIP(),	// ip
-	theClient->getTlsFingerprint(),				// tls fingerprint
-	nullptr,									// sqlUser (placeholder)
-	theClient									// iClient
+	theClient->getTlsFingerprint(),			// tls fingerprint
+	nullptr,					// sqlUser (placeholder)
+	theClient,					// iClient
+	{}						// no sasl
 } ;
 
 cservice::AuthResult auth_res = bot->authenticateUser( auth ) ;

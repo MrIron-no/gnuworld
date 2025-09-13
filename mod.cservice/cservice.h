@@ -57,9 +57,7 @@ using std::map ;
 
 enum class AuthType {
 	LOGIN,
-	XQUERY,
-	CERTAUTH,
-	SCRAM
+	XQUERY
 } ;
 
 /*
@@ -102,6 +100,7 @@ private:
 	X( EXTERNAL,       "EXTERNAL" )
 
     enum class SaslMechanism {
+        NO_SASL,
 #define X(NAME, NAME_STR) NAME,
         CSERVICE_SASL_MECH_LIST
 #undef X
@@ -177,6 +176,7 @@ public:
 		AUTH_SUSPENDED_USER,
 		AUTH_NO_TOKEN,
 		AUTH_INVALID_PASS,
+		AUTH_INVALID_FINGERPRINT,
 		AUTH_ERROR,
 		AUTH_INVALID_TOKEN,
 		AUTH_FAILED_IPR,
@@ -376,6 +376,7 @@ public:
 		std::string fingerprint ;
 		sqlUser* theUser ;
 		iClient* theClient ;
+		SaslMechanism sasl ;
 	} ;
 
 	AuthResult authenticateUser( AuthStruct& ) ;

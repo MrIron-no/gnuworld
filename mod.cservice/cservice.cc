@@ -8722,12 +8722,7 @@ void cservice::loadConfigVariables()
 cservice::AuthResult cservice::authenticateUser( AuthStruct& auth )
 {
 unsigned int ipr_ts ;
-bool noPassword = false ;
-bool certAuth = false ;
-
-/* We do not run password verification for SCRAM */
-if( auth.type == AuthType::SCRAM )
-	noPassword = true ;
+bool certAuth = false ; // Set to true if the client has a certificate matching the username
 
 /* 1: Check loginDelay. */
 unsigned int useLoginDelay = getConfigVar("USE_LOGIN_DELAY")->asInt();
@@ -8768,15 +8763,19 @@ if( theUser->getFlag( sqlUser::F_GLOBAL_SUSPEND ) )
  * the TOTP token (if any). If there is no match, we treat the password string as a
  * regular login.
  * 
+ * If the client is authenticating with EXTERNAL, the auth fails if the fingerprint does not match the username.
+ *
  */
 if( !auth.fingerprint.empty() )
 	{
 	auto it = fingerprintMap.find( auth.fingerprint ) ;
 	if( it != fingerprintMap.end() && it->second == theUser->getID() )
-		{
 		certAuth = true ;
-		noPassword = true ;
-		}
+	}
+
+if( auth.sasl == SaslMechanism::EXTERNAL && !certAuth )
+	{
+	return AUTH_INVALID_FINGERPRINT ;
 	}
 
 /* 6: If CERTONLY is set for this user, the auth fails if we did not get a fingerprint match. */
@@ -8787,7 +8786,7 @@ if( theUser->getFlag( sqlUser::F_CERTONLY ) && !certAuth )
 
 /**
  * 7: Check whether a TOTP token has been provided.
- * TOTP is not required for CERTAUTH if F_CERT_DISABLE_TOTP is set.
+ * TOTP is not required for fingerprint authentication if F_CERT_DISABLE_TOTP is set.
  */
 StringTokenizer st( auth.password ) ;
 StringTokenizer::size_type pass_end = st.size() ;
@@ -8797,7 +8796,9 @@ bool totp_enabled = false ;
 
 if( totpAuthEnabled && theUser->getFlag( sqlUser::F_TOTP_ENABLED ) )
 	{
-    if( ( certAuth && !theUser->getFlag( sqlUser::F_CERT_DISABLE_TOTP ) ) || noPassword ) 
+	/* If the user has a certificate matching the username or we are using SCRAM, the password is the TOTP token. */
+    if( ( certAuth && !theUser->getFlag( sqlUser::F_CERT_DISABLE_TOTP ) )
+		|| auth.sasl == SaslMechanism::SCRAM_SHA_256 ) 
 		{
         if( st.size() < 1 )
             return AUTH_NO_TOKEN ;
@@ -8805,7 +8806,8 @@ if( totpAuthEnabled && theUser->getFlag( sqlUser::F_TOTP_ENABLED ) )
         pass_end = st.size() - 1 ;
 		totp_enabled = true ;
 		}
-    else if( !certAuth && !noPassword )
+	/* If the user does not have a certificate matching the username and we are not using SCRAM, the second part of the password is the TOTP token. */
+    else if( !certAuth && auth.sasl != SaslMechanism::SCRAM_SHA_256 )
     	{
         if( st.size() < 2 )
             return AUTH_NO_TOKEN ;
@@ -8829,9 +8831,11 @@ if( needIPRcheck( theUser ) )
 
 /*
  * 9: Check password.
- * Password will not be checked for certAuth.
+ * Password will not be checked for EXTERNAL or SCRAM or when a matching certificate is provided.
  */
-if( !certAuth && !noPassword && !isPasswordRight( theUser, st.assemble( 0, pass_end ) ) )
+if( !certAuth && auth.sasl != SaslMechanism::SCRAM_SHA_256
+	&& auth.sasl != SaslMechanism::EXTERNAL
+	&& !isPasswordRight( theUser, st.assemble( 0, pass_end ) ) )
     {
     return AUTH_INVALID_PASS ;
     }
@@ -8839,15 +8843,17 @@ if( !certAuth && !noPassword && !isPasswordRight( theUser, st.assemble( 0, pass_
 /*
  * Compute SCRAM RECORD if it does not exist.
  */
-if( theUser->getScramRecord().empty() )
+if( !certAuth && auth.sasl != SaslMechanism::SCRAM_SHA_256
+	&& auth.sasl != SaslMechanism::EXTERNAL
+	&& theUser->getScramRecord().empty() )
 	{
 	std::string err ;
 	auto recOpt = make_scram_sha256_record( st.assemble( 0, pass_end ), &err ) ;
 
 	if( !recOpt )
 		{
-		elog << "SCRAM generation error: " << err << "\n";
-		logDebugMessage("SCRAM generation error: ", err.c_str() ) ;
+		elog << "[SCRAM] Record generation error: " << err << "\n";
+		logDebugMessage("[SCRAM] Record generation error: ", err.c_str() ) ;
 		}
 	else
 		{
@@ -8946,7 +8952,6 @@ else
 	clientMask = auth.ident + "@" + auth.ip ;
 
 string authResponse ;
-bool retMe = false ;
 bool setFailedLogin = false ;
 
 switch( auth.result )
@@ -9024,6 +9029,11 @@ switch( auth.result )
 	        }
 		setFailedLogin = true ;
 		break ;
+	case cservice::AUTH_INVALID_FINGERPRINT:
+		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s (Invalid fingerprint)",
+						auth.username.c_str() ) ;
+		setFailedLogin = true ;
+		break ;
 	case cservice::AUTH_ERROR:
 		authResponse = TokenStringsParams( "AUTHENTICATION FAILED as %s due to an error. Please contact a CService representative",
 						auth.username.c_str() ) ;
@@ -9089,7 +9099,6 @@ switch( auth.result )
 		setFailedLogin = true ;
 		break ;
 	case cservice::AUTH_SUCCEEDED:
-		retMe = true ;
 		break ;
 	default:
 		//Should never get here!
@@ -9111,18 +9120,29 @@ if( setFailedLogin )
 	}
 
 /* Send response only if it fails. If it succeeds, the message is sent from doCommonAuth() */
-if( ( auth.type == AuthType::LOGIN || auth.type == AuthType::CERTAUTH ) && auth.result != AUTH_SUCCEEDED )
-	Notice( auth.theClient, authResponse ) ;
-
-/* Return authResponse. */
-if( auth.type == AuthType::XQUERY || auth.type == AuthType::SCRAM )
+if( auth.theClient )
+	{
+	if( auth.result == AUTH_SUCCEEDED )
+		{
+		doCommonAuth( auth.theClient, auth.theUser->getUserName() ) ;
+		return true ;
+		}
+	else
+		{
+		Notice( auth.theClient, authResponse ) ;
+		return false ;
+		}
+	}
+/**
+ * If theClient is nullptr, it means that the authentication is done by SASL/XQUERY and auth will
+ * occurr when the client is introduced to the network.
+ */
+else
+	{
 	*Message = authResponse ;
+	}
 
-/* For LOGIN and CERTAUTH we doCommonAuth. For XQUERY the client will be authenticated when introduced to the network. */
-if( retMe && ( auth.type == AuthType::LOGIN || auth.type == AuthType::CERTAUTH ) )
-	doCommonAuth( auth.theClient, auth.theUser->getUserName() ) ;
-
-return retMe ;
+return ( auth.result == AUTH_SUCCEEDED ) ;
 }
 
 bool cservice::parseSaslMechanism( const std::string& in, cservice::SaslMechanism& out )
@@ -9202,7 +9222,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 
 		if( it->mechanism == SaslMechanism::PLAIN )
 			{
-			auto bufferOpt = b64decode( it->credentials ) ;
+			auto bufferOpt = b64decode( it->credentials, nullptr, true ) ;
 			if( !bufferOpt )
 				{
 				elog << "[PLAIN] Failed to decode credentials: " << it->credentials << endl ;
@@ -9215,8 +9235,27 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 			string decodedString = std::string( reinterpret_cast< char* >( bufferOpt->data() ), bufferOpt->size() ) ;
 			size_t p1 = decodedString.find( '\0' ) ;
 			size_t p2 = decodedString.find( '\0', p1 + 1 ) ;
+
+			if( p1 == std::string::npos || p2 == std::string::npos || p1 == 0 )
+				{
+				elog << "[PLAIN] Invalid PLAIN format in decoded credentials: " << decodedString << endl ;
+				incStat("SASL." + saslMechanismToString( it->mechanism ) + ".ERROR" ) ;
+				doXResponse( theServer, Routing, "Invalid credentials", true ) ;
+				saslRequests.erase( it ) ;
+				return false ;
+				}
+
 			it->username = decodedString.substr( p1 + 1, p2 - ( p1 + 1 ) ) ;
 			it->password = decodedString.substr( p2 + 1 ) ;
+
+			if( it->username.empty() || it->password.empty() )
+				{
+				elog << "[PLAIN] Empty username or password in credentials" << endl ;
+				incStat("SASL." + saslMechanismToString( it->mechanism ) + ".ERROR" ) ;
+				doXResponse( theServer, Routing, "Invalid credentials", true ) ;
+				saslRequests.erase( it ) ;
+				return false ;
+				}
 			}
 		else if( it->mechanism == SaslMechanism::EXTERNAL )
 			{
@@ -9238,7 +9277,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 				return false ;
 				}
 
-			auto bufferOpt = b64decode( it->credentials ) ;
+			auto bufferOpt = b64decode( it->credentials, nullptr, true ) ;
 			if( !bufferOpt )
 				{
 				elog << "[EXTERNAL] Failed to decode username: " << it->credentials << endl ;
@@ -9250,6 +9289,17 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 
 			string decodedString = std::string( reinterpret_cast< char* >( bufferOpt->data() ), bufferOpt->size() ) ;
 			StringTokenizer st2( decodedString ) ;
+
+			// Validate that we have at least a username
+			if( st2.size() < 1 || st2[ 0 ].empty() )
+				{
+				elog << "[EXTERNAL] Invalid username in decoded credentials" << endl ;
+				incStat("SASL." + saslMechanismToString( it->mechanism ) + ".ERROR" ) ;
+				doXResponse( theServer, Routing, "Invalid username", true ) ;
+				saslRequests.erase( it ) ;
+				return false ;
+				}
+
 			it->username = st2[ 0 ] ;
 			if( st2.size() > 1 )
 				it->password = st2[ 1 ] ;
@@ -9258,7 +9308,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 			{
 			if( it->state == SaslState::INITIAL )
 				{
-				auto bufferOpt = b64decode( it->credentials ) ;
+				auto bufferOpt = b64decode( it->credentials, nullptr, true ) ;
 				if( !bufferOpt )
 					{
 					elog << "[SCRAM] Failed to decode client first message: " << it->credentials << endl ;
@@ -9357,7 +9407,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 				}
 			else if( it->state == SaslState::SERVER_FIRST )
 				{
-				auto bufferOpt = b64decode( it->credentials ) ;
+				auto bufferOpt = b64decode( it->credentials, nullptr, true ) ;
 				if( !bufferOpt )
 					{
 					elog << "[SCRAM] Failed to decode client final message: " << it->credentials << endl ;
@@ -9450,7 +9500,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 			}
 
 		AuthStruct auth = {
-			it->mechanism == SaslMechanism::SCRAM_SHA_256 ? AuthType::SCRAM : AuthType::XQUERY,
+			AuthType::XQUERY,
 			AUTH_ERROR,			// result (placeholder)
 			it->username,		// username
 			it->password,		// password/token
@@ -9458,7 +9508,8 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 			it->ip,				// ip
 			it->fingerprint,	// tls fingerprint
 			nullptr,			// sqlUser (placeholder)
-			nullptr				// iClient (not in use for LoC)
+			nullptr,			// iClient (not in use for LoC)
+			it->mechanism
 		} ;
 
 		if( it->mechanism == SaslMechanism::SCRAM_SHA_256 )
@@ -9617,7 +9668,8 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 		ip,					// ip
 		fingerprint,		// tls fingerprint
 		nullptr,			// sqlUser (placeholder)
-		nullptr				// iClient (not in use for LoC)
+		nullptr,			// iClient (not in use for LoC)
+		SaslMechanism::NO_SASL
 	} ;
 
 	AuthResult auth_res = authenticateUser( auth ) ;

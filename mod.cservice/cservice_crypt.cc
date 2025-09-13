@@ -69,9 +69,16 @@ std::string b64encode( const unsigned char* data, size_t len )
  * Base64-decode a string to a byte vector.
  */
 std::optional< std::vector< unsigned char > >
-b64decode( std::string_view b64, std::string* err )
+b64decode( std::string_view b64, std::string* err, bool validatePrintable )
 {
     if( b64.size() % 4 != 0 ) return fail< std::vector< unsigned char > >( "bad base64 length", err ) ;
+
+    // Validate that the input contains only valid base64 characters
+    for( char c : b64 ) {
+        if( !std::isalnum( c ) && c != '+' && c != '/' && c != '=' ) {
+            return fail< std::vector< unsigned char > >( "invalid base64 character", err ) ;
+        }
+    }
 
     std::vector< unsigned char > out ;
     out.resize( 3 * ( b64.size() / 4 ) ) ;
@@ -91,6 +98,16 @@ b64decode( std::string_view b64, std::string* err )
     size_t real_len = (size_t)n - pad ;
     if( real_len > out.size() ) return fail< std::vector< unsigned char > >( "base64 overflow", err ) ;
     out.resize( real_len ) ;
+    
+    // Optionally validate that decoded data contains only printable ASCII characters and null bytes
+    if( validatePrintable ) {
+        for( size_t i = 0 ; i < real_len ; ++i ) {
+            if( out[ i ] != 0 && ( out[ i ] < 32 || out[ i ] > 126 ) ) {
+                return fail< std::vector< unsigned char > >( "decoded data contains non-printable characters", err ) ;
+            }
+        }
+    }
+
     return out ;
 }
 

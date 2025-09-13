@@ -65,7 +65,7 @@ std::string b64encode( const unsigned char* data, size_t len ) ;
  * Base64-decode a byte array.
  */
 std::optional< std::vector< unsigned char > >
-b64decode( std::string_view b64, std::string* err = nullptr ) ;
+b64decode( std::string_view b64, std::string* err = nullptr, bool validatePrintable = false ) ;
 
 /**
  * Validate a SCRAM-SHA-256 client proof.
