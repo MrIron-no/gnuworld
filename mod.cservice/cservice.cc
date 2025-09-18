@@ -9526,7 +9526,8 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 			incStat("SASL." + saslMechanismToString( it->mechanism ) + ".SUCCESS" ) ;
 			doXResponse( theServer, Routing, auth.theUser->getUserName() + ":" +
 							std::to_string( auth.theUser->getID() ) + ":" +
-							std::to_string( makeAccountFlags( auth.theUser ) ) ) ;
+							std::to_string( makeAccountFlags( auth.theUser ) ) +
+							(auth.theUser->getFlag( sqlUser::F_AUTOHIDE ) ? " +x" : "") ) ;
 			elog    << "cservice::doXQSASL: "
 					<< "Succesful auth for "
 					<< it->username
@@ -9681,7 +9682,8 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 		incStat( "LOC." + st[0] + ".SUCCESS" ) ;
 		doXResponse(theServer, Routing, auth.theUser->getUserName() + ":" +
 						std::to_string(auth.theUser->getID()) + ":" +
-						std::to_string(makeAccountFlags(auth.theUser)));
+						std::to_string(makeAccountFlags(auth.theUser)) +
+							(auth.theUser->getFlag( sqlUser::F_AUTOHIDE ) ? " +x" : "") ) ;
 		elog    << "cservice::doXQLogin: "
 				<< "Succesful auth for "
 				<< username

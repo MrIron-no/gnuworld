@@ -149,6 +149,38 @@ if( st[1][0] != '#' ) // Didn't find a hash?
 		return true;
 	}
 
+	if (option == "AUTOHIDE")
+	{
+		if (value == "ON")
+		{
+			theUser->setFlag(sqlUser::F_AUTOHIDE);
+			theUser->commit(theClient);
+			bot->Notice(theClient,
+				bot->getResponse(theUser,
+					language::autohide_on,
+					string("Your AUTOHIDE setting is now ON.")));
+			return true;
+		}
+
+		if (value == "OFF")
+		{
+			theUser->removeFlag(sqlUser::F_AUTOHIDE);
+			theUser->commit(theClient);
+			bot->Notice(theClient,
+				bot->getResponse(theUser,
+					language::autohide_off,
+					string("Your AUTOHIDE setting is now OFF.")));
+			return true;
+		}
+
+		bot->Notice(theClient,
+			bot->getResponse(theUser,
+				language::set_cmd_syntax_on_off,
+				string("value of %s must be ON or OFF")).c_str(),
+			option.c_str());
+		return true;
+	}
+
 	if (option == "CERTONLY")
 	{
 		if (value == "ON")

@@ -57,6 +57,7 @@ public:
 	static constexpr flagType F_CERTONLY 		= 0x1000 ;
 	static constexpr flagType F_CERT_DISABLE_TOTP	= 0x2000 ;
 	static constexpr flagType F_WEB_DISABLE_TOTP 	= 0x4000 ;
+	static constexpr flagType F_AUTOHIDE		= 0x8000 ;
 	/*
 	 *   User 'Event' Flags, used in the userlog table.
 	 */

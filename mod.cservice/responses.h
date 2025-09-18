@@ -232,6 +232,8 @@ namespace gnuworld
 		const int unsusp_reason =			194;
 		const int certonly_on =				195;
 		const int certonly_off =			196;
+		const int autohide_on =				197;
+		const int autohide_off =			198;
 		// Allow for merge of other features
 
 		const int welcome_max_len = 			205;

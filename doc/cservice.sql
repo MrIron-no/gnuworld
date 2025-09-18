@@ -225,7 +225,7 @@ CREATE TABLE users (
 	language_id INT4 CONSTRAINT language_channel_id_ref REFERENCES languages (id),
 	public_key TEXT,
 	post_forms int4 DEFAULT 0 NOT NULL,
-	flags INT2 NOT NULL DEFAULT '0',
+	flags INT4 NOT NULL DEFAULT '0',
 -- 0x00 01 -- Suspended globally.
 -- 0x00 02 -- Logged in (Depricated).
 -- 0x00 04 -- Invisible.

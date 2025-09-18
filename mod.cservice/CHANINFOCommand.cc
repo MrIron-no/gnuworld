@@ -192,6 +192,9 @@ if( string::npos == st[ 1 ].find_first_of( '#' ) )
 	/* flags with variables for admins (or self-viewing) only */
 	if (adminAccess || (tmpUser == theUser))
 	{
+		if (theUser->getFlag(sqlUser::F_AUTOHIDE))
+			flagsSet += "AUTOHIDE ";
+
 		int maxLogins = theUser->getMaxLogins();
 		stringstream ss;
 		ss	<< maxLogins;

@@ -120,5 +120,13 @@ INSERT INTO help VALUES ('CERT', '1', E'/msg X cert <add|rem|list> [fingerprint]
 
 -- 2025-09-04: MrIron
 --			   Added column for scram records.
+--         Changed flags column to INT4 to allow for more flags.
+--         Added new translations for AUTOHIDE setting.
 ALTER TABLE users
-  ADD COLUMN scram_record text;
+  ADD COLUMN scram_record TEXT;
+
+ALTER TABLE users
+  ALTER COLUMN flags TYPE INT4;
+
+INSERT INTO translations (language_id, response_id, text, last_updated) VALUES(1, 197, 'Your AUTOHIDE setting is now ON.', 31337);
+INSERT INTO translations (language_id, response_id, text, last_updated) VALUES(1, 198, 'Your AUTOHIDE setting is now OFF.', 31337);
