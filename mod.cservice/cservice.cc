@@ -10332,6 +10332,10 @@ bool cservice::doCommonAuth(iClient* theClient, string username)
 	if (!LoC)
 		this->MyUplink->UserLogin(theClient, theUser->getUserName(), theUser->getID(), makeAccountFlags(theUser), this);
 
+	/* Set remote +x if user has AUTOHIDE set */
+	if (theUser->getFlag(sqlUser::F_AUTOHIDE) && !theClient->isModeX())
+		MyUplink->Write("%s OM %s :+x", getCharYY().c_str(), theClient->getCharYYXXX().c_str());
+
 	/*
 	 * If the user account has been suspended, make sure they don't get
 	 * auto-opped.
