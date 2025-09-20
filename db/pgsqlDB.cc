@@ -90,7 +90,11 @@ if (log)
 if( !dbConn || !dbConn->is_open() )
 	{
 	elog << "pgsqlDB::Exec> Connection lost. Attempting to reconnect..." << std::endl ;
-	reconnect() ;
+	if( !reconnect() )
+		{
+		elog << "pgsqlDB::Exec> Failed to reconnect to database." << std::endl ;
+		return false ;
+		}
 	}
 
 /* Attempt to execute the query. */
