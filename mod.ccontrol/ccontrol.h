@@ -789,9 +789,7 @@ public:
 	const string expandDbServer(const string&);
 	
 	void checkDbConnection();
-	
-	void updateSqldb(dbHandle*);
-	
+		
 	void showStatus(iClient*);
 	
 	unsigned int checkPassword(string,ccUser*);
