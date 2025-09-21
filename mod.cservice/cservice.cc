@@ -7384,54 +7384,23 @@ if( SQLDb->Exec(theQuery, true ) )
 void cservice::checkDbConnectionStatus()
 {
 	if( SQLDb->ConnectionBad() )
-//	if(SQLDb->Status() == CONNECTION_BAD)
 	{
 		logAdminMessage("\002WARNING:\002 Backend database connection has been lost, attempting to reconnect.");
 		elog	<< "cmaster::cmaster> Attempting to reconnect to database." << endl;
 
-		/* Remove the old database connection object. */
-		delete(SQLDb);
+		LOG( WARN, "Database connection lost: {}", SQLDb->ErrorMessage());
 
-		string Query = "host=" + confSqlHost + " dbname=" + confSqlDb + " port=" + confSqlPort + " user=" + confSqlUser
-					 + " password=" + confSqlPass;
-
-		SQLDb = new (std::nothrow) dbHandle( this, confSqlHost,
-			atoi( confSqlPort ),
-			confSqlDb,
-			confSqlUser,
-			confSqlPass ) ;
-//		SQLDb = new (std::nothrow) cmDatabase( Query.c_str() ) ;
-		assert( SQLDb != 0 ) ;
-
-		if (SQLDb->ConnectionBad())
-		{
-			elog	<< "cmaster::cmaster> Unable to connect to SQL server."
-					<< endl
-					<< "cmaster::cmaster> PostgreSQL error message: "
-					<< SQLDb->ErrorMessage()
-					<< endl ;
-
-			connectRetries++;
-			if (connectRetries == connectRetry)
-				{
-				logAdminMessage("Unable to contact database after %d attempts, shutting down.", connectRetry);
-				LOG( FATAL, "Unable to contact database after {} attempts, shutting down.", connectRetry ) ;
-				}
-			else if (connectRetries > connectRetry)
-				::exit(0);
-			else
-				logAdminMessage("Connection failed, retrying:");
-
-		} else
-		{
-// TODO: Is this ok?
-				SQLDb->Exec("LISTEN channels_u; LISTEN users_u; LISTEN levels_u;");
-//				SQLDb->ExecCommandOk("LISTEN channels_u; LISTEN users_u; LISTEN levels_u;");
-				logAdminMessage("Successfully reconnected to database server. Panic over ;)");
-				connectRetries = 0 ;
-		}
+		connectRetries++;
+		if (connectRetries == connectRetry)
+			logAdminMessage("Unable to contact database after %d attempts, shutting down.", connectRetry);
+		else if (connectRetries > connectRetry)
+			::exit(0);
+		else
+			logAdminMessage("Connection failed, retrying:");
+	} else if( connectRetries > 0 ) {
+		logAdminMessage("Successfully reconnected to database server. Panic over ;)");
+		connectRetries = 0 ;
 	}
-
 }
 
 void cservice::preloadChannelCache()

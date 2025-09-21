@@ -5443,90 +5443,25 @@ return "";
 void ccontrol::checkDbConnection()
 {
 if( SQLDb->ConnectionBad() )
-//if(SQLDb->Status() == CONNECTION_BAD) //Check if the connection had died
 	{
-	delete(SQLDb);
 	dbConnected = false;
-	updateSqldb(NULL);
 	MsgChanLog("PANIC! - The connection with the database was lost!\n");
 	MsgChanLog("Attempting to reconnect, attempt %d out of %d\n",
 		    connectCount+1,connectRetry+1);
-	string Query = "host=" + sqlHost + " dbname=" + sqlDb + " port=" + sqlPort;
-	if (strcasecmp(sqlUser,"''"))
-		{
-		Query += (" user=" + sqlUser);
-		}
-
-	if (strcasecmp(sqlPass,"''"))
-		{
-		Query += (" password=" + sqlPass);
-		}
-	SQLDb = new dbHandle( this,
-		sqlHost,
-		atoi( sqlPort.c_str() ),
-		sqlDb,
-		sqlUser,
-		sqlPass ) ;
-//	SQLDb = new (std::nothrow) cmDatabase(Query.c_str());
-	assert(SQLDb != NULL);
 	
-	if(SQLDb->ConnectionBad())
+	++connectCount;
+	if(connectCount > connectRetry)
 		{
-		++connectCount;
-		if(connectCount > connectRetry)
-			{
-			MsgChanLog("Can't connect to the database, quitting (no more retries)\n");
-			::exit(1);
-			}
-		else
-			{
-			MsgChanLog("Attempt failed\n");
-			}
-		}
-	else
-		{
-		dbConnected = true;
-		MsgChanLog("The PANIC is over, database connectivity restored\n");
-		updateSqldb(SQLDb);
-		connectCount = 0;
+		MsgChanLog("Can't connect to the database, quitting (no more retries)\n");
+		::exit(1);
 		}
 	}
-	
-	
-}
-
-void ccontrol::updateSqldb(dbHandle* _SQLDb)
-{
-for(glineIterator ptr = glineList.begin();ptr != glineList.end();++ptr) 
+else if( connectCount > 0 )
 	{
-	(ptr->second)->setSqldb(_SQLDb);
+	dbConnected = true;
+	MsgChanLog("The PANIC is over, database connectivity restored\n");
+	connectCount = 0;
 	}
-
-for(glineIterator ptr = rnGlineList.begin();ptr != rnGlineList.end();++ptr) 
-	{
-	(ptr->second)->setSqldb(_SQLDb);
-	}
-
-for(ipLispIterator ptr = ipLispVector.begin();ptr != ipLispVector.end();++ptr)
-	{
-	(*ptr)->setSqldb(_SQLDb);
-	}
-
-for(ipLnbIterator ptr = ipLnbVector.begin();ptr != ipLnbVector.end();++ptr)
-	{
-	(ptr->second)->setSqldb(_SQLDb);
-	}
-
-for(usersIterator ptr = usersMap.begin();ptr != usersMap.end();++ptr)
-	{
-	ptr->second->setSqldb(_SQLDb);
-	}
-
-for(serversIterator ptr = serversMap.begin();ptr != serversMap.end();++ptr)
-	{
-	ptr->second->setSqldb(_SQLDb);
-	}
-
 }
 
 void ccontrol::showStatus(iClient* tmpClient)
