@@ -94,9 +94,6 @@
 /* Define to 1 if you have the 'oath' library (-loath). */
 #undef HAVE_LIBOATH
 
-/* Define to 1 if you have the 'pq' library (-lpq). */
-#undef HAVE_LIBPQ
-
 /* Define to 1 if you have the 'socket' library (-lsocket). */
 #undef HAVE_LIBSOCKET
 

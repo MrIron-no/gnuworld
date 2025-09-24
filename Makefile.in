@@ -752,15 +752,15 @@ libgnuworld_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(libgnuworld_la_CXXFLAGS) $(CXXFLAGS) \
 	$(libgnuworld_la_LDFLAGS) $(LDFLAGS) -o $@
-libgnuworldDB_la_LIBADD =
+am__DEPENDENCIES_1 =
+libgnuworldDB_la_DEPENDENCIES = $(am__DEPENDENCIES_1)
 am_libgnuworldDB_la_OBJECTS = db/libgnuworldDB_la-gnuworldDB.lo \
 	db/libgnuworldDB_la-pgsqlDB.lo
 libgnuworldDB_la_OBJECTS = $(am_libgnuworldDB_la_OBJECTS)
 libgnuworldDB_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
-	$(libgnuworldDB_la_CXXFLAGS) $(CXXFLAGS) \
-	$(libgnuworldDB_la_LDFLAGS) $(LDFLAGS) -o $@
-am__DEPENDENCIES_1 =
+	$(libgnuworldDB_la_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
 libgnuworldcore_la_DEPENDENCIES = libgnuworld.la $(am__DEPENDENCIES_1)
 am_libgnuworldcore_la_OBJECTS = src/libgnuworldcore_la-Channel.lo \
 	src/libgnuworldcore_la-ChannelUser.lo \
@@ -1516,6 +1516,8 @@ LIBCURL_CFLAGS = @LIBCURL_CFLAGS@
 LIBCURL_LIBS = @LIBCURL_LIBS@
 LIBLTDL = @LIBLTDL@
 LIBOBJS = @LIBOBJS@
+LIBPQXX_CFLAGS = @LIBPQXX_CFLAGS@
+LIBPQXX_LIBS = @LIBPQXX_LIBS@
 LIBS = @LIBS@
 LIBTOOL = @LIBTOOL@
 LIBTOOL_DEPS = @LIBTOOL_DEPS@
@@ -1606,7 +1608,6 @@ mandir = @mandir@
 mkdir_p = @mkdir_p@
 oldincludedir = @oldincludedir@
 pdfdir = @pdfdir@
-pg_config_binary = @pg_config_binary@
 pgsql_includedir = @pgsql_includedir@
 pgsql_libdir = @pgsql_libdir@
 prefix = @prefix@
@@ -1705,11 +1706,11 @@ libgnuworldDB_la_SOURCES = \
 	db/gnuworldDB.cc \
 	db/pgsqlDB.cc
 
-libgnuworldDB_la_CXXFLAGS = \
+libgnuworldDB_la_LIBADD = $(LIBPQXX_LIBS)
+libgnuworldDB_la_CXXFLAGS = $(LIBPQXX_CFLAGS) \
 	-I$(top_srcdir)/libgnuworld \
 	-I$(top_srcdir)/include
 
-libgnuworldDB_la_LDFLAGS = -L$(pgsql_libdir) -lpq
 libgnuworld_la_SOURCES = libgnuworld/Buffer.cc \
 	libgnuworld/Connection.cc libgnuworld/ConnectionHandler.cc \
 	libgnuworld/ConnectionManager.cc libgnuworld/EConfig.cc \

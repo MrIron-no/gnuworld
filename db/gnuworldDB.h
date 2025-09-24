@@ -26,8 +26,6 @@
 #include	<string>
 #include	<sstream>
 
-#include	<sys/types.h>
-
 namespace gnuworld
 {
 
@@ -81,21 +79,17 @@ public:
 	virtual bool	ConnectionBad() const
 	{ return !isConnected() ; }
 
+	virtual bool	reconnect() = 0 ;
+
 	virtual unsigned int	countTuples() const = 0 ;
 	virtual unsigned int 	affectedRows() const = 0 ;
 	virtual unsigned int	Tuples() const
 	{ return countTuples() ; }
 
 	virtual const std::string	ErrorMessage() const = 0 ;
-	virtual const std::string	GetValue( unsigned int row,
-						unsigned int column ) const = 0 ;
-	virtual const std::string	GetValue( unsigned int row,
-						const std::string& colName )
+	virtual const std::string	GetValue( int, int ) const = 0 ;
+	virtual const std::string	GetValue( int, const std::string& )
 							const = 0 ;
-
-	virtual bool		PutLine( const std::string& ) = 0 ;
-	virtual bool		StartCopyIn( const std::string& ) = 0 ;
-	virtual bool		StopCopyIn() = 0 ;
 
 	inline const std::string&	getDBHost() const
 		{ return dbHost ; }

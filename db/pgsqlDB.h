@@ -23,12 +23,9 @@
 #ifndef __PGSQLDB_H
 #define __PGSQLDB_H "$Id: pgsqlDB.h,v 1.3 2007/08/28 16:09:59 dan_karrels Exp $"
 
-#include	<sys/types.h>
+#include	<pqxx/pqxx>
+#include	<memory>
 
-#include	<string>
-#include	<exception>
-
-#include	"libpq-fe.h"
 #include	"gnuworldDB.h"
 #include	"client.h"
 
@@ -38,9 +35,11 @@ namespace gnuworld
 class pgsqlDB : public gnuworldDB
 {
 protected:
-	xClient			*bot ;
-	PGconn			*theDB ;
-	PGresult		*lastResult ;
+	xClient*							bot ;
+	std::string                     	connectInfo ;
+	std::unique_ptr< pqxx::connection >	dbConn ;
+	std::unique_ptr< pqxx::result>		lastResult ;
+	std::string							errorMsg ;
 
 public:
 	pgsqlDB( xClient* bot,
@@ -49,28 +48,23 @@ public:
 		const std::string& dbName,
 		const std::string& userName,
 		const std::string& password );
-	pgsqlDB( xClient* bot, const std::string& connectInfo );
+	pgsqlDB( xClient* bot,
+		const std::string& connectInfo );
 	virtual ~pgsqlDB() ;
 
-	virtual bool		Exec( const std::string&, bool = true ) ;
-	virtual bool		Exec( const std::stringstream&, bool = true ) ;
-	virtual bool		isConnected() const ;
+	virtual bool			Exec( const std::string&, bool = false ) override ;
+	virtual bool			Exec( const std::stringstream&, bool = false ) override ;
+	virtual bool			isConnected() const override ;
+	virtual bool			reconnect() override ;
 
-	virtual bool		PutLine( const std::string& ) ;
-	virtual bool		StartCopyIn( const std::string& ) ;
-	virtual bool		StopCopyIn() ;
-
-	virtual unsigned int	countTuples() const ;
-	virtual unsigned int 	affectedRows() const ;
-	virtual const std::string	ErrorMessage() const ;
+	virtual unsigned int		affectedRows() const override ;
+	virtual unsigned int		countTuples() const override ;
+	virtual const std::string	ErrorMessage() const override ;
 
 	// tuple number, field number (row,col)
-	virtual const std::string	GetValue( unsigned int,
-						unsigned int ) const ;
-	virtual const std::string	GetValue( unsigned int row,
-						const std::string& colName )
-						const ;
-
+	virtual const std::string	GetValue( int, int ) const override ;
+	virtual const std::string	GetValue( int, const std::string& )
+						const override ;
 } ;
 
 } // namespace gnuworld

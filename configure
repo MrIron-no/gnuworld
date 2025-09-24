@@ -694,7 +694,8 @@ HAVE_CXX20
 BOOST_THREAD_LIB
 BOOST_LDFLAGS
 BOOST_CPPFLAGS
-pg_config_binary
+LIBPQXX_LIBS
+LIBPQXX_CFLAGS
 COND_TESTDIR_FALSE
 COND_TESTDIR_TRUE
 COND_PROMETHEUS_FALSE
@@ -887,7 +888,6 @@ with_test
 with_pedantic
 with_optimization
 with_prof
-with_pgconfig
 with_log4cplus
 with_log4cplus_lib
 with_log4cplus_include
@@ -920,7 +920,9 @@ PKG_CONFIG_LIBDIR
 LIBCURL_CFLAGS
 LIBCURL_LIBS
 PROMETHEUS_CFLAGS
-PROMETHEUS_LIBS'
+PROMETHEUS_LIBS
+LIBPQXX_CFLAGS
+LIBPQXX_LIBS'
 ac_subdirs_all='libltdl'
 
 # Initialize some variables set by options.
@@ -1588,7 +1590,6 @@ Optional Packages:
   --with-pedantic         Add -pedantic to compile options
   --with-optimization     Optimize the executables
   --with-prof             Generate profiling information
-  --with-pgconfig=FILE    Specify an alternate pg_config location.
   --with-log4cplus        Check log4cplus, if not enabled some modules may not
                           have logging support
   --with-log4cplus-lib=LOG4CPLUSLIBDIR
@@ -1646,6 +1647,10 @@ Some influential environment variables:
               C compiler flags for PROMETHEUS, overriding pkg-config
   PROMETHEUS_LIBS
               linker flags for PROMETHEUS, overriding pkg-config
+  LIBPQXX_CFLAGS
+              C compiler flags for LIBPQXX, overriding pkg-config
+  LIBPQXX_LIBS
+              linker flags for LIBPQXX, overriding pkg-config
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -21482,132 +21487,80 @@ then :
 fi
 
 
+# Check for libpqxx using pkg-config
 
+pkg_failed=no
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for libpqxx >= 7.0" >&5
+printf %s "checking for libpqxx >= 7.0... " >&6; }
 
-# Check whether --with-pgconfig was given.
-if test ${with_pgconfig+y}
-then :
-  withval=$with_pgconfig; pg_config_binary=$withval
-else case e in #(
-  e) pg_config_binary=""
- ;;
-esac
-fi
-
-
-
-if test "x$pg_config_binary" = "x"; then
-		# Extract the first word of "pg_config", so it can be a program name with args.
-set dummy pg_config; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_path_pg_config_binary+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) case $pg_config_binary in
-  [\\/]* | ?:[\\/]*)
-  ac_cv_path_pg_config_binary="$pg_config_binary" # Let the user override the test with a path.
-  ;;
-  *)
-  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_path_pg_config_binary="$as_dir$ac_word$ac_exec_ext"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-  ;;
-esac ;;
-esac
-fi
-pg_config_binary=$ac_cv_path_pg_config_binary
-if test -n "$pg_config_binary"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $pg_config_binary" >&5
-printf "%s\n" "$pg_config_binary" >&6; }
+if test -n "$LIBPQXX_CFLAGS"; then
+    pkg_cv_LIBPQXX_CFLAGS="$LIBPQXX_CFLAGS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"libpqxx >= 7.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "libpqxx >= 7.0") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_LIBPQXX_CFLAGS=`$PKG_CONFIG --cflags "libpqxx >= 7.0" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
 else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+if test -n "$LIBPQXX_LIBS"; then
+    pkg_cv_LIBPQXX_LIBS="$LIBPQXX_LIBS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"libpqxx >= 7.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "libpqxx >= 7.0") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_LIBPQXX_LIBS=`$PKG_CONFIG --libs "libpqxx >= 7.0" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
+else
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+
+
+
+if test $pkg_failed = yes; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-fi
 
-
-
-	if test "x$pg_config_binary" = "x"; then
-		as_fn_error $? "Could not find pg_config. Ensure that PostgreSQL is installed, or specify pg_config location using --with-pgconfig." "$LINENO" 5
-	fi
-elif test -f $pg_config_binary; then
-	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: Using pg_config: $pg_config_binary" >&5
-printf "%s\n" "Using pg_config: $pg_config_binary" >&6; }
+if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+        _pkg_short_errors_supported=yes
 else
-	as_fn_error $? "pg_config file $pg_config_binary does not exist" "$LINENO" 5
+        _pkg_short_errors_supported=no
 fi
+        if test $_pkg_short_errors_supported = yes; then
+                LIBPQXX_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "libpqxx >= 7.0" 2>&1`
+        else
+                LIBPQXX_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "libpqxx >= 7.0" 2>&1`
+        fi
+        # Put the nasty error message in config.log where it belongs
+        echo "$LIBPQXX_PKG_ERRORS" >&5
 
-pgsql_includedir=$($pg_config_binary --includedir)
-pgsql_libdir=$($pg_config_binary --libdir)
 
-CXXFLAGS="$CXXFLAGS -I$pgsql_includedir"
-CPPFLAGS="$CPPFLAGS -I$pgsql_includedir"
-LIBS="$LIBS -L$pgsql_libdir"
+    as_fn_error $? "Could not find libpqxx. Ensure that libpqxx (version >= 7.0) is installed." "$LINENO" 5
 
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for PQconnectdb in -lpq" >&5
-printf %s "checking for PQconnectdb in -lpq... " >&6; }
-if test ${ac_cv_lib_pq_PQconnectdb+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) ac_check_lib_save_LIBS=$LIBS
-LIBS="-lpq  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
+elif test $pkg_failed = untried; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
 
-namespace conftest {
-  extern "C" int PQconnectdb ();
-}
-int
-main (void)
-{
-return conftest::PQconnectdb ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_cxx_try_link "$LINENO"
-then :
-  ac_cv_lib_pq_PQconnectdb=yes
-else case e in #(
-  e) ac_cv_lib_pq_PQconnectdb=no ;;
-esac
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.beam \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS ;;
-esac
-fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_pq_PQconnectdb" >&5
-printf "%s\n" "$ac_cv_lib_pq_PQconnectdb" >&6; }
-if test "x$ac_cv_lib_pq_PQconnectdb" = xyes
-then :
-  printf "%s\n" "#define HAVE_LIBPQ 1" >>confdefs.h
+    as_fn_error $? "Could not find libpqxx. Ensure that libpqxx (version >= 7.0) is installed." "$LINENO" 5
 
-  LIBS="-lpq $LIBS"
-
-fi
-
-ac_fn_cxx_check_header_compile "$LINENO" "libpq-fe.h" "ac_cv_header_libpq_fe_h" "$ac_includes_default"
-if test "x$ac_cv_header_libpq_fe_h" = xyes
-then :
+else
+        LIBPQXX_CFLAGS=$pkg_cv_LIBPQXX_CFLAGS
+        LIBPQXX_LIBS=$pkg_cv_LIBPQXX_LIBS
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+printf "%s\n" "yes" >&6; }
 
 fi
 
