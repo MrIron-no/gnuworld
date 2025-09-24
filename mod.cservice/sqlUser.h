@@ -34,11 +34,12 @@ namespace gnuworld
 {
 
 class iClient;
+class cservice;
 
 class sqlUser
 {
 public:
-	sqlUser(dbHandle*) ;
+	sqlUser(cservice*) ;
 	virtual ~sqlUser() ;
 
 	typedef unsigned int	flagType ;
@@ -281,6 +282,7 @@ protected:
 	std::string	totp_key;
 	std::string	scram_record;
 
+	Logger*		logger;
 	dbHandle*	SQLDb;
 } ;
 

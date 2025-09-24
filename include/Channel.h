@@ -37,6 +37,11 @@
 #include	"ELog.h"
 #include	"gnuworld_config.h"
 
+#ifdef USE_THREAD
+#include	<mutex>
+#include	<shared_mutex>
+#endif
+
 namespace gnuworld
 {
 
@@ -353,6 +358,14 @@ public:
 	inline const unsigned int& getLimit() const
 		{ return limit ; }
 
+#ifdef USE_THREAD
+	/**
+	 * Returns the mutex for this channel object.
+	 */
+	inline std::shared_mutex&	getMutex() const
+		{ return chanMutex ; }
+#endif
+
 	/**
 	 * Return true if no clients remain in this channel,
 	 * false otherwise.
@@ -411,7 +424,7 @@ public:
 	/**
 	 *  Return the Channel's userlist.
 	 */
-	inline const userListType users() const
+	inline const userListType& users() const
 		{ return userList ; }
 
 	/**
@@ -621,6 +634,13 @@ protected:
 	 * The structure used to store the channel bans.
 	 */
 	banListType	banList ;
+
+#ifdef USE_THREAD
+	/**
+	 * A mutex to lock the channel object.
+	 */
+	mutable std::shared_mutex chanMutex ;
+#endif
 	
 #ifdef TOPIC_TRACK
 	/**

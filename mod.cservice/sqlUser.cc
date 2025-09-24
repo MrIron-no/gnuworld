@@ -49,7 +49,7 @@ const unsigned int sqlUser::EV_ADMINMOD		= 3;
 const unsigned int sqlUser::EV_MISC		= 4;
 const unsigned int sqlUser::EV_COMMENT		= 5;
 
-sqlUser::sqlUser(dbHandle* _SQLDb)
+sqlUser::sqlUser(cservice* _bot)
  : id( 0 ),
    user_name(),
    password(),
@@ -69,7 +69,8 @@ sqlUser::sqlUser(dbHandle* _SQLDb)
    failed_logins(0),
    failed_login_ts(0),
    scram_record(),
-   SQLDb( _SQLDb )
+   logger(_bot->getLogger()),
+   SQLDb(_bot->SQLDb)
 {
 }
 
@@ -97,14 +98,7 @@ queryString	<< "SELECT "
 		<< userID
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::loadData> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( SQLDb->Exec(queryString, true ) )
-//if( PGRES_TUPLES_OK == status )
 	{
 	/*
 	 *  If the user doesn't exist, we won't get any rows back.
@@ -144,14 +138,7 @@ queryString	<< "SELECT "
 		<< "'"
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::loadData> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( SQLDb->Exec(queryString, true ) )
-//if( PGRES_TUPLES_OK == status )
 	{
 	/*
 	 *  If the user doesn't exist, we won't get any rows back.
@@ -229,20 +216,9 @@ queryString	<< queryHeader
 		<< queryCondition << id
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::commit> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( !SQLDb->Exec(queryString ) )
-//if( PGRES_COMMAND_OK != status )
 	{
-	// TODO: Log to msgchan here.
-	elog	<< "sqlUser::commit> Something went wrong: "
-		<< SQLDb->ErrorMessage()
-		<< endl;
-
+	LOGSQL_ERROR( SQLDb ) ;
 	return false;
  	}
 
@@ -274,22 +250,11 @@ queryString	<< queryHeader
 		<< id
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::commitLastSeen> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( !SQLDb->Exec(queryString ) )
-//if( PGRES_COMMAND_OK != status )
 	{
-	// TODO: Log to msgchan here.
-	elog	<< "sqlUser::commit> Something went wrong: "
-		<< SQLDb->ErrorMessage()
-		<< endl;
-
+	LOGSQL_ERROR( SQLDb ) ;
 	return false;
- 	}
+	}
 
 return true;
 }
@@ -312,19 +277,9 @@ queryString	<< queryHeader
 		<< id
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::commitLastSeenWithoutMask> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( !SQLDb->Exec(queryString ) )
-//if( PGRES_COMMAND_OK != status )
 	{
-	elog	<< "sqlUser::commit> Something went wrong: "
-		<< SQLDb->ErrorMessage()
-		<< endl;
-
+	LOGSQL_ERROR( SQLDb ) ;
 	return false;
  	}
 
@@ -339,14 +294,7 @@ queryString	<< "SELECT last_seen"
 		<< id
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::getLastSeen> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( SQLDb->Exec(queryString, true ) )
-//if( PGRES_TUPLES_OK == status )
 {
 	/*
 	 *  If the user doesn't exist, we won't get any rows back.
@@ -374,14 +322,7 @@ queryString	<< "SELECT last_hostmask"
 		<< id
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::getLastHostMask> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( SQLDb->Exec(queryString, true ) )
-//if( PGRES_TUPLES_OK == status )
 	{
 	/*
 	 *  If the user doesn't exist, we won't get any rows back.
@@ -409,14 +350,7 @@ queryString	<< "SELECT last_ip"
 		<< id
 		<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::getLastIP> "
-		<< queryString.str().c_str()
-		<< endl;
-#endif
-
 if( SQLDb->Exec(queryString, true ) )
-//if( PGRES_TUPLES_OK == status )
 	{
 	/*
 	 *  If the user doesn't exist, we won't get any rows back.
@@ -455,12 +389,6 @@ theLog	<< "INSERT INTO userlog (ts, user_id, event, message, "
 	<< "', date_part('epoch', CURRENT_TIMESTAMP)::int)"
 	<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::writeEvent> "
-		<< theLog.str().c_str()
-		<< endl;
-#endif
-
 // TODO: Is this ok?
 SQLDb->Exec(theLog);
 //SQLDb->ExecCommandOk(theLog.str().c_str());
@@ -478,14 +406,7 @@ queryString	<< "SELECT message,ts"
 			<< " ORDER BY ts DESC LIMIT 1"
 			<< ends;
 
-#ifdef LOG_SQL
-	elog	<< "sqlUser::getLastEvent> "
-			<< queryString.str().c_str()
-			<< endl;
-#endif
-
 if( SQLDb->Exec(queryString, true ) )
-//if( PGRES_TUPLES_OK == status )
 	{
 
 	if(SQLDb->Tuples() < 1)
@@ -535,22 +456,11 @@ queryString	<< queryHeader
 		<< "')"
 		<< ends;
 
-#ifdef LOG_SQL
-        elog    << "sqlUser::insert> "
-                << queryString.str()
-                << endl;
-#endif
-
 if( !SQLDb->Exec(queryString ) )
-//if( PGRES_COMMAND_OK != status )
-        {
-        // TODO: Log to msgchan here.
-        elog    << "sqlUser::insert> Something went wrong: "
-                << SQLDb->ErrorMessage()
-                << endl;
-
-        return false;
-        }
+	{
+	LOGSQL_ERROR( SQLDb ) ;
+	return false;
+    }
 
 return true;
 }

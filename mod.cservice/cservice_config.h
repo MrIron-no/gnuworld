@@ -23,12 +23,6 @@
 #define __CSERVICE_CONFIG_H "$Id: cservice_config.h,v 1.13 2006/09/26 17:36:04 kewlio Exp $"
 
 /**
- * Define this if you wish for all SQL queries to be sent
- * the standard logging stream (elog).
- */
-#define LOG_SQL
-
-/**
  * Define this if you wish to log all cache hits.
  */
 #define LOG_CACHE_HITS
@@ -99,8 +93,7 @@
 
 /**
  * Define this if you want to enable the 'cs.log' file (log of all commands
- * including login) - Default is to NOT enable the log as it poses a security
- * risk (it contains passwords)
+ * including login).
  */
 #define USE_COMMAND_LOG
 
