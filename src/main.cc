@@ -224,6 +224,7 @@ return 0 ;
 
 xServer::xServer( int argc, char** argv )
  : eventList( EVT_NOOP ),
+   tlsEnabled( false ),
    elogFileName( "debug.log" ),
    socketFileName( "socket.log" ),
    configFileName( CONFFILE )

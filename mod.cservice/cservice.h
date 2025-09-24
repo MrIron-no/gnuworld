@@ -367,11 +367,6 @@ protected:
 	 */
 	bool hasIPR( sqlUser* );
 
-	/* Checks if a user has an existing TLS fingerprint for it's username
-	 * Returns the COUNT(*) 
-	 */
-	unsigned int hasFP( sqlUser* );
-
 	/* Checks a user against IP restrictions */
 	bool checkIPR(const string&, sqlUser*, unsigned int& );
 	bool checkIPR( iClient*, sqlUser* );
@@ -393,7 +388,7 @@ protected:
 	/**
 	 * Array of sqlUser flags and the corresponding accountFlags.
 	 */
-	static constexpr std::array< std::pair< sqlUser::flagType, iClient::flagType >, 4 > flagMap = { {
+	static constexpr std::array< std::pair< sqlUser::flagType, iClient::flagType >, 7 > flagMap = { {
 		{ sqlUser::F_TOTP_ENABLED, iClient::X_TOTP_ENABLED },
 		{ sqlUser::F_TOTP_REQ_IPR, iClient::X_TOTP_REQ_IPR },
 		{ sqlUser::F_GLOBAL_SUSPEND, iClient::X_GLOBAL_SUSPEND },
@@ -436,8 +431,7 @@ public:
 		AUTH_FAILED_IPR,
 		AUTH_CERTONLY,
 		AUTH_ML_EXCEEDED,
-		AUTH_FAIL_EXCEEDED,
-		ERROR
+		AUTH_FAIL_EXCEEDED
 	};
 
 	cservice(const string& args);
@@ -536,6 +530,26 @@ public:
 
 	/* Returns what access a user has in the coder channel */
 	short getCoderAccessLevel( sqlUser* );
+
+	/* Checks if a user has an existing TLS fingerprint for it's username
+	 * Returns the COUNT(*) 
+	 */
+	unsigned int hasFP( sqlUser* );
+
+	/* Returns true if the fingerprint exists and matches the user_id. */
+	bool checkFP( const string& fingerprint, unsigned int userId )
+	{
+		auto it = fingerprintMap.find( fingerprint ) ;
+		return ( it != fingerprintMap.end() && it->second == userId ) ;
+	}
+
+	/* Adds a fingerprint to cache. */
+	auto addFP( const string& fingerprint, unsigned int userId )
+		{ return fingerprintMap.emplace( fingerprint, userId ) ; }
+
+	/* Removes a fingerprint from cache. */
+	void removeFP( const string& fingerprint )
+		{ fingerprintMap.erase( fingerprint ) ; }
 
 	/* Fetch a user record for a user. */
 	sqlUser* getUserRecord( const string& );

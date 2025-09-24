@@ -298,6 +298,7 @@ public:
 			<< ", localPort: " << con.getLocalPort()
 			<< ", remotePort: " << con.getRemotePort()
 			<< ", sockFD: " << con.getSockFD()
+			<< ", TLS: " << (con.isTLS() ? "yes" : "no")
 			<< ", state: "
 			<< (con.isConnected() ? "connected" : "pending") ;
 		if( con.isIncoming() )
@@ -322,6 +323,7 @@ public:
 			<< ", localPort: " << con.getLocalPort()
 			<< ", remotePort: " << con.getRemotePort()
 			<< ", sockFD: " << con.getSockFD()
+			<< ", TLS: " << (con.isTLS() ? "yes" : "no")
 			<< ", state: "
 			<< (con.isConnected() ? "connected" : "pending") ;
 		if( con.isIncoming() )
@@ -478,7 +480,7 @@ protected:
 	inline SSL*		getTlsState() const
 		{ return tlsState ; }
 	
-	inline void		setTlsState(SSL* newState)
+	inline void		setTlsState( SSL* newState )
 		{ tlsState = newState ; }
 #endif
 

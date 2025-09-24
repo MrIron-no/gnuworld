@@ -1622,36 +1622,6 @@ return 0;
 }
 
 /**
- * Locates a cservice user record by TLS fingerprint.
- */
-sqlUser* cservice::getUserRecordByFingerprint( const string& fingerprint )
-{
-stringstream theQuery ;
-theQuery	<< "SELECT user_id FROM "
-			<< "users_fingerprints WHERE fingerprint = '"
-			<< fingerprint
-			<< "' LIMIT 1" << endl ;
-
-#ifdef LOG_SQL
-elog	<< "cservice::getUserRecordByFingerprint::sqlQuery> "
-		<< theQuery.str()
-		<< endl ;
-#endif
-
-if( !SQLDb->Exec(theQuery, true ) )
-	{
-	elog    << "cservice::hasFP> SQL Error: "
-			<< SQLDb->ErrorMessage()
-			<< endl;
-	return nullptr ;
-	}
-
-if( SQLDb->Tuples() < 1 )
-	return nullptr ;
-
-return getUserRecord( std::stoi( SQLDb->GetValue( 0, 0 ) ) ) ;
-}
-/**
  *  Locates a cservice user record by 'id', the username of this user.
  */
 sqlUser* cservice::getUserRecord(const string& id)
@@ -3459,7 +3429,7 @@ fingerprintMap.clear() ;
 for( unsigned int i = 0 ; i < SQLDb->Tuples() ; i++ )
 	fingerprintMap.emplace( SQLDb->GetValue( i, 0 ), std::stoul( SQLDb->GetValue( i, 1 ) ) ) ;
 
-logDebugMessage("[DB-UPDATE]: Refreshed fingerprint(s)." ) ;
+LOG(INFO, "[DB-UPDATE]: Refreshed fingerprint(s)." ) ;
 }
 
 void cservice::updateBans()
@@ -8478,8 +8448,7 @@ if( !certAuth && auth.sasl != SaslMechanism::SCRAM_SHA_256
 
 	if( !recOpt )
 		{
-		elog << "[SCRAM] Record generation error: " << err << "\n";
-		logDebugMessage("[SCRAM] Record generation error: ", err.c_str() ) ;
+		LOG( ERROR, "[SCRAM] Record generation error: {}", err ) ;
 		}
 	else
 		{
@@ -9006,8 +8975,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 				if( !parse_opt )
 					{
 					incStat("SASL." + saslMechanismToString( it->mechanism ) + ".ERROR" ) ;
-					elog << "[SCRAM] Record parse error: " << err << endl ;
-					logDebugMessage("[SCRAM] Record parse error: ", err.c_str() ) ;
+					LOG( ERROR, "[SCRAM] Record parse error: {}", err ) ;
 					doXResponse( theServer, Routing, "Internal error", true ) ;
 					return false ;
 					}
@@ -9191,7 +9159,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 		SaslMechanism mech ;
 		if( !parseSaslMechanism( authMessage, mech ) )
 			{
-			logDebugMessage( "Received invalid SASL mechanism: %s", authMessage ) ;
+			LOG( DEBUG, "Received invalid SASL mechanism: {}", authMessage ) ;
 			MyUplink->XReply( theServer, Routing, saslMechsAdvertiseList() ) ;
 			return false ;
 			}

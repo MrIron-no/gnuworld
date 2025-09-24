@@ -72,9 +72,7 @@ if( Command == "LIST" )
 
 	if( !bot->SQLDb->Exec( theQuery, true ) )
 		{
-		elog	<< "cservice::CERTCommand> SQL Error: "
-				<< bot->SQLDb->ErrorMessage()
-				<< std::endl ;
+		LOGSQL_ERROR( bot->SQLDb ) ;
 		return false ;
 		}
 
@@ -163,7 +161,7 @@ if( Command == "ADD" )
 		}
 
 	/* Add to cache. This will return false if the fingerprint already exists. */
-	auto result = bot->fingerprintMap.emplace( canonicalToCompact( fingerPrint ), theClient->getAccountID() ) ;
+	auto result = bot->addFP( canonicalToCompact( fingerPrint ), theClient->getAccountID() ) ;
 	if( !result.second )
 		{
 		bot->Notice( theClient, "That fingerprint is already added to a username." ) ;
@@ -182,9 +180,7 @@ if( Command == "ADD" )
 
 	if( !bot->SQLDb->Exec( theQuery, true ) )
 		{
-		elog	<< "cservice::CERTCommand> SQL Error: "
-				<< bot->SQLDb->ErrorMessage()
-				<< std::endl ;
+		LOGSQL_ERROR( bot->SQLDb ) ;
 		return false ;
 		}
 
@@ -227,8 +223,7 @@ if( Command == "REM" )
 		return true ;
 		}
 
-	auto it = bot->fingerprintMap.find( fingerPrint ) ;
-	if( it == bot->fingerprintMap.end() || it->second != theClient->getAccountID() )
+	if( !bot->checkFP( fingerPrint, theClient->getAccountID() ) )
 		{
 		bot->Notice( theClient, "I cannot find that fingerprint added to your username." ) ;
 		return true ;
@@ -242,13 +237,11 @@ if( Command == "REM" )
 
 	if( !bot->SQLDb->Exec( theQuery, true ) )
 		{
-		elog	<< "cservice::CERTCommand> SQL Error: "
-				<< bot->SQLDb->ErrorMessage()
-				<< std::endl ;
+		LOGSQL_ERROR( bot->SQLDb ) ;
 		return false ;
 		}
 	/* Remove from cache. */
-	bot->fingerprintMap.erase( it ) ;
+	bot->removeFP( fingerPrint ) ;
 
 	bot->Notice( theClient, "Successfully removed '%s' from your username.",
 		compactToCanonical( fingerPrint ).c_str() ) ;
