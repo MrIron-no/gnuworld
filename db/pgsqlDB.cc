@@ -21,23 +21,14 @@
  * $Id: pgsqlDB.cc,v 1.5 2009/07/25 16:59:48 mrbean_ Exp $
  */
 
-#include	<sys/types.h>
-
-#include	<new>
 #include	<iostream>
 #include	<exception>
-#include	<sstream>
-#include	<string>
 
-#include	"libpq-fe.h"
-#include	"gnuworldDB.h"
+#include	"ELog.h"
 #include	"pgsqlDB.h"
-#include	"client.h"
-#include	"logger.h"
 
 namespace gnuworld
 {
-using std::cout ;
 using std::endl ;
 using std::ends ;
 using std::string ;
@@ -51,75 +42,42 @@ pgsqlDB::pgsqlDB( xClient* _bot,
 	const string& password )
 : gnuworldDB( dbHost, dbPort, dbName, userName, password ),
   bot( _bot ),
-  theDB( 0 ),
-  lastResult( 0 )
+  connectInfo( "host=" + dbHost +
+               " dbname=" + dbName +
+               " port=" + std::to_string(dbPort) +
+               (!userName.empty() ? " user=" + userName : "") +
+               (!password.empty() ? " password=" + password : "" ) ),
+  dbConn( std::make_unique<pqxx::connection>( connectInfo ) )
 {
-stringstream s ;
-s	<< "host=" << dbHost
-	<< " dbname=" << dbName
-	<< " port=" << dbPort ;
-
-if( !userName.empty() )
+/* Save the conenctInfo string. */
+try
 	{
-	s	<< " user=" << userName ;
+	if( !dbConn || !dbConn->is_open() )
+		{
+		elog	<< "pgsqlDB> Failed to connect to db: "
+			<< ErrorMessage()
+			<< endl ;
+		}
 	}
-if( !password.empty() )
+catch( const std::exception& e)
 	{
-	s	<< " password=" << password ;
-	}
-s << ends ;
-
-// Allow exception to be thrown
-theDB = PQconnectdb( s.str().c_str() ) ;
-if( 0 == theDB )
-	{
-	cout	<< "pgsqlDB> Failed to allocate memory for db handle"
-		<< endl ;
-	throw std::exception() ;
-	}
-if( !isConnected() )
-	{
-	cout	<< "pgsqlDB> Failed to connect to db: "
-		<< ErrorMessage()
-		<< endl ;
-//	throw std::exception() ;
+	elog << "pgsqlDB> " << e.what() << endl;
 	}
 }
 
-pgsqlDB::pgsqlDB( xClient* _bot, const string& connectInfo )
-: bot( _bot )
+pgsqlDB::pgsqlDB( xClient* _bot, const string& connInfo )
+	: bot(_bot), connectInfo( connInfo ), dbConn( std::make_unique<pqxx::connection>( connInfo ) )
 {
-// TODO
-// Allow exception to be thrown
-lastResult = 0;
-theDB = PQconnectdb( connectInfo.c_str() ) ;
-if( 0 == theDB )
+if( !dbConn || !dbConn->is_open() )
 	{
-	cout	<< "pgsqlDB> Failed to allocate memory for db handle"
-		<< endl ;
-	throw std::exception() ;
-	}
-if( !isConnected() )
-	{
-	cout	<< "pgsqlDB> Failed to connect to db: "
+	elog	<< "pgsqlDB> Failed to connect to db: "
 		<< ErrorMessage()
 		<< endl ;
-	throw std::exception() ;
 	}
 }
 
 pgsqlDB::~pgsqlDB()
 {
-if( theDB != 0 )
-	{
-	PQfinish( theDB ) ;
-	theDB = 0 ;
-	}
-if( lastResult != 0 )
-	{
-	PQclear( lastResult ) ;
-	lastResult = 0 ;
-	}
 }
 
 bool pgsqlDB::Exec( const string& theQuery, bool log )
@@ -128,103 +86,137 @@ bool pgsqlDB::Exec( const string& theQuery, bool log )
 if (log)
     bot->getLogger()->write( SQL, theQuery ) ;
 
-// It is necessary to manually deallocate the last result
-// to prevent memory leaks.
-if( lastResult != 0 )
+/* Check if the connection has been lost, and attempt to reconnect. */
+if( !dbConn || !dbConn->is_open() )
 	{
-	PQclear( lastResult ) ;
-	lastResult = 0 ;
+	elog << "pgsqlDB::Exec> Connection lost. Attempting to reconnect..." << std::endl ;
+	reconnect() ;
 	}
-lastResult = PQexec( theDB, theQuery.c_str() ) ;
 
-ExecStatusType status = PQresultStatus( lastResult ) ;
-if (PGRES_COPY_IN == status) return true;
-if (PGRES_TUPLES_OK == status) return true;
-if (PGRES_COMMAND_OK == status) return true;
-return false;
-}
-
-bool pgsqlDB::Exec( const stringstream& theQuery, bool retData )
-{
-return Exec( theQuery.str(), retData ) ;
-}
-
-bool pgsqlDB::StartCopyIn( const string& writeMe )
-{
-return Exec( writeMe ) ;
-}
-
-bool pgsqlDB::StopCopyIn()
-{
-if( 0 == lastResult )
+/* Attempt to execute the query. */
+try
 	{
+	pqxx::work txn{ *dbConn } ;
+	lastResult = std::make_unique<pqxx::result>( txn.exec( theQuery ) ) ;
+	txn.commit() ;
+
+	// Clear the error message.
+	errorMsg.clear() ;
+
+        return true ;
+	}
+catch( const pqxx::broken_connection& bc)
+	{
+	errorMsg = std::string("Database connection lost: ") + bc.what() ;
+	elog << "pgsqlDB> " << errorMsg << endl ;
 	return false ;
 	}
-return (PQputCopyEnd( theDB, 0 ) != -1) ;
-}
-
-bool pgsqlDB::PutLine( const string& writeMe )
-{
-if( 0 == lastResult )
+catch( const pqxx::sql_error& sqlEx )
 	{
+	errorMsg = std::string("SQL Error: ") + sqlEx.what() ;
+	elog << "pgsqlDB> " << errorMsg << endl ;
 	return false ;
 	}
-return (PQputline( theDB, writeMe.c_str() ) != -1) ;
+catch( const std::exception& e )
+	{
+	errorMsg = std::string("General Error: ") + e.what() ;
+	elog << "pgsqlDB> " << errorMsg << endl ;
+	return false ;
+	}
+}
+
+bool pgsqlDB::Exec( const stringstream& theQuery, bool log )
+{
+return Exec( theQuery.str(), log ) ;
 }
 
 unsigned int pgsqlDB::countTuples() const
 {
-if( 0 == lastResult )
-	{
-	return 0 ;
-	}
-return PQntuples( lastResult ) ;
+return lastResult ? lastResult->size() : 0 ;
 }
 
 unsigned int pgsqlDB::affectedRows() const
 {
-if( 0 == lastResult )
+if( !lastResult )
 	return 0 ;
 
-return std::atoi( PQcmdTuples( lastResult ) ) ;
+return lastResult->affected_rows() ;
 }
 
 const string pgsqlDB::ErrorMessage() const
 {
-return string( PQerrorMessage( theDB ) ) ;
+if( !errorMsg.empty() )
+	return errorMsg ;
+
+if( !dbConn || !dbConn->is_open() )
+	return "Connection not open" ;
+
+return "No error" ;
 }
 
-const string pgsqlDB::GetValue( unsigned int rowNumber,
-	unsigned int columnNumber ) const
+const string pgsqlDB::GetValue( int rowNumber,
+				int columnNumber ) const
 {
-if( 0 == lastResult )
-	{
-	return string() ;
-	}
-return PQgetvalue( lastResult, rowNumber, columnNumber ) ;
+if (!lastResult || rowNumber >= static_cast<int>( lastResult->size() )
+	|| columnNumber >= static_cast<int>( lastResult->columns() ) )
+	return "" ;
+
+// Check if the field is NULL
+const pqxx::field field = (*lastResult)[rowNumber][columnNumber];
+if( field.is_null() )
+	return "" ;
+
+return field.as<std::string>() ;
 }
 
-const string pgsqlDB::GetValue( unsigned int rowNumber,
-	const string& columnName ) const
+const string pgsqlDB::GetValue( int rowNumber,
+				const string& columnName ) const
 {
-if( 0 == lastResult )
-	{
-	return string( "No result stored" ) ;
-	}
+if (!lastResult || rowNumber >= static_cast<int>( lastResult->size() ) )
+	return "" ;
 
-// Retrieve the column number for this name.
-const int columnNumber = PQfnumber( lastResult, columnName.c_str() ) ;
-if( -1 == columnNumber )
-	{
-	return (string( "No such column: " ) + columnName) ;
-	}
+// Get column index from the column name
+pqxx::row_size_type columnNumber = lastResult->column_number( columnName.c_str() ) ;
 
-return PQgetvalue( lastResult, rowNumber, columnNumber ) ;
+if( columnNumber == pqxx::row_size_type(-1) )
+	return "" ;
+
+// Check if the field is NULL
+const pqxx::field field = (*lastResult)[rowNumber][columnNumber];
+if( field.is_null() )
+	return "" ;
+
+return field.as<std::string>() ;
 }
 
 bool pgsqlDB::isConnected() const
 {
-return (CONNECTION_OK == PQstatus( theDB )) ;
+if( !dbConn)
+	return false ;
+return dbConn->is_open() ;
+}
+
+bool pgsqlDB::reconnect()
+{
+try
+	{
+	if( !isConnected() )
+		{
+		elog	<< "pgsqlDB::reconnect()> Reconnecting to the database ... " << endl ;
+		dbConn = std::make_unique< pqxx::connection >( connectInfo ) ;
+		elog << "pgsqlDB::reconnect()> Successfully reconnected to the database." << endl ;
+		errorMsg.clear() ;
+		return true ;
+		}
+	}
+catch( const std::exception& e )
+	{
+		errorMsg = std::string("Failed to reconnect to the database: ") + e.what() ;
+		elog << errorMsg << endl ;
+		return false;
+	}
+
+return false ;
 }
 
 } // namespace gnuworld
