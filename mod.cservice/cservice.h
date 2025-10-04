@@ -124,6 +124,7 @@ private:
 
 	struct SaslRequest {
 		iServer* theServer ;
+		iClient* theClient = nullptr ;
 		time_t added_ts ;
 		time_t last_ts ;
         string routing ;

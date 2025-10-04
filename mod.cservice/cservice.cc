@@ -180,7 +180,6 @@ MyUplink->RegisterEvent( EVT_GLINE , this );
 MyUplink->RegisterEvent( EVT_REMGLINE , this );
 MyUplink->RegisterEvent( EVT_NETBREAK, this );
 
-
 xClient::OnAttach() ;
 }
 
@@ -523,6 +522,20 @@ void cservice::BurstChannels()
 
 void cservice::OnConnect()
 {
+MyUplink->Write( "%s CF %d sasl.server :%s",
+	getCharYY().c_str(),
+	time(nullptr),
+	MyUplink->getName().c_str() ) ;
+
+MyUplink->Write( "%s CF %d sasl.mechanisms :%s",
+        getCharYY().c_str(),
+        time(nullptr),
+        saslMechsAdvertiseList().c_str() ) ;
+
+MyUplink->Write( "%s CF %d sasl.timeout :60",
+        getCharYY().c_str(),
+        time(nullptr) ) ;
+
 // TODO: I changed this from return 0
 xClient::OnConnect() ;
 }
@@ -8759,7 +8772,8 @@ std::string cservice::saslMechanismToString( cservice::SaslMechanism mech )
 
 std::string cservice::saslMechsAdvertiseList()
 {
-    std::string out = "MECHS " ;
+//    std::string out = "MECHS " ;
+	string out ;
     bool first = true ;
 #define X(NAME, NAME_STR) \
     do { if( !first ) out += "," ; first = false ; out += string_lower( NAME_STR ) ; } while(0);
@@ -8773,7 +8787,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 	elog << "cservice::doXQSASL: Routing: " << Routing << " Message: " << Message << "\n" ;
 
 	StringTokenizer st( Message ) ;
-	if( st.size() < 1 )
+	if( st.size() < 2 )
 		{
 		elog << "Received empty SASL message... Ignoring." << endl;
 		return false ;
@@ -9098,11 +9112,11 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 			AUTH_ERROR,			// result (placeholder)
 			it->username,		// username
 			it->password,		// password/token
-			it->ident,			// ident (currently empty)
+			it->ident,			// ident (empty for LoC)
 			it->ip,				// ip
 			it->fingerprint,	// tls fingerprint
 			nullptr,			// sqlUser (placeholder)
-			nullptr,			// iClient (not in use for LoC)
+			it->theClient,		// iClient (nullptr for LoC)
 			it->mechanism
 		} ;
 
@@ -9118,10 +9132,17 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 		if( auth_res == AUTH_SUCCEEDED )
 			{
 			incStat("SASL." + saslMechanismToString( it->mechanism ) + ".SUCCESS" ) ;
-			doXResponse( theServer, Routing, auth.theUser->getUserName() + ":" +
-							std::to_string( auth.theUser->getID() ) + ":" +
-							std::to_string( makeAccountFlags( auth.theUser ) ) +
-							(auth.theUser->getFlag( sqlUser::F_AUTOHIDE ) ? " +x" : "") ) ;
+			if( !auth.theClient )
+				doXResponse( theServer, Routing, auth.theUser->getUserName() + ":" +
+								std::to_string( auth.theUser->getID() ) + ":" +
+								std::to_string( makeAccountFlags( auth.theUser ) ) +
+								(auth.theUser->getFlag( sqlUser::F_AUTOHIDE ) ? " +x" : "") ) ;
+			else
+				{
+				doCommonAuth( auth.theClient, auth.theUser->getUserName() ) ;
+				doXResponse( theServer, Routing, string() ) ;
+				}
+
 			elog    << "cservice::doXQSASL: "
 					<< "Succesful auth for "
 					<< it->username
@@ -9137,6 +9158,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 
 		/* Send response. */
 		doXResponse( theServer, Routing, AuthResponse, true ) ;
+
 		incStat("SASL." + saslMechanismToString( it->mechanism ) + ".FAILED" ) ;
 
 		saslRequests.erase( it ) ;
@@ -9145,22 +9167,43 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 	// It is the initial message consisting of the mechanism.
 	else
     	{
-		if( st.size() < 2 )
+		// Did we receive a numeric?
+		iClient* tmpClient = Network->findClient( st[ 1 ] ) ;
+		string IP ;
+		string fingerprint ;
+		string authMessage ;
+		if( tmpClient )
 			{
-			elog << "Received SASL message without IP and fingerprint." << endl ;
-			doXResponse( theServer, Routing, "An error has occurred", true ) ;
-			return false ;
-			}
+			if( st.size() < 3 )
+				{
+				elog << "Bogus SASL message with numeric" << endl ;
+				doXResponse( theServer, Routing, "An error has occurred", true ) ;
+				return false ;
+				}
 
-		string IP = st[ 1 ] ;
-		string fingerprint = st[ 2 ] ;
-		string authMessage = string_upper( st[ 3 ] ) ;
+			IP = xIP( tmpClient->getIP() ).GetNumericIP() ;
+			fingerprint = tmpClient->getTlsFingerprint().empty() ? "_" : tmpClient->getTlsFingerprint() ;
+			authMessage = string_upper( st[ 2 ] ) ;
+			}
+		else
+			{
+			if( st.size() < 4 )
+				{
+				elog << "Bogus SASL message without numeric" << endl ;
+				doXResponse( theServer, Routing, "An error has occurred", true ) ;
+				return false ;
+				}
+
+			IP = st[ 1 ] ;
+			fingerprint = st[ 2 ] ;
+			authMessage = string_upper( st[ 3 ] ) ;
+			}
 
 		SaslMechanism mech ;
 		if( !parseSaslMechanism( authMessage, mech ) )
 			{
-			LOG( DEBUG, "Received invalid SASL mechanism: {}", authMessage ) ;
-			MyUplink->XReply( theServer, Routing, saslMechsAdvertiseList() ) ;
+			LOG( ERROR, "Received invalid SASL mechanism: {}", authMessage ) ;
+			doXResponse( theServer, Routing, "An error has occurred", true ) ;
 			return false ;
 			}
 		
@@ -9174,6 +9217,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 		// Valid mechanism - store in cache for further use.
 		elog << "Received valid SASL mechanism: " << authMessage << " from IP: " << IP << endl;
 		SaslRequest newRequest ;
+		newRequest.theClient = tmpClient ;
 		newRequest.routing = Routing ;
 		newRequest.theServer = theServer ;
 		newRequest.ip = IP ;
@@ -9181,6 +9225,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 		newRequest.last_ts = currentTime() ;
 		newRequest.fingerprint = fingerprint == "_" ? "" : fingerprint ;
 		newRequest.mechanism = mech ;
+		newRequest.ident = tmpClient ? tmpClient->getUserName() : "" ;
 
 		saslRequests.push_back( newRequest ) ;
 

@@ -141,6 +141,17 @@ private:
 	 */
 	typedef std::map< unsigned int, iServer* > serverMapType ;
 
+	/**
+	 * The type used to store Network configuration pairs (CF).
+	 */
+	typedef std::map< std::string, std::pair< std::string, time_t > > netConfMapType ;
+
+	/**
+	 * This structure holds all network configuration pairs
+	 * bursted on the network (CF).
+	 */
+	netConfMapType		netConfMap ;
+
 public:
 
 	/**
@@ -204,6 +215,14 @@ public:
 	 * Returns false if the addition fails.
 	 */
 	virtual bool		addChannel( Channel* ) ;
+
+	/**
+	 * Add a new netconf variable to the network table.
+	 */
+	virtual void		addNetConf( const std::string& var,
+									const std::string& value,
+									const time_t& timestamp )
+		{ netConfMap[ var ] = std::make_pair( value, timestamp ) ; }
 
 	/*
 	 * All nickname based searches are case insensitive.

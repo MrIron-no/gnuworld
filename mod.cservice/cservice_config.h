@@ -77,7 +77,7 @@
 /**
  * Define this if you want to enable the HELLO command.
  */
-#undef ALLOW_HELLO
+#define ALLOW_HELLO
 
  /**
  * Define this if you want to enable the WELCOME feature.

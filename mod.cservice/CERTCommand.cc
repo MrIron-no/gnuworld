@@ -38,13 +38,6 @@ if( !theUser )
 	return false ;
  	}
 
-// For now, only allow admins to use this command.
-int admLevel = bot->getAdminAccessLevel(theUser);
-if (admLevel < 1000)
-	{
-	return false;
-	}
-
 StringTokenizer st( Message ) ;
 if( st.size() < 2 )
 	{

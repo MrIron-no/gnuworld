@@ -59,6 +59,7 @@ enum
 	EVT_RAW,
 	EVT_XQUERY,
 	EVT_XREPLY,
+	EVT_CONFIG,
 
 	// EVT_NOOP must always be last
 	EVT_NOOP
@@ -127,6 +128,9 @@ typedef int channelEventType ;
  *  1) iServer* source
  *  2) string* - routing
  *  3) string* - command
+ * EVT_CONFIG
+ *  1) iServer* source
+ *  2) string* - key
  *
  * Channel Events
  * --------------
