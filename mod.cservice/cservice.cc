@@ -8240,12 +8240,12 @@ if( pushoverEnable )
   if( rehash )
     {
     pushoverToken = cserviceConfig->TryRequire< std::string >( "pushover_token", pushoverToken ) ;
-    pushoverVerbose = cserviceConfig->TryRequire< unsigned int >( "pushover_verbose", pushoverVerbose ) ;
+    pushoverVerbose = cserviceConfig->TryRequire< unsigned int >( "pushover_verbosity", pushoverVerbose ) ;
     }
   else
     {
     pushoverToken = cserviceConfig->Require< std::string >( "pushover_token" ) ;
-    pushoverVerbose = cserviceConfig->Require< unsigned int >( "pushover_verbose" ) ;
+    pushoverVerbose = cserviceConfig->Require< unsigned int >( "pushover_verbosity" ) ;
     }
 
   auto confPtr = cserviceConfig->Find( "pushover_userkey" ) ;

@@ -81,8 +81,8 @@
     CONFIG_VAR( unsigned int, preloadUserDays,                  "preload_user_days") \
     CONFIG_VAR( unsigned int, partIdleChan,                     "part_idle_chan") \
     CONFIG_VAR( unsigned int, connectRetry,                     "connection_retry_total") \
-    CONFIG_VAR( unsigned int, logVerbose,                       "log_verbose") \
-    CONFIG_VAR( unsigned int, chanVerbose,                      "chan_verbose") \
+    CONFIG_VAR( unsigned int, logVerbose,                       "log_verbosity") \
+    CONFIG_VAR( unsigned int, chanVerbose,                      "chan_verbosity") \
     CONFIG_VAR( unsigned int, saslTimeout,                      "sasl_timeout") \
     CONFIG_VAR( bool,         logSQL,                           "log_sql") \
     CONFIG_VAR( bool,         pushoverEnable,                   "pushover_enable")
