@@ -254,7 +254,6 @@ bool isValidSHA256Fingerprint( const std::string& ) ;
 
 /* Returns the CPU time used by gnuworld in seconds. */
 double getCPUTime() ;
->>>>>>> master
 
 /* Masks a string for logging purposes. Typically used for passwords. */
 inline std::string mask( const std::string& s )

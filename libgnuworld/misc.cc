@@ -726,6 +726,7 @@ if( fingerprint.length() != 95 )
 	return false ;
 
 return std::regex_match( fingerprint, fingerprintRegex ) ;
+}
 
 /* Returns the CPU time used by gnuworld in seconds. */
 double getCPUTime() {

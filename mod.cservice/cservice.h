@@ -586,7 +586,6 @@ public:
 		return std::nullopt ;
 	}
 
->>>>>>> master
 	/* Fetch a user record for a user. */
 	sqlUser* getUserRecord( const string& );
 
