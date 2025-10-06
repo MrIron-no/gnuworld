@@ -252,9 +252,19 @@ std::string canonicalToCompact( const std::string& ) ;
 
 bool isValidSHA256Fingerprint( const std::string& ) ;
 
+/* Returns the CPU time used by gnuworld in seconds. */
+double getCPUTime() ;
+>>>>>>> master
+
 /* Masks a string for logging purposes. Typically used for passwords. */
 inline std::string mask( const std::string& s )
 	{ return std::string( s.size(), '*' ) ; }
+
+/* Escape a string for JSON logging. */
+std::string escapeJsonString( const std::string& input ) ;
+
+/* Returns current UTC timestamp in ISO 8601 format. */
+std::string getCurrentTimestamp() ;
 
 } // namespace gnuworld
 

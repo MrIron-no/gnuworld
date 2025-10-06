@@ -40,6 +40,7 @@
 #include	"EConfig.h"
 #include	"cservice_config.h"
 #include	"cservice_confvars.h"
+#include	"cservice_crypt.h"
 #include	"cserviceCommands.h"
 #include	"sqlChannel.h"
 #include	"sqlUser.h"
@@ -49,14 +50,18 @@
 #include	"csGline.h"
 #include	"dbHandle.h"
 #include	"pushover.h"
-#include "cservice_crypt.h"
+#include	"prometheus.h"
 
 #ifdef USE_THREAD
-#include	"threadworker.h"
+  #include	"threadworker.h"
 #endif
 
 namespace gnuworld
 {
+
+/* Custom logger macros to provide additional json params. */
+#define LOG_WITH_UID(x, y, ...)  logger->writeFunc(x, __PRETTY_FUNCTION__, "\"user_id\":" + std::to_string(y), __VA_ARGS__)
+#define LOG_WITH_CID(x, y, ...)  logger->writeFunc(x, __PRETTY_FUNCTION__, "\"chan_id\":" + std::to_string(y), __VA_ARGS__)
 
 using std::string ;
 using std::vector ;
@@ -267,6 +272,20 @@ protected:
 	/* Pushover object. */
 	std::shared_ptr< PushoverClient > pushover ;
 
+	/* Prometheus object. */
+	std::shared_ptr< PrometheusClient > prometheus ;
+
+	/**
+	 * Non-required configurable variable for prometheus metrics IP.
+	 */
+	std::string                       prometheusIP ;
+
+	/**
+	 * Non-required configurable variable for prometheus metrics port.
+	 * Will be 0 if prometheusEnable is false.
+	 */
+	unsigned short                    prometheusPort = 9091 ;
+
 	/**
 	 * Non-required configurable variable for pushover API token.
 	 * Will be empty if pushoverEnable is false.
@@ -283,10 +302,10 @@ protected:
 	 * Non-required configurable verbose level for pushover.
 	 * WARN is default value.
 	 */
-	unsigned short                    pushoverVerbose = 4 ;
+	unsigned short                    pushoverVerbosity = 3 ;
 
 	/* Tracker for re-connection attempts to SQL database. */
-	unsigned int 					  connectRetries = 0;
+	unsigned int 					  connectRetries = 0 ;
 
 	/* Container for incStats. */
 	typedef map < string, int > statsMapType;
@@ -351,8 +370,14 @@ protected:
 	/* TimerID for checking channel flood cleanups */
 	xServer::timerID channels_flood_timerID = 0;
 
+	/* TimerID for checking prometheus metrics */
+	xServer::timerID prometheus_timerID = 0;
+
 	/* Checks whether the SQL database connection is active. */
 	void checkDbConnectionStatus();
+
+	/* Update prometheus metrics */
+	void updatePrometheusMetrics() ;
 
 	/* Check if a client has passed IP restriction checks */
 	bool passedIPR( iClient* );
@@ -552,6 +577,16 @@ public:
 	void removeFP( const string& fingerprint )
 		{ fingerprintMap.erase( fingerprint ) ; }
 
+	/* Fetch a user record from cache only. */
+	inline std::optional< sqlUser* > getCachedUserRecord( const string& user_name )
+	{
+		auto ptr = sqlUserCache.find( user_name ) ;
+		if( ptr != sqlUserCache.end() )
+			return ptr->second ;
+		return std::nullopt ;
+	}
+
+>>>>>>> master
 	/* Fetch a user record for a user. */
 	sqlUser* getUserRecord( const string& );
 
@@ -578,13 +613,29 @@ public:
 	/* Returns the current "Flood Points" this iClient has. */
  	unsigned short getFloodPoints(iClient*);
 
-	/* Increments the join count for this iClient. */
-	void incrementJoinCount()
-		{ ++joinCount ; }
+	/* Increments the total command count. */
+	void incrementTotalCommands()
+	{
+		++totalCommands ;
+		if( prometheus )
+			prometheus->setGauge( "total_commands", totalCommands ) ;
+	}
 
-	/* Decrements the join count for this iClient. */
+	/* Increments the join count. */
+	void incrementJoinCount()
+	{
+		++joinCount ;
+		if( prometheus )
+			prometheus->setGauge( "joins", joinCount ) ;
+	}
+
+	/* Decrements the join count. */
 	void decrementJoinCount()
-		{ --joinCount ; }
+	{
+		--joinCount ;
+		if( prometheus )
+			prometheus->setGauge( "joins", joinCount ) ;
+	}
 
 	/* A const getter of the sqlLevelCache. */
 	const sqlLevelHashType& getLevelCache() const

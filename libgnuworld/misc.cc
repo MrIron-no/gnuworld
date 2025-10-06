@@ -726,6 +726,54 @@ if( fingerprint.length() != 95 )
 	return false ;
 
 return std::regex_match( fingerprint, fingerprintRegex ) ;
+
+/* Returns the CPU time used by gnuworld in seconds. */
+double getCPUTime() {
+struct rusage usage ;
+getrusage( RUSAGE_SELF, &usage ) ;
+return usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6 +
+		usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6 ;
+}
+
+std::string escapeJsonString( const std::string& input )
+{
+std::string output ;
+output.reserve( input.length() * 2 ) ;
+
+for( char c : input)
+  {
+  switch (c) {
+    case '"':  output += "\\\"" ; break ;
+    case '\\': output += "\\\\" ; break ;
+    case '\b': output += "\\b" ;  break ;
+    case '\f': output += "\\f" ;  break ;
+    case '\n': output += "\\n" ;  break ;
+    case '\r': output += "\\r" ;  break ;
+    case '\t': output += "\\t" ;  break ;
+    default:
+      if( c >= 0 && c < 32 )
+        {
+        output += "\\u" ;
+        output += std::to_string( static_cast< int >( c ) ) ;
+        }
+      else
+        {
+        output += c;
+        }
+      break ;
+    }
+  }
+return output ;
+}
+
+std::string getCurrentTimestamp()
+{
+auto now = std::time( nullptr ) ;
+auto tm = *std::gmtime( &now ) ;
+
+std::ostringstream oss ;
+oss << std::put_time( &tm, "%Y-%m-%dT%H:%M:%SZ" ) ;
+return oss.str() ;
 }
 
 } // namespace gnuworld
