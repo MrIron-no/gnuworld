@@ -8739,7 +8739,8 @@ if( setFailedLogin )
 		setFailedLogins( auth.theClient, failedLogins + 1 ) ;
 		}
 
-	auth.theUser->incFailedLogins() ;
+	if( auth.theUser )
+		auth.theUser->incFailedLogins() ;
 	}
 
 /* Send response only if it fails. If it succeeds, the message is sent from doCommonAuth() */
