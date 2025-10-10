@@ -40,8 +40,6 @@ namespace gnuworld
 
 bool LOGINCommand::Exec( iClient* theClient, const string& Message )
 {
-bot->incStat("COMMANDS.LOGIN");
-
 StringTokenizer st( Message ) ;
 if( st.size() < 2 )
 	{
