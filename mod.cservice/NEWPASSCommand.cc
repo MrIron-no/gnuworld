@@ -145,13 +145,12 @@ auto recOpt = make_scram_sha256_record( st.assemble( 1 ), &err ) ;
 
 if( !recOpt )
 	{
-	elog << "SCRAM generation error: " << err << "\n";
-	logDebugMessage("SCRAM generation error: ", err.c_str() ) ;
+	LOG( ERROR, "SCRAM generation error: {}", err ) ;
 	}
 else
 	{
 	std::string scram_record = *recOpt ;
-	theUser->setScramRecord( scram_record ) ;
+	tmpUser->setScramRecord( scram_record ) ;
 	}
 
 if( tmpUser->commit(theClient) )
