@@ -88,13 +88,6 @@
 #undef NO_FINGERPRINT_BURST
 
 /**
- * DAEMON
- * Set this to make GNUWorld fork into the background when run.
- * default is OFF to maintain original operation
- */
-#undef DAEMON
-
-/**
  * USE_THREAD
  * Set this to enable mutexes on shared objects. Relevant for running
  * modules with threading.

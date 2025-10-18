@@ -274,6 +274,7 @@ if( verbose )
 if( logSocket )
 	{
 	socketFile	<< logLine ;
+	socketFile.flush() ;
 	}
 
 Process( inputCharBuffer ) ;

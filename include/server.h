@@ -78,10 +78,14 @@ protected:
 public:
 
 	/**
-	 * The xServer constructor.  It takes the arguments
-	 * from the command line.
+	 * The xServer constructor.  It takes parsed configuration
+	 * parameters from the command line.
 	 */
-	xServer( int, char** ) ;
+	xServer( bool verbose, bool doDebug, bool logSocket,
+	         const std::string& elogFileName,
+	         const std::string& socketFileName,
+	         const std::string& configFileName,
+	         const std::string& simFileName ) ;
 
 	/**
 	 * Destroy the server and its clients, disconnect
@@ -1471,6 +1475,38 @@ protected:
 	std::ofstream	socketFile ;
 
 	/**
+	 * The reason used to shutdown the server, displayed in
+	 * the SQ message.
+	 */
+	std::string	shutDownReason ;
+
+	/**
+	 * The char array to be used to read in network data.
+	 * This is allocated only once in the server for
+	 * performance reasons.
+	 * It is of fixed size since this buffer isn't used for
+	 * actual reading from the network connection, only for
+	 * handling a single network message a time (max 512 bytes).
+	 */
+	char		inputCharBuffer[ 1024 ] ;
+
+	/**
+	 * True if all elog data should be output to clog.
+	 */
+	bool		verbose ;
+
+	/**
+	 * True if debug is enabled.
+	 */
+	bool		doDebug ;
+
+	/**
+	 * True if logging of raw input data to file is enabled.
+	 */
+	bool		logSocket ;
+
+
+	/**
 	 * The name of the file for which elog to write all
 	 * debugging information.
 	 */
@@ -1493,12 +1529,6 @@ protected:
 	std::string	simFileName ;
 
 	/**
-	 * The reason used to shutdown the server, displayed in
-	 * the SQ message.
-	 */
-	std::string	shutDownReason ;
-
-	/**
 	 * The path to the TLS key file
 	 */
 	std::string tlsKeyFile ;
@@ -1507,33 +1537,6 @@ protected:
 	 * The path to the TLS cert file
 	 */
 	std::string tlsCertFile ;
-
-
-
-	/**
-	 * The char array to be used to read in network data.
-	 * This is allocated only once in the server for
-	 * performance reasons.
-	 * It is of fixed size since this buffer isn't used for
-	 * actual reading from the network connection, only for
-	 * handling a single network message a time (max 512 bytes).
-	 */
-	char		inputCharBuffer[ 1024 ] ;
-
-	/**
-	 * True if logging of raw input data to file is enabled.
-	 */
-	bool		logSocket ;
-
-	/**
-	 * True if all elog data should be output to clog.
-	 */
-	bool		verbose ;
-
-	/**
-	 * True if debug is enabled.
-	 */
-	bool		doDebug ;
 
 	/**
 	 * True if autoreconnect is enabled, false otherwise.
@@ -1554,6 +1557,7 @@ protected:
 	 * This method loads all command handlers.
 	 */
 	bool		loadCommandHandlers() ;
+
 
 	/**
 	 * This method initializes all of the TLS contexts
