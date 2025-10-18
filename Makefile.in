@@ -783,19 +783,20 @@ libgnuworldcore_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(libgnuworldcore_la_LDFLAGS) $(LDFLAGS) -o $@
 libircu_la_LIBADD =
 am_libircu_la_OBJECTS = libircu/la-msg_AC.lo libircu/la-msg_AD.lo \
-	libircu/la-msg_B.lo libircu/la-msg_C.lo libircu/la-msg_CM.lo \
-	libircu/la-msg_D.lo libircu/la-msg_DS.lo libircu/la-msg_EA.lo \
-	libircu/la-msg_EB.lo libircu/la-msg_G.lo libircu/la-msg_GL.lo \
-	libircu/la-msg_I.lo libircu/la-msg_J.lo libircu/la-msg_JU.lo \
-	libircu/la-msg_K.lo libircu/la-msg_L.lo libircu/la-msg_M351.lo \
-	libircu/la-msg_M391.lo libircu/la-msg_M.lo libircu/la-msg_N.lo \
-	libircu/la-msg_NOOP.lo libircu/la-msg_O.lo \
-	libircu/la-msg_PA.lo libircu/la-msg_P.lo libircu/la-msg_Q.lo \
-	libircu/la-msg_R.lo libircu/la-msg_RI.lo libircu/la-msg_RO.lo \
-	libircu/la-msg_S.lo libircu/la-msg_Server.lo \
-	libircu/la-msg_SQ.lo libircu/la-msg_T.lo libircu/la-msg_V.lo \
-	libircu/la-msg_WA.lo libircu/la-msg_W.lo libircu/la-msg_XQ.lo \
-	libircu/la-msg_XR.lo libircu/la-msg_Y.lo
+	libircu/la-msg_B.lo libircu/la-msg_C.lo libircu/la-msg_CF.lo \
+	libircu/la-msg_CM.lo libircu/la-msg_D.lo libircu/la-msg_DS.lo \
+	libircu/la-msg_EA.lo libircu/la-msg_EB.lo libircu/la-msg_G.lo \
+	libircu/la-msg_GL.lo libircu/la-msg_I.lo libircu/la-msg_J.lo \
+	libircu/la-msg_JU.lo libircu/la-msg_K.lo libircu/la-msg_L.lo \
+	libircu/la-msg_M351.lo libircu/la-msg_M391.lo \
+	libircu/la-msg_M.lo libircu/la-msg_N.lo libircu/la-msg_NOOP.lo \
+	libircu/la-msg_O.lo libircu/la-msg_PA.lo libircu/la-msg_P.lo \
+	libircu/la-msg_Q.lo libircu/la-msg_R.lo libircu/la-msg_RI.lo \
+	libircu/la-msg_RO.lo libircu/la-msg_S.lo \
+	libircu/la-msg_Server.lo libircu/la-msg_SQ.lo \
+	libircu/la-msg_T.lo libircu/la-msg_V.lo libircu/la-msg_WA.lo \
+	libircu/la-msg_W.lo libircu/la-msg_XQ.lo libircu/la-msg_XR.lo \
+	libircu/la-msg_Y.lo
 libircu_la_OBJECTS = $(am_libircu_la_OBJECTS)
 libircu_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(libircu_la_CXXFLAGS) \
@@ -1010,8 +1011,9 @@ am__depfiles_remade = db/$(DEPDIR)/libgnuworldDB_la-gnuworldDB.Plo \
 	libgnuworld/$(DEPDIR)/la-threadworker.Plo \
 	libircu/$(DEPDIR)/la-msg_AC.Plo \
 	libircu/$(DEPDIR)/la-msg_AD.Plo libircu/$(DEPDIR)/la-msg_B.Plo \
-	libircu/$(DEPDIR)/la-msg_C.Plo libircu/$(DEPDIR)/la-msg_CM.Plo \
-	libircu/$(DEPDIR)/la-msg_D.Plo libircu/$(DEPDIR)/la-msg_DS.Plo \
+	libircu/$(DEPDIR)/la-msg_C.Plo libircu/$(DEPDIR)/la-msg_CF.Plo \
+	libircu/$(DEPDIR)/la-msg_CM.Plo libircu/$(DEPDIR)/la-msg_D.Plo \
+	libircu/$(DEPDIR)/la-msg_DS.Plo \
 	libircu/$(DEPDIR)/la-msg_EA.Plo \
 	libircu/$(DEPDIR)/la-msg_EB.Plo libircu/$(DEPDIR)/la-msg_G.Plo \
 	libircu/$(DEPDIR)/la-msg_GL.Plo libircu/$(DEPDIR)/la-msg_I.Plo \
@@ -1731,6 +1733,7 @@ libircu_la_SOURCES = \
 	libircu/msg_AD.cc \
 	libircu/msg_B.cc \
 	libircu/msg_C.cc \
+	libircu/msg_CF.cc \
 	libircu/msg_CM.cc \
 	libircu/msg_D.cc \
 	libircu/msg_DS.cc \
@@ -3110,6 +3113,8 @@ libircu/la-msg_B.lo: libircu/$(am__dirstamp) \
 	libircu/$(DEPDIR)/$(am__dirstamp)
 libircu/la-msg_C.lo: libircu/$(am__dirstamp) \
 	libircu/$(DEPDIR)/$(am__dirstamp)
+libircu/la-msg_CF.lo: libircu/$(am__dirstamp) \
+	libircu/$(DEPDIR)/$(am__dirstamp)
 libircu/la-msg_CM.lo: libircu/$(am__dirstamp) \
 	libircu/$(DEPDIR)/$(am__dirstamp)
 libircu/la-msg_D.lo: libircu/$(am__dirstamp) \
@@ -3426,6 +3431,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@libircu/$(DEPDIR)/la-msg_AD.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@libircu/$(DEPDIR)/la-msg_B.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@libircu/$(DEPDIR)/la-msg_C.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@libircu/$(DEPDIR)/la-msg_CF.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@libircu/$(DEPDIR)/la-msg_CM.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@libircu/$(DEPDIR)/la-msg_D.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@libircu/$(DEPDIR)/la-msg_DS.Plo@am__quote@ # am--include-marker
@@ -5561,6 +5567,13 @@ libircu/la-msg_C.lo: libircu/msg_C.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libircu_la_CXXFLAGS) $(CXXFLAGS) -c -o libircu/la-msg_C.lo `test -f 'libircu/msg_C.cc' || echo '$(srcdir)/'`libircu/msg_C.cc
 
+libircu/la-msg_CF.lo: libircu/msg_CF.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libircu_la_CXXFLAGS) $(CXXFLAGS) -MT libircu/la-msg_CF.lo -MD -MP -MF libircu/$(DEPDIR)/la-msg_CF.Tpo -c -o libircu/la-msg_CF.lo `test -f 'libircu/msg_CF.cc' || echo '$(srcdir)/'`libircu/msg_CF.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) libircu/$(DEPDIR)/la-msg_CF.Tpo libircu/$(DEPDIR)/la-msg_CF.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='libircu/msg_CF.cc' object='libircu/la-msg_CF.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libircu_la_CXXFLAGS) $(CXXFLAGS) -c -o libircu/la-msg_CF.lo `test -f 'libircu/msg_CF.cc' || echo '$(srcdir)/'`libircu/msg_CF.cc
+
 libircu/la-msg_CM.lo: libircu/msg_CM.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libircu_la_CXXFLAGS) $(CXXFLAGS) -MT libircu/la-msg_CM.lo -MD -MP -MF libircu/$(DEPDIR)/la-msg_CM.Tpo -c -o libircu/la-msg_CM.lo `test -f 'libircu/msg_CM.cc' || echo '$(srcdir)/'`libircu/msg_CM.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) libircu/$(DEPDIR)/la-msg_CM.Tpo libircu/$(DEPDIR)/la-msg_CM.Plo
@@ -6587,6 +6600,7 @@ distclean: distclean-recursive
 	-rm -f libircu/$(DEPDIR)/la-msg_AD.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_B.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_C.Plo
+	-rm -f libircu/$(DEPDIR)/la-msg_CF.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_CM.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_D.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_DS.Plo
@@ -6961,6 +6975,7 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f libircu/$(DEPDIR)/la-msg_AD.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_B.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_C.Plo
+	-rm -f libircu/$(DEPDIR)/la-msg_CF.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_CM.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_D.Plo
 	-rm -f libircu/$(DEPDIR)/la-msg_DS.Plo
