@@ -524,21 +524,32 @@ void cservice::BurstChannels()
 
 void cservice::OnConnect()
 {
-MyUplink->Write( "%s CF %d sasl.server :%s",
+auto saslServer = Network->findNetConf( "sasl.server" ) ;
+if( !saslServer || saslServer->first != MyUplink->getName() )
+  {
+  MyUplink->Write( "%s CF %d sasl.server :%s",
+    getCharYY().c_str(),
+    time(nullptr),
+    MyUplink->getName().c_str() ) ;
+  }
+
+auto saslMechanisms = Network->findNetConf( "sasl.mechanisms" ) ;
+if( !saslMechanisms || saslMechanisms->first != saslMechsAdvertiseList() )
+  {
+  MyUplink->Write( "%s CF %d sasl.mechanisms :%s",
 	getCharYY().c_str(),
-	time(nullptr),
-	MyUplink->getName().c_str() ) ;
+    time(nullptr),
+    saslMechsAdvertiseList().c_str() ) ;
+  }
 
-MyUplink->Write( "%s CF %d sasl.mechanisms :%s",
-        getCharYY().c_str(),
-        time(nullptr),
-        saslMechsAdvertiseList().c_str() ) ;
+auto saslTimeout = Network->findNetConf( "sasl.timeout" ) ;
+if( !saslTimeout || saslTimeout->first != "60" )
+  {
+  MyUplink->Write( "%s CF %d sasl.timeout :60",
+    getCharYY().c_str(),
+    time(nullptr) ) ;
+  }
 
-MyUplink->Write( "%s CF %d sasl.timeout :60",
-        getCharYY().c_str(),
-        time(nullptr) ) ;
-
-// TODO: I changed this from return 0
 xClient::OnConnect() ;
 }
 
