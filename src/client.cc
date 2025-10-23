@@ -122,6 +122,7 @@ if( mode & iClient::MODE_SERVICES )	Mode += 'k' ;
 if( mode & iClient::MODE_OPER )		Mode += 'o' ;
 if( mode & iClient::MODE_WALLOPS )	Mode += 'w' ;
 if( mode & iClient::MODE_INVISIBLE )	Mode += 'i' ;
+if( mode & iClient::MODE_TLS )		Mode += 'z' ;
 
 return Mode ;
 }
@@ -153,6 +154,7 @@ for( ; ptr != end ; ++ptr )
 		case 'o': mode |= iClient::MODE_OPER ; break;
 		case 'w': mode |= iClient::MODE_WALLOPS ; break;
 		case 'i': mode |= iClient::MODE_INVISIBLE ; break;
+		case 'z': mode |= iClient::MODE_TLS ; break;
 
 		default:
 			elog	<< "xClient::Mode> Unknown mode: "
