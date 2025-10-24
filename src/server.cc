@@ -2019,8 +2019,12 @@ s	<< theClient->getCharYY() << " N "
 	<< hopCount << " 31337 "
 	<< theClient->getUserName() << ' '
 	<< theClient->getHostName() << ' '
-	<< theClient->getModes() << ' '
-	<< "AAAAAA "
+	<< theClient->getModes() << ' ' ;
+
+if( theClient->getMode( iClient::MODE_TLS ) )
+	s << "_ " ;
+
+s	<< "AAAAAA "
 	<< theClient->getCharYYXXX() << " :"
 	<< theClient->getDescription() ;
 Write( s ) ;
