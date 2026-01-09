@@ -36,8 +36,6 @@
 #include	<cstdarg>
 #include	<chrono>
 
-#include	<openssl/evp.h>
-
 #include	"client.h"
 #include	"cservice.h"
 #include	"EConfig.h"
@@ -220,8 +218,9 @@ RegisterCommand(new SHOWIGNORECommand(this, "SHOWIGNORE", "", 3));
 RegisterCommand(new SUPPORTCommand(this, "SUPPORT", "#channel <YES|NO>", 15));
 RegisterCommand(new NOTECommand(this, "NOTE", "send <username> <message>, read all, erase <all|message id>", 10));
 RegisterCommand(new NOTECommand(this, "NOTES", "send <username> <message>, read all, erase <all|message id>", 10));
+#ifdef NEW_IRCU_FEATURES
 RegisterCommand(new CERTCommand(this, "CERT", "<ADD|REM|LIST> [fingerprint] [note]", 10));
-
+#endif
 RegisterCommand(new OPCommand(this, "OP", "<#channel> [nick] [nick] ..", 3));
 RegisterCommand(new DEOPCommand(this, "DEOP", "<#channel> [nick] [nick] ..", 3));
 RegisterCommand(new VOICECommand(this, "VOICE", "<#channel> [nick] [nick] ..", 3));
@@ -524,6 +523,7 @@ void cservice::BurstChannels()
 
 void cservice::OnConnect()
 {
+#ifdef NEW_IRCU_FEATURES
 auto saslServer = Network->findNetConf( "sasl.server" ) ;
 if( !saslServer || saslServer->first != MyUplink->getName() )
   {
@@ -542,13 +542,15 @@ if( !saslMechanisms || saslMechanisms->first != saslMechsAdvertiseList() )
     saslMechsAdvertiseList().c_str() ) ;
   }
 
-auto saslTimeout = Network->findNetConf( "sasl.timeout" ) ;
-if( !saslTimeout || saslTimeout->first != "60" )
+auto netSaslTimeout = Network->findNetConf( "sasl.timeout" ) ;
+if( !netSaslTimeout || std::stoul( netSaslTimeout->first ) != saslTimeout )
   {
-  MyUplink->Write( "%s CF %d sasl.timeout :60",
+  MyUplink->Write( "%s CF %d sasl.timeout :%d",
     getCharYY().c_str(),
-    time(nullptr) ) ;
+    time(nullptr),
+    saslTimeout ) ;
   }
+#endif // NEW_IRCU_FEATURES
 
 xClient::OnConnect() ;
 }
@@ -898,7 +900,7 @@ if( st.empty() )
 
 /*
  * Do flood checking - admins at 750 or above are excempt.
- * N.B: Only check that after someone has flooded ;)
+ * N.B: Only check that *after* someone has flooded ;)
  */
 const string Command = string_upper( st[ 0 ] ) ;
 
@@ -5030,7 +5032,7 @@ switch( theEvent )
         		break;
        			}
 		string Command = string_upper(st[0]);
-		if ((Command == "LOGIN") || (Command == "LOGIN2") || (Command == "LOGIN3"))
+		if ((Command == "LOGIN") || (Command == "LOGIN2"))
 			{
 			doXQLogin(theServer, Routing, Message);
 			}
@@ -8492,6 +8494,7 @@ if( !certAuth && auth.sasl != SaslMechanism::SCRAM_SHA_256
 /*
  * Compute SCRAM RECORD if it does not exist.
  */
+#ifdef HAVE_LIBSSL
 if( !certAuth && auth.sasl != SaslMechanism::SCRAM_SHA_256
 	&& auth.sasl != SaslMechanism::EXTERNAL
 	&& theUser->getScramRecord().empty() )
@@ -8513,6 +8516,7 @@ if( !certAuth && auth.sasl != SaslMechanism::SCRAM_SHA_256
 			theUser->commit( auth.ident + "@" + auth.ip ) ;
 		}
 	}
+#endif // HAVE_LIBSSL
 
 /* 10: Check TOTP token. */
 #ifdef TOTP_AUTH_ENABLED
@@ -8827,6 +8831,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 {
 	elog << "cservice::doXQSASL: Routing: " << Routing << " Message: " << Message << "\n" ;
 
+#ifdef HAVE_LIBSSL
 	StringTokenizer st( Message ) ;
 	if( st.size() < 2 )
 		{
@@ -9272,6 +9277,7 @@ bool cservice::doXQSASL( iServer* theServer, const string& Routing, const string
 
 		MyUplink->XReply( theServer, Routing, "SASL +" ) ;
 	}
+#endif // HAVE_LIBSSL
     return true;
 }
 
@@ -9280,7 +9286,6 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 	//What's going to be in Message?
 	// AB XQ Az iauth:15_d :LOGIN Admin temPass
 	// AB XQ Az iauth:15_d :LOGIN2 <ip-addr> <hostname> <ident> <username> <accountname password [totptoken]>
-	// AB XQ Az iauth:15_d :LOGIN3 <ip-addr> <hostname> <ident> <username> <fingerprint/_> <accountname password [totptoken]>
 	// elog << "cservice::doXQLogin: Routing: " << Routing << " Message: " << Message << "\n";
 	StringTokenizer st( Message );
 	string username;
@@ -9288,7 +9293,6 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 	string ip;
 	string hostname;
 	string ident;
-	string fingerprint;
 
 	if (st[0] == "LOGIN")
 	{
@@ -9321,24 +9325,6 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 		ident = st[3];
 		LOG( TRACE, "XQ-LOGIN2: LOGIN2 {} {} {} {} {}", ip, hostname, ident, username, mask(password) ) ;
 	}
-	if (st[0] == "LOGIN3")
-	{
-		if (st.size() < 7)
-		{
-			elog << "cservice::doXQLogin> LOGIN3 insufficient parameters" << endl;
-			doXResponse(theServer, Routing, locMessage, true);
-			return false;
-		}
-		username = st[5];
-		if (username.compare(0,1,":") == 0)
-			username.erase(0,1);
-		password = st.assemble(6);
-		ip = st[1];
-		hostname = st[2];
-		ident = st[3];
-		fingerprint = st[4] == "_" ? "" : st[4];
-		elog << "cservice::doXQLogin: LOGIN3 " << ip << " " << hostname << " " << ident << " " << username << " " << mask(password) << " " << fingerprint << endl;
-	}
 
 	AuthStruct auth = {
 		AuthType::XQUERY, 	// auth type
@@ -9347,7 +9333,7 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
 		password,			// password/token
 		ident,				// ident
 		ip,					// ip
-		fingerprint,		// tls fingerprint
+		string(),			// tls fingerprint
 		nullptr,			// sqlUser (placeholder)
 		nullptr,			// iClient (not in use for LoC)
 		SaslMechanism::NO_SASL
@@ -9957,10 +9943,11 @@ bool cservice::doCommonAuth(iClient* theClient, string username)
 	if (!LoC)
 		this->MyUplink->UserLogin(theClient, theUser->getUserName(), theUser->getID(), makeAccountFlags(theUser), this);
 
+#ifdef NEW_IRCU_FEATURES
 	/* Set remote +x if user has AUTOHIDE set */
 	if (theUser->getFlag(sqlUser::F_AUTOHIDE) && !theClient->isModeX())
 		MyUplink->Write("%s OM %s :+x", getCharYY().c_str(), theClient->getCharYYXXX().c_str());
-
+#endif
 	/*
 	 * If the user account has been suspended, make sure they don't get
 	 * auto-opped.
@@ -10629,7 +10616,7 @@ const iClient::flagType newFlags = makeAccountFlags( theUser ) ;
 if( theClient->getAccountFlags() == newFlags )
 	return ;
 
-#ifdef USE_AC_XFLAGS
+#ifdef NEW_IRCU_FEATURES
 MyUplink->Write( "%s AC %s %s %u %u",
 	getCharYY().c_str(), theClient->getCharYYXXX().c_str(), theClient->getAccount().c_str(),
 	theClient->getAccountID(), newFlags ) ;

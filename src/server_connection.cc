@@ -50,7 +50,6 @@
 //#include	"events.h"
 //#include	"ip.h"
 
-#include	"misc.h"
 #include	"server.h"
 #include	"Network.h"
 //#include	"iServer.h"
@@ -215,7 +214,6 @@ struct CommandMask {
 static const CommandMask commandMasks[] = {
 	{"LOGIN", 2},
 	{"LOGIN2", 5},
-	{"LOGIN3", 6},
 	{"NEWPASS", 1},
 	{"SUSPENDME", 1},
 } ;

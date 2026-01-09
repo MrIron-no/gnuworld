@@ -19,6 +19,8 @@
  *
  */
 
+#ifdef HAVE_LIBSSL
+
 #pragma once
 
 #include <vector>
@@ -85,3 +87,5 @@ std::string compute_server_signature(
 ) ;
 
 } // namespace
+
+#endif // HAVE_LIBSSL

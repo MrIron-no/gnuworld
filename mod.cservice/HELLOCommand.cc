@@ -187,7 +187,6 @@ newUser->setPassword(cryptpass.c_str());
 newUser->setLastUpdatedBy(updatedBy);
 newUser->setFlag(sqlUser::F_INVIS);
 
-elog << "Calling make_scram" << endl ;
 string err ;
 auto recOpt = make_scram_sha256_record( plainpass, &err ) ;
 if( !recOpt )
@@ -199,7 +198,6 @@ else
 	std::string scram_record = *recOpt ;
 	newUser->setScramRecord( scram_record ) ;
 	}
-elog << "Done" << endl ;
 newUser->Insert();
 
 bot->Notice(theClient, "I generated this password for you: \002%s\002",

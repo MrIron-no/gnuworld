@@ -147,6 +147,7 @@ if( st[1][0] != '#' ) // Didn't find a hash?
 		return true;
 	}
 
+#ifdef NEW_IRCU_FEATURES
 	if (option == "AUTOHIDE")
 	{
 		if (value == "ON")
@@ -187,7 +188,7 @@ if( st[1][0] != '#' ) // Didn't find a hash?
 			{
 				bot->Notice(theClient,
 					bot->getResponse(theUser,
-						language::no_fingerprint,
+						language::no_fingerprints_registered,
 						string("You currently don't have any fingerprints added to your account. For more information, use '/msg X help fingerprint'")));
 				return true;
 			}
@@ -218,7 +219,7 @@ if( st[1][0] != '#' ) // Didn't find a hash?
 			option.c_str());
 		return true;
 	}
-
+#endif
 #ifdef USE_NOTES
 	if (option == "NONOTES")
 	{

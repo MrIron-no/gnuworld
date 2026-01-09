@@ -1201,12 +1201,6 @@ if( cPtr->isTLS() && cPtr->isNegotiatingTLS() )
 // The above applies to NONBLOCKING sockets.
 //
 
-#ifdef HAVE_LIBSSL
-// This function returns false if TLS handshake negotiations are not completed.
-if( !negotiateTLS( hPtr, cPtr ) )
-	return false ;
-#endif
-
 // Does this Connection represent a file?
 if( cPtr->isFile() )
 	{

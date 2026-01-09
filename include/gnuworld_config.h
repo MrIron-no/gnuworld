@@ -83,7 +83,8 @@
 
 /** 
  * NO_FINGERPRINT_BURST
- * Disable this if gnuworld is linked to a hub that doesn't support fingerprint burst. 
+ * Disable this if gnuworld is linked to a hub that doesn't support fingerprint burst.
+ * This should only be enabled when the uplink is running ircu with tls support.
  */
 #undef NO_FINGERPRINT_BURST
 

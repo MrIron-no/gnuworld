@@ -142,7 +142,9 @@ private:
 		string server_first ;
 		string client_final ;
 		SaslState state = SaslState::INITIAL ;
+		#ifdef HAVE_LIBSSL
 		ScramParsed scram ;
+		#endif
     } ;
 
     std::vector< SaslRequest > saslRequests ;

@@ -72,7 +72,7 @@
 /**
  * Define this if you want to enable the HELLO command.
  */
-#define ALLOW_HELLO
+#undef ALLOW_HELLO
 
  /**
  * Define this if you want to enable the WELCOME feature.
@@ -123,11 +123,16 @@
 #undef GLINE_ON_FLOODPRO
 
 /*
- * Enable this to send new AC messages upon changes of sqlUser flags.
+ * Enable this to enable the following features currently not released in ircu:
+ * - Send new AC messages upon changes of sqlUser flags.
+ * - TLS connections
+ * - SASL authentication
+ * - Network config
+ * - Autohide hostmask (+x)
  * All servers on the network must run the appropriate version of ircu
  * in order not to get protocol violation messages.
  */
-#undef USE_AC_XFLAGS
+#define NEW_IRCU_FEATURES
 
 /**
  * Define the number of iterations for the SCRAM record generation.

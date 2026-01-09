@@ -19,6 +19,8 @@
  *
  */
 
+#ifdef HAVE_LIBSSL
+
 #include <array>
 #include <cstring>
 #include <string>
@@ -339,3 +341,5 @@ std::string compute_server_signature(
 }
 
 } // namespace gnuworld
+
+#endif // HAVE_LIBSSL

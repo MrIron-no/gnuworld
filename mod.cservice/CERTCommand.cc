@@ -26,10 +26,11 @@
 
 namespace gnuworld
 {
-/* TLS-TODO: Add language. */
 
-bool CERTCommand::Exec( iClient* theClient, const string& Message )
+bool CERTCommand::Exec( iClient* [[maybe_unused]] theClient, const string& [[maybe_unused]] Message )
 {
+#ifdef NEW_IRCU_FEATURES
+
 bot->incStat("COMMANDS.CERT");
 
 sqlUser* theUser = bot->isAuthed( theClient, true ) ;
@@ -78,17 +79,17 @@ if( Command == "LIST" )
 				prettyTime( std::stoul( bot->SQLDb->GetValue( i, 2 ) ), false ).c_str(),
 				bot->SQLDb->GetValue( i, 3 ).c_str() ) ;
     	bot->Notice( theClient, "+-------------------------------------------------------------------------------------------------+------------------------------------------+--------------+--------------------+" ) ;
-		bot->Notice( theClient, "Finished listing %d fingerprint%s.",
+		bot->Notice( theClient, "Done listing %d fingerprint%s.",
 			bot->SQLDb->Tuples(), bot->SQLDb->Tuples() > 1 ? "s" : "" ) ;
 		}
 	else
 		{
-		bot->Notice( theClient, "No fingerprints found." ) ;
+		bot->Notice( theClient, bot->getResponse( theUser, language::no_fingerprints_found ) ) ;
 		}
 
 	if( theClient->hasTlsFingerprint() )
 		{
-		bot->Notice( theClient, "Your current fingerprint is: %s",
+		bot->Notice( theClient, bot->getResponse( theUser, language::your_fingerprint_is ).c_str(),
 			compactToCanonical( theClient->getTlsFingerprint() ).c_str() ) ;
 		}
 
@@ -98,9 +99,9 @@ if( Command == "LIST" )
 if( Command == "ADD" )
 	{
 	/* Check whether this user already has reached the limit of fingerprints. */
-	if( bot->hasFP( theUser) > 10 )
+	if( bot->hasFP( theUser) > bot->getConfmaxFingerprints() )
 		{
-		bot->Notice( theClient, "You already have 10 fingerprints added to your username." ) ;
+		bot->Notice( theClient, bot->getResponse( theUser, language::max_fingerprints ).c_str(), bot->getConfmaxFingerprints() ) ;
 		return true ;
 		}
 
@@ -129,7 +130,7 @@ if( Command == "ADD" )
 		/* If the param is not a fingerprint and the user does not have a fingerprint, fail. */
 		else
 			{
-			bot->Notice( theClient, "Invalid fingerprint." ) ;
+			bot->Notice( theClient, bot->getResponse( theUser, language::invalid_fingerprint ).c_str() ) ;
 			return true ;
 			}
 		}
@@ -148,7 +149,7 @@ if( Command == "ADD" )
 		/* If the first word is not a fingerprint and the user does not have a fingerprint, fail. */
 		else
 			{
-			bot->Notice( theClient, "Invalid fingerprint." ) ;
+			bot->Notice( theClient, bot->getResponse( theUser, language::invalid_fingerprint ).c_str() ) ;
 			return true ;
 			}
 		}
@@ -157,7 +158,7 @@ if( Command == "ADD" )
 	auto result = bot->addFP( canonicalToCompact( fingerPrint ), theClient->getAccountID() ) ;
 	if( !result.second )
 		{
-		bot->Notice( theClient, "That fingerprint is already added to a username." ) ;
+		bot->Notice( theClient, bot->getResponse( theUser, language::fingerprint_already_exists ).c_str() ) ;
 		return true ;
 		}
 
@@ -177,7 +178,7 @@ if( Command == "ADD" )
 		return false ;
 		}
 
-	bot->Notice( theClient, "Successfully added '%s' to your username.",
+	bot->Notice( theClient, bot->getResponse( theUser, language::fingerprint_added ).c_str(),
 		compactToCanonical( fingerPrint ).c_str() ) ;
 
 	return true ;
@@ -202,7 +203,7 @@ if( Command == "REM" )
 		{
 		if( !isValidSHA256Fingerprint( st[ 2 ] ) )
 			{
-			bot->Notice( theClient, "Invalid fingerprint." ) ;
+			bot->Notice( theClient, bot->getResponse( theUser, language::invalid_fingerprint ).c_str() ) ;
 			return true ;
 			}
 
@@ -212,13 +213,13 @@ if( Command == "REM" )
 	/* Don't remove last fingerprint if CERTONLY is ON. */
 	if( bot->hasFP( theUser) == 1 && theUser->getFlag( sqlUser::F_CERTONLY ) )
 		{
-		bot->Notice( theClient, "You cannot remove that fingerprint unless you disable CERTONLY or add another fingerprint." ) ;
+		bot->Notice( theClient, bot->getResponse( theUser, language::fingerprint_norem_certonly ).c_str() ) ;
 		return true ;
 		}
 
 	if( !bot->checkFP( fingerPrint, theClient->getAccountID() ) )
 		{
-		bot->Notice( theClient, "I cannot find that fingerprint added to your username." ) ;
+		bot->Notice( theClient, bot->getResponse( theUser, language::fingerprint_not_found ).c_str() ) ;
 		return true ;
 		}
 
@@ -236,12 +237,13 @@ if( Command == "REM" )
 	/* Remove from cache. */
 	bot->removeFP( fingerPrint ) ;
 
-	bot->Notice( theClient, "Successfully removed '%s' from your username.",
+	bot->Notice( theClient, bot->getResponse( theUser, language::fingerprint_removed ).c_str(),
 		compactToCanonical( fingerPrint ).c_str() ) ;
 
 	return true ;
 	}
 
+#endif // NEW_IRCU_FEATURES
 return true ;
 }
 
