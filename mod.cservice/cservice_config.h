@@ -132,7 +132,7 @@
  * All servers on the network must run the appropriate version of ircu
  * in order not to get protocol violation messages.
  */
-#define NEW_IRCU_FEATURES
+#undef NEW_IRCU_FEATURES
 
 /**
  * Define the number of iterations for the SCRAM record generation.
