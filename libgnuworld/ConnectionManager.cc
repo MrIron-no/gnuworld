@@ -573,7 +573,7 @@ cPtr->Flush() ;
 
 #ifdef HAVE_LIBSSL
 // Attempt to shutdown TLS connection.
-if( cPtr->isTLS() && !cPtr->isNegotiatingTLS() )
+if( cPtr->isTLS() && !cPtr->isNegotiatingTLS() && !cPtr->hasFlag( Connection::F_TLS_FATAL_ERROR ) )
 	{
 	// Flag the connections as shutting down.
 	cPtr->setShuttingDownTLS() ;
@@ -905,7 +905,7 @@ for( eraseMapIterator eraseItr = eraseMap.begin(),
 
 #ifdef HAVE_LIBSSL
 		// Attempt to shutdown TLS connection if not already closed.
-		if( connectionPtr->isTLS() && !connectionPtr->isNegotiatingTLS() )
+		if( connectionPtr->isTLS() && !connectionPtr->isNegotiatingTLS() && !connectionPtr->hasFlag( Connection::F_TLS_FATAL_ERROR ))
 			{
 			int res = SSL_shutdown( connectionPtr->getTlsState() ) ;
 			if( res > 0 )
@@ -1112,6 +1112,7 @@ else
 				default:
 					elog << "ConnectionManager::handleRead> TLS read error: "
 						 << ERR_error_string( ERR_get_error(), nullptr ) << endl ;
+					cPtr->setFlag( Connection::F_TLS_FATAL_ERROR ) ;
 					hPtr->OnDisconnect( cPtr ) ;
 					return false ;
 				}
@@ -1241,6 +1242,7 @@ if ( !cPtr->isTLS() ) {
 		default:
 			elog << "ConnectionManager::handleWrite> TLS write error: "
 				 << ERR_error_string( ERR_get_error(), nullptr ) << endl ;
+			cPtr->setFlag( Connection::F_TLS_FATAL_ERROR ) ;
 			hPtr->OnDisconnect( cPtr ) ;
 			return false ;
 		}
@@ -1364,6 +1366,7 @@ while( !cPtr->outputBuffer.empty() )
 					return false ;
 				default:
 					elog << "ConnectionManager::HandleFlush> Fatal TLS error encountered." << endl ;
+					cPtr->setFlag( Connection::F_TLS_FATAL_ERROR ) ;
 					hPtr->OnDisconnect( cPtr ) ;
 					return false ;
 				}
@@ -1942,6 +1945,7 @@ switch( err )
 		// Fatal error
 		elog << "ConnectionManager::negotiateTLS> TLS handshake failed: "
 			<< ERR_error_string( ERR_get_error(), nullptr ) << endl ;
+		cPtr->setFlag( Connection::F_TLS_FATAL_ERROR ) ;
 		hPtr->OnDisconnect( cPtr ) ;
 		return false ;
 	}

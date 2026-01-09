@@ -950,6 +950,9 @@ for(glineIterator GLptr = rnGlineList.begin(); GLptr != rnGlineList.end(); ++GLp
 
 rnGlineList.clear();
 
+// Deallocate the database handle
+delete SQLDb; SQLDb = 0;
+
 }
 
 // Register a command handler

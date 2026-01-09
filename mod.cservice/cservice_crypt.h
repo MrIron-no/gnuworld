@@ -19,6 +19,7 @@
  *
  */
 
+#include "defs.h"
 #ifdef HAVE_LIBSSL
 
 #pragma once

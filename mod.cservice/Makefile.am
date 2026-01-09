@@ -84,6 +84,8 @@ EXTRA_DIST += \
 	mod.cservice/constants.h \
 	mod.cservice/cserviceCommands.h \
 	mod.cservice/cservice_config.h \
+	mod.cservice/cservice_confvars.h \
+	mod.cservice/cservice_crypt.h \
 	mod.cservice/cservice.h \
 	mod.cservice/levels.h \
 	mod.cservice/networkData.h \

@@ -19,6 +19,7 @@
  *
  */
 
+#include "cservice_crypt.h"
 #ifdef HAVE_LIBSSL
 
 #include <array>
@@ -38,7 +39,6 @@
 #include <iomanip>
 
 #include "cservice_config.h"
-#include "cservice_crypt.h"
 #include "ELog.h"
 
 namespace gnuworld

@@ -159,6 +159,11 @@ public:
 	static constexpr flagType		F_TLS_SHUTTING_DOWN =  0x80 ;
 
 	/**
+	 * This flags a TLS connection as having a fatal error, i.e. ssl_shutdown() will not be called.
+	 */
+	static constexpr flagType		F_TLS_FATAL_ERROR = 0x100 ;
+
+	/**
 	 * Append a string to the Connection's output buffer.
 	 */
 	virtual void		Write( const std::string& ) ;
