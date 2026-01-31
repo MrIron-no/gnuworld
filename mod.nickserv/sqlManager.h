@@ -34,72 +34,72 @@ namespace ns {
 
 class nickserv;
 
-using std::string ;
-using std::vector ;
+using std::string;
+using std::vector;
 
 class sqlManager {
-  public:
-    /**
-     * Implement sqlManager as a singleton
-     * Only way to get a reference to the manager is through this method
-     */
-    static sqlManager* getInstance(nickserv*, const string&, int);
+public:
+  /**
+   * Implement sqlManager as a singleton
+   * Only way to get a reference to the manager is through this method
+   */
+  static sqlManager* getInstance(nickserv*, const string&, int);
 
-    /** Allow checking out of database connections */
-    dbHandle* getConnection();
+  /** Allow checking out of database connections */
+  dbHandle* getConnection();
 
-    /** Allow checking in of database connections */
-    void removeConnection(dbHandle*);
+  /** Allow checking in of database connections */
+  void removeConnection(dbHandle*);
 
-    /** Flush the current commit queue to the database */
-    void flush();
+  /** Flush the current commit queue to the database */
+  void flush();
 
-    /** Add a statement to the commit queue */
-    void queueCommit(const string&);
+  /** Add a statement to the commit queue */
+  void queueCommit(const string&);
 
-  protected:
-    /**
-     * Disable the default constructor so that instances can only be gotten
-     * through getInstance()
-     * @see #getInstance
-     */
-    sqlManager(nickserv*, const string&, int);
+protected:
+  /**
+   * Disable the default constructor so that instances can only be gotten
+   * through getInstance()
+   * @see #getInstance
+   */
+  sqlManager(nickserv*, const string&, int);
 
-    /**
-     * Disable the default destructor so that other objects cannot destruct
-     * the instance they have a reference to.
-     */
-    ~sqlManager();
+  /**
+   * Disable the default destructor so that other objects cannot destruct
+   * the instance they have a reference to.
+   */
+  ~sqlManager();
 
-    /** The string storing our DB connection path */
-    string dbString;
+  /** The string storing our DB connection path */
+  string dbString;
 
-    /** The bot instance */
-    nickserv* bot;
+  /** The bot instance */
+  nickserv* bot;
 
-    /** Our PgDatabase instance */
-    dbHandle* SQLDb;
+  /** Our PgDatabase instance */
+  dbHandle* SQLDb;
 
-    /** The type used for the commit queue */
-    typedef vector< string > commitQueueType;
+  /** The type used for the commit queue */
+  typedef vector<string> commitQueueType;
 
-    /** Allow iteration over the commit queue */
-    typedef commitQueueType::iterator CommitQueueItr;
+  /** Allow iteration over the commit queue */
+  typedef commitQueueType::iterator CommitQueueItr;
 
-    /** Our commit queue */
-    commitQueueType commitQueue;
+  /** Our commit queue */
+  commitQueueType commitQueue;
 
-    /** Max commit queue size before autocommit */
-    unsigned long int commitQueueMax;
+  /** Max commit queue size before autocommit */
+  unsigned long int commitQueueMax;
 
-    /** The current instance of sqlManager */
-    static sqlManager* theManager;
+  /** The current instance of sqlManager */
+  static sqlManager* theManager;
 
-    /** A Stats instance for stats collecting */
-    Stats* theStats;
+  /** A Stats instance for stats collecting */
+  Stats* theStats;
 
-    /** A Logger instance for logging */
-    logging::Logger* theLogger;
+  /** A Logger instance for logging */
+  logging::Logger* theLogger;
 }; // class sqlManager
 
 } // namespace ns

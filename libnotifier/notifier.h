@@ -22,38 +22,36 @@
 
 #include <string>
 
-namespace gnuworld
-{
+namespace gnuworld {
 
 /**
  * Base class for all notification systems
  * Provides a common interface for sending messages
  */
-class notifier
-{
+class notifier {
 public:
-    notifier() = default ;
-    virtual ~notifier() = default ;
+  notifier() = default;
+  virtual ~notifier() = default;
 
-    /**
-     * Send a notification message with verbosity level
-     * @param level The verbosity/severity level
-     * @param message The message body
-     * @return true if message was sent successfully, false otherwise
-     */
-    virtual bool sendMessage( int level, const std::string message ) = 0 ;
+  /**
+   * Send a notification message with verbosity level
+   * @param level The verbosity/severity level
+   * @param message The message body
+   * @return true if message was sent successfully, false otherwise
+   */
+  virtual bool sendMessage(int level, const std::string message) = 0;
 
-    /**
-     * Get the number of successful notifications sent
-     * @return Number of successful notifications
-     */
-    virtual size_t getSuccessful() const = 0 ;
+  /**
+   * Get the number of successful notifications sent
+   * @return Number of successful notifications
+   */
+  virtual size_t getSuccessful() const = 0;
 
-    /**
-     * Get the number of failed notifications
-     * @return Number of failed notifications
-     */
-    virtual size_t getErrors() const = 0 ;
-} ;
+  /**
+   * Get the number of failed notifications
+   * @return Number of failed notifications
+   */
+  virtual size_t getErrors() const = 0;
+};
 
 } // namespace gnuworld

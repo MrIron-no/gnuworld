@@ -29,56 +29,54 @@
 
 #include "dbHandle.h"
 
-namespace gnuworld
-{
+namespace gnuworld {
 
-namespace cf
-{
-  // Forward declaration for the correct chanfix class in the cf namespace
-  class chanfix;
+namespace cf {
+// Forward declaration for the correct chanfix class in the cf namespace
+class chanfix;
 
 class sqlManager {
-  public:
-    /**
-     * Implement sqlManager as a singleton
-     * Only way to get a reference to the manager is through this method
-     */
-    static sqlManager* getInstance(chanfix*, const std::string&);
+public:
+  /**
+   * Implement sqlManager as a singleton
+   * Only way to get a reference to the manager is through this method
+   */
+  static sqlManager* getInstance(chanfix*, const std::string&);
 
-    /** Allow checking out of database connections */
-    dbHandle* getConnection();
+  /** Allow checking out of database connections */
+  dbHandle* getConnection();
 
-    /** Allow checking in of database connections */
-    void removeConnection(dbHandle*);
+  /** Allow checking in of database connections */
+  void removeConnection(dbHandle*);
 
-    /** Allow removal of theManager */
-    void removeManager();
+  /** Allow removal of theManager */
+  void removeManager();
 
-  protected:
-    /**
-     * Disable the default constructor so that instances can only be gotten
-     * through getInstance()
-     * @see #getInstance
-     */
-    sqlManager(chanfix*, const std::string&);
+protected:
+  /**
+   * Disable the default constructor so that instances can only be gotten
+   * through getInstance()
+   * @see #getInstance
+   */
+  sqlManager(chanfix*, const std::string&);
 
-    /**
-     * Disable the default destructor so that other objects cannot destruct
-     * the instance they have a reference to.
-     */
-    ~sqlManager();
+  /**
+   * Disable the default destructor so that other objects cannot destruct
+   * the instance they have a reference to.
+   */
+  ~sqlManager();
 
-    /** The string storing our DB connection path */
-    std::string dbString;
+  /** The string storing our DB connection path */
+  std::string dbString;
 
-    /** The bot instance */
-    chanfix* bot;
+  /** The bot instance */
+  chanfix* bot;
 
-    /** Our PgDatabase instance */
-    dbHandle* SQLDb;
+  /** Our PgDatabase instance */
+  dbHandle* SQLDb;
 
-    /** The current instance of sqlManager */
-    static sqlManager* theManager;
+  /** The current instance of sqlManager */
+  static sqlManager* theManager;
 
 }; // class sqlManager
 

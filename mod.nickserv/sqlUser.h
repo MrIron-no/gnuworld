@@ -26,131 +26,109 @@
 
 #include "logTarget.h"
 
-namespace gnuworld
-{
+namespace gnuworld {
 
-namespace ns
-{
+namespace ns {
 
-using std::string ;
+using std::string;
 
 class sqlManager;
 
-class sqlUser
-{
-  public:
+class sqlUser {
+public:
+  typedef unsigned short int flagType;
+  static const flagType F_SUSPEND;
+  static const flagType F_AUTOKILL;
+  static const flagType F_RECOVER;
 
-    typedef unsigned short int flagType;
-    static const flagType F_SUSPEND;
-    static const flagType F_AUTOKILL;
-    static const flagType F_RECOVER;
+  /** Default constructor makes an empty user */
+  sqlUser(sqlManager*);
 
-    /** Default constructor makes an empty user */
-    sqlUser(sqlManager*);
+  /** Default destructor deletes user */
+  ~sqlUser();
 
-    /** Default destructor deletes user */
-    ~sqlUser();
+  /* ACCESSOR METHODS */
 
+  /** Accessor for id */
+  inline const unsigned int& getID() const { return id; }
 
-    /* ACCESSOR METHODS */
+  /** Accessor for name */
+  inline const string& getName() const { return name; }
 
-    /** Accessor for id */
-    inline const unsigned int& getID() const
-      { return id; }
+  /** Check whether a user has a given flag set */
+  inline bool hasFlag(const flagType& whichFlag) const { return (flags & whichFlag); }
 
-    /** Accessor for name */
-    inline const string& getName() const
-      { return name; }
+  /** Get all the flags */
+  inline unsigned short int getFlags() const { return flags; }
 
-    /** Check whether a user has a given flag set */
-    inline bool hasFlag(const flagType& whichFlag) const
-      { return (flags & whichFlag); }
+  /** Get the user level */
+  inline unsigned int getLevel() const { return level; }
 
-    /** Get all the flags */
-    inline unsigned short int getFlags() const
-      { return flags; }
+  /** Get the user lastseen */
+  inline unsigned int getLastSeenTS() const { return lastseen_ts; }
 
-    /** Get the user level */
-    inline unsigned int getLevel() const
-       { return level; }
+  /** Get the registered ts */
+  inline unsigned int getRegisteredTS() const { return registered_ts; }
 
-    /** Get the user lastseen */
-    inline unsigned int getLastSeenTS() const
-      { return lastseen_ts; }
+  /** Get the log mask */
+  inline logging::events::eventType getLogMask() const { return logmask; }
 
-    /** Get the registered ts */
-    inline unsigned int getRegisteredTS() const
-      { return registered_ts; }
+  /* MUTATOR METHODS */
 
-    /** Get the log mask */
-    inline logging::events::eventType getLogMask() const
-      { return logmask; }
+  /** Mutator for name */
+  inline void setName(const string& _name) { name = _name; }
 
+  /** Remove a flag from the user record */
+  inline void removeFlag(const flagType& whichFlag) { flags &= ~whichFlag; }
 
-    /* MUTATOR METHODS */
+  /** Set a flag on the user record */
+  inline void setFlag(const flagType& whichFlag) { flags |= whichFlag; }
 
-    /** Mutator for name */
-    inline void setName(const string& _name)
-      { name = _name; }
+  /** Set all flags */
+  inline void setFlags(const flagType& whichFlags) { flags = whichFlags; }
 
-    /** Remove a flag from the user record */
-    inline void removeFlag(const flagType& whichFlag)
-      { flags &= ~whichFlag; }
+  /** Set the user level */
+  inline void setLevel(const unsigned int _level) { level = _level; }
 
-    /** Set a flag on the user record */
-    inline void setFlag(const flagType& whichFlag)
-      { flags |= whichFlag; }
+  /** Set the lastseen */
+  inline void setLastSeenTS(const unsigned int _lastseen) { lastseen_ts = _lastseen; }
 
-    /** Set all flags */
-    inline void setFlags(const flagType& whichFlags)
-      { flags = whichFlags; }
+  /** Set the registered ts */
+  inline void setRegisteredTS(const unsigned int _registered) { registered_ts = _registered; }
 
-    /** Set the user level */
-    inline void setLevel(const unsigned int _level)
-      { level = _level; }
+  /** Set the log mask */
+  inline void setLogMask(const logging::events::eventType _logmask) { logmask = _logmask; }
 
-    /** Set the lastseen */
-    inline void setLastSeenTS(const unsigned int _lastseen)
-      { lastseen_ts = _lastseen; }
+  /* MISCELLANEOUS METHODS */
 
-    /** Set the registered ts */
-    inline void setRegisteredTS(const unsigned int _registered)
-      { registered_ts = _registered; }
+  /** Commit this user back to the database */
+  void commit();
 
-    /** Set the log mask */
-    inline void setLogMask(const logging::events::eventType _logmask)
-      { logmask = _logmask; }
+  /** Update this users lastseen */
+  void commitLastSeen();
 
-    /* MISCELLANEOUS METHODS */
+  /** Delete this user from the database */
+  void deleteUser();
 
-    /** Commit this user back to the database */
-    void commit();
+  /** Insert a brand new sqlUser into the database */
+  void insertUser();
 
-    /** Update this users lastseen */
-    void commitLastSeen();
+  /** Load data for this user from a given DB handle */
+  void setAllMembers(dbHandle*, int);
 
-    /** Delete this user from the database */
-    void deleteUser();
+  /** Static member for keeping track of max user id */
+  static unsigned long int maxUserId;
 
-    /** Insert a brand new sqlUser into the database */
-    void insertUser();
+protected:
+  unsigned int id;
+  string name;
+  flagType flags;
+  unsigned int level;
+  unsigned int lastseen_ts;
+  unsigned int registered_ts;
+  logging::events::eventType logmask;
 
-    /** Load data for this user from a given DB handle */
-    void setAllMembers(dbHandle*, int);
-
-    /** Static member for keeping track of max user id */
-    static unsigned long int maxUserId;
-
-  protected:
-    unsigned int id;
-    string name;
-    flagType flags;
-    unsigned int level;
-    unsigned int lastseen_ts;
-    unsigned int registered_ts;
-    logging::events::eventType logmask;
-
-    sqlManager* myManager;
+  sqlManager* myManager;
 }; // class sqlUser
 
 } // namespace ns

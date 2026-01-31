@@ -27,18 +27,17 @@
 #include "defs.h"
 
 #ifdef HAVE_PROMETHEUS
-  #include <prometheus/exposer.h>
-  #include <prometheus/registry.h>
-  #include <prometheus/counter.h>
-  #include <prometheus/gauge.h>
+#include <prometheus/exposer.h>
+#include <prometheus/registry.h>
+#include <prometheus/counter.h>
+#include <prometheus/gauge.h>
 #endif
 
 #include "gnuworld_config.h"
 #include "notifier.h"
 #include "client.h"
 
-namespace gnuworld
-{
+namespace gnuworld {
 
 /**
  * @class PrometheusClient
@@ -69,8 +68,7 @@ namespace gnuworld
  * }
  * @endcode
  */
-class PrometheusClient : public notifier
-{
+class PrometheusClient : public notifier {
 
 public:
   /**
@@ -89,33 +87,31 @@ public:
    * @note The constructor will throw if the port is already in use or if
    *       the Prometheus library cannot initialize properly
    */
-  PrometheusClient( xClient* bot, const std::string& ip, unsigned short port ) ;
+  PrometheusClient(xClient* bot, const std::string& ip, unsigned short port);
 
   /**
    * @brief Destroy the Prometheus Client
    *
    * Automatically stops the HTTP server and cleans up all metrics.
    */
-  virtual ~PrometheusClient() = default ;
+  virtual ~PrometheusClient() = default;
 
   /**
    * @return size_t Count of successful metric updates (counters + gauges)
    */
-  [[nodiscard]] size_t getSuccessful() const override
-      { return statSuccessful ; }
+  [[nodiscard]] size_t getSuccessful() const override { return statSuccessful; }
 
   /**
    * @return size_t Count of failed metric operations (due to invalid names, etc.)
    */
-  [[nodiscard]] size_t getErrors() const override
-      { return statErrors ; }
+  [[nodiscard]] size_t getErrors() const override { return statErrors; }
 
   /**
    * @brief This method is called automatically by the logging system
    *        when this client is registered as a notifier
    *        Increments counters based on log severity levels.
    */
-  bool sendMessage( int level, const std::string message ) override ;
+  bool sendMessage(int level, const std::string message) override;
 
   /**
    * @brief Increment a counter by 1
@@ -134,7 +130,7 @@ public:
    * @warning This method is thread-safe but metric creation is not atomic.
    *          Multiple threads creating the same metric simultaneously may cause issues.
    */
-  void incrementCounter( const std::string& counterName ) ;
+  void incrementCounter(const std::string& counterName);
 
   /**
    * @brief Increment a counter by a specific value
@@ -147,7 +143,7 @@ public:
    *
    * @note If value is negative, it will be treated as 0 (counters cannot decrease)
    */
-  void incrementCounterBy( const std::string& counterName, double value ) ;
+  void incrementCounterBy(const std::string& counterName, double value);
 
   /**
    * @brief Set a gauge to a specific value
@@ -165,10 +161,10 @@ public:
    *       - Queue lengths
    *       - Temperature readings
    */
-  void setGauge( const std::string& gaugeName, double value ) ;
+  void setGauge(const std::string& gaugeName, double value);
 
 private:
-  xClient* bot = nullptr ;
+  xClient* bot = nullptr;
 
   /**
    * @brief Sanitize metric names to comply with Prometheus standards
@@ -188,28 +184,27 @@ private:
    *       - "123invalid" → "botname_123invalid"
    *       - "SASL.SUCCESS" → "botname_sasl_success"
    */
-  std::string sanitizeMetricName( const std::string& name ) ;
+  std::string sanitizeMetricName(const std::string& name);
 
 #ifdef HAVE_PROMETHEUS
   /** @brief Prometheus HTTP server for exposing metrics */
-  prometheus::Exposer exposer_ ;
+  prometheus::Exposer exposer_;
 
   /** @brief Registry for all metrics - shared pointer for thread safety */
-  std::shared_ptr< prometheus::Registry > registry_ ;
+  std::shared_ptr<prometheus::Registry> registry_;
 
   /** @brief Map of counter names to counter instances for fast lookup */
-  std::unordered_map< std::string, prometheus::Counter* > counters_ ;
+  std::unordered_map<std::string, prometheus::Counter*> counters_;
 
   /** @brief Map of gauge names to gauge instances for fast lookup */
-  std::unordered_map< std::string, prometheus::Gauge* > gauges_ ;
+  std::unordered_map<std::string, prometheus::Gauge*> gauges_;
 #endif
 
   /** @brief Count of successful metric operations */
-  size_t statSuccessful = 0 ;
+  size_t statSuccessful = 0;
 
   /** @brief Count of failed metric operations */
-  size_t statErrors = 0 ;
-
-} ;
+  size_t statErrors = 0;
+};
 
 } // namespace gnuworld

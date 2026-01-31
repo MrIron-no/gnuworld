@@ -20,118 +20,90 @@
  * $Id: ccBadChannel.cc,v 1.7 2007/08/28 16:10:03 dan_karrels Exp $
  */
 
-#include	<string>
-#include	"dbHandle.h"
-#include	"ccontrol.h"
-#include 	"ccBadChannel.h"
-#include	"gnuworld_config.h"
+#include <string>
+#include "dbHandle.h"
+#include "ccontrol.h"
+#include "ccBadChannel.h"
+#include "gnuworld_config.h"
 
-namespace gnuworld
-{
-using std::string ;
+namespace gnuworld {
+using std::string;
 
-namespace uworld
-{
+namespace uworld {
 
-ccBadChannel::ccBadChannel(dbHandle* SQLDb, unsigned int Place)
-{
-Name = SQLDb->GetValue(Place,0);
-Reason = SQLDb->GetValue(Place,1);
-AddedBy = SQLDb->GetValue(Place,2);
+ccBadChannel::ccBadChannel(dbHandle* SQLDb, unsigned int Place) {
+  Name = SQLDb->GetValue(Place, 0);
+  Reason = SQLDb->GetValue(Place, 1);
+  AddedBy = SQLDb->GetValue(Place, 2);
 }
 
-bool ccBadChannel::Update(dbHandle* SQLDb)
-{
-        
-if(!dbConnected) 
-        {       
-        return false;
-        }
+bool ccBadChannel::Update(dbHandle* SQLDb) {
 
-stringstream theQuery;
-theQuery        << "UPDATE BadChannels SET Reason = '"
-		<< escapeSQLChars(Reason)
-		<< "', AddedBy = '"
-		<< escapeSQLChars(AddedBy)
-		<< "' WHERE lower(Name) = '"
-		<< escapeSQLChars(string_lower(Name)) << "'"
-                << ends;
-         
-elog    << "ccBadChannel::Update> "
-        << theQuery.str()
-        << endl;
+  if (!dbConnected) {
+    return false;
+  }
 
-if( !SQLDb->Exec( theQuery ) )
-//if (PGRES_COMMAND_OK != status)
-        {
-        elog << "ccBadChannel::Update SQL ERROR : " 
-	     << SQLDb->ErrorMessage() << endl;
-	return false;
-        }
-//delete[] theQuery.str() ;
-return true;
+  stringstream theQuery;
+  theQuery << "UPDATE BadChannels SET Reason = '" << escapeSQLChars(Reason) << "', AddedBy = '"
+           << escapeSQLChars(AddedBy) << "' WHERE lower(Name) = '"
+           << escapeSQLChars(string_lower(Name)) << "'" << ends;
+
+  elog << "ccBadChannel::Update> " << theQuery.str() << endl;
+
+  if (!SQLDb->Exec(theQuery))
+  // if (PGRES_COMMAND_OK != status)
+  {
+    elog << "ccBadChannel::Update SQL ERROR : " << SQLDb->ErrorMessage() << endl;
+    return false;
+  }
+  // delete[] theQuery.str() ;
+  return true;
 }
 
-bool ccBadChannel::Delete(dbHandle* SQLDb)
-{
-        
-if(!dbConnected) 
-        {       
-        return false;
-        }
+bool ccBadChannel::Delete(dbHandle* SQLDb) {
 
-stringstream theQuery;
-theQuery        << "DELETE FROM BadChannels WHERE lower(Name) = '"
-		<< escapeSQLChars(string_lower(Name)) << "'"
-                << ends;
-         
-elog    << "ccBadChannel::Delete> "
-        << theQuery.str()
-        << endl;
+  if (!dbConnected) {
+    return false;
+  }
 
-if( !SQLDb->Exec( theQuery ) )
-//if (PGRES_COMMAND_OK != status)
-        {
-        elog << "ccBadChannel::Delete SQL ERROR : " 
-	     << SQLDb->ErrorMessage() << endl;
+  stringstream theQuery;
+  theQuery << "DELETE FROM BadChannels WHERE lower(Name) = '" << escapeSQLChars(string_lower(Name))
+           << "'" << ends;
 
-        return false;
-        }
-return true;
+  elog << "ccBadChannel::Delete> " << theQuery.str() << endl;
+
+  if (!SQLDb->Exec(theQuery))
+  // if (PGRES_COMMAND_OK != status)
+  {
+    elog << "ccBadChannel::Delete SQL ERROR : " << SQLDb->ErrorMessage() << endl;
+
+    return false;
+  }
+  return true;
 }
 
-bool ccBadChannel::Insert(dbHandle* SQLDb)
-{
-        
-if(!dbConnected) 
-        {       
-        return false;
-        }
+bool ccBadChannel::Insert(dbHandle* SQLDb) {
 
-stringstream theQuery;
-theQuery        << "INSERT INTO BadChannels (Name,Reason,AddedBy) VALUES ('"
-		<< escapeSQLChars(Name) << "','"
-		<< escapeSQLChars(Reason)
-		<< "','"
-		<< escapeSQLChars(AddedBy)
-		<< "')"
-                << ends;
-         
-elog    << "ccBadChannel::Insert> "
-        << theQuery.str()
-        << endl;
+  if (!dbConnected) {
+    return false;
+  }
 
-if( !SQLDb->Exec( theQuery ) )
-//if (PGRES_COMMAND_OK != status)
-        {
-        elog << "ccBadChannel::Insert SQL ERROR : " 
-	     << SQLDb->ErrorMessage() << endl;
+  stringstream theQuery;
+  theQuery << "INSERT INTO BadChannels (Name,Reason,AddedBy) VALUES ('" << escapeSQLChars(Name)
+           << "','" << escapeSQLChars(Reason) << "','" << escapeSQLChars(AddedBy) << "')" << ends;
 
-        return false;
-        }
+  elog << "ccBadChannel::Insert> " << theQuery.str() << endl;
 
-return true;
+  if (!SQLDb->Exec(theQuery))
+  // if (PGRES_COMMAND_OK != status)
+  {
+    elog << "ccBadChannel::Insert SQL ERROR : " << SQLDb->ErrorMessage() << endl;
+
+    return false;
+  }
+
+  return true;
 }
 
-}
-}
+} // namespace uworld
+} // namespace gnuworld

@@ -22,107 +22,86 @@
 #ifndef __SQLBAN_H
 #define __SQLBAN_H "$Id: sqlBan.h,v 1.8 2009/06/25 19:05:23 mrbean_ Exp $"
 
-#include	<string>
-#include	<ctime>
-#include	"dbHandle.h"
- 
-using std::string ;
+#include <string>
+#include <ctime>
+#include "dbHandle.h"
 
-namespace gnuworld
-{ 
+using std::string;
+
+namespace gnuworld {
 
 class cservice;
- 
-class sqlBan
-{
+
+class sqlBan {
 
 public:
-	sqlBan(cservice* _bot) ;
-	sqlBan(cservice* _bot, int _channelID, const std::string& _banMask, 
-		const std::string& _setBy, time_t _setTS, int _level);
-	sqlBan(cservice* _bot, int _channelID, const std::string& _banMask, 
-		const std::string& _setBy, time_t _setTS, int _level, 
-		time_t _expires, const std::string& _reason);
-	virtual ~sqlBan() ;
- 
-	/*
-	 *  Methods to get data atrributes.
-	 */
- 
-	inline const unsigned int&	getID() const
-		{ return id ; } 
+  sqlBan(cservice* _bot);
+  sqlBan(cservice* _bot, int _channelID, const std::string& _banMask, const std::string& _setBy,
+         time_t _setTS, int _level);
+  sqlBan(cservice* _bot, int _channelID, const std::string& _banMask, const std::string& _setBy,
+         time_t _setTS, int _level, time_t _expires, const std::string& _reason);
+  virtual ~sqlBan();
 
-	inline const unsigned int&	getChannelID() const
-		{ return channel_id ; } 
+  /*
+   *  Methods to get data atrributes.
+   */
 
-	inline const string&		getBanMask() const
-		{ return banmask ; }
+  inline const unsigned int& getID() const { return id; }
 
-	inline const string&		getSetBy() const
-		{ return set_by ; }
+  inline const unsigned int& getChannelID() const { return channel_id; }
 
-	inline const time_t&		getSetTS() const
-		{ return set_ts ; }
+  inline const string& getBanMask() const { return banmask; }
 
-	inline const unsigned short&	getLevel() const
-		{ return level ; } 
+  inline const string& getSetBy() const { return set_by; }
 
-	inline const time_t&	getExpires() const
-		{ return expires ; } 
- 
-	inline const string&		getReason() const
-		{ return reason ; }
+  inline const time_t& getSetTS() const { return set_ts; }
 
-	inline const time_t&		getLastUpdated() const
-		{ return last_updated ; }
+  inline const unsigned short& getLevel() const { return level; }
 
-	/*
-	 *  Methods to set data atrributes.
-	 */
- 
-	inline void setChannelID( const unsigned int& _channel_id )
-		{ channel_id = _channel_id; } 
- 	
-	inline void setBanMask( const string& _banmask )
-		{ banmask = _banmask; }
+  inline const time_t& getExpires() const { return expires; }
 
-	inline void setSetBy( const string& _set_by )
-		{ set_by = _set_by; } 
+  inline const string& getReason() const { return reason; }
 
-	inline void setSetTS( const time_t& _set_ts )
-		{ set_ts = _set_ts; } 
-		
-	inline void setLevel( const unsigned short& _level )
-		{ level = _level; }
+  inline const time_t& getLastUpdated() const { return last_updated; }
 
-	inline void setExpires( const unsigned int& _expires )
-		{ expires = _expires; } 
+  /*
+   *  Methods to set data atrributes.
+   */
 
-	inline void setReason( const string& _reason )
-		{ reason = _reason; }
+  inline void setChannelID(const unsigned int& _channel_id) { channel_id = _channel_id; }
 
- 
-	bool commit();
-	bool insertRecord();
-	bool deleteRecord();
+  inline void setBanMask(const string& _banmask) { banmask = _banmask; }
 
-	void setAllMembers(int);
-	
+  inline void setSetBy(const string& _set_by) { set_by = _set_by; }
+
+  inline void setSetTS(const time_t& _set_ts) { set_ts = _set_ts; }
+
+  inline void setLevel(const unsigned short& _level) { level = _level; }
+
+  inline void setExpires(const unsigned int& _expires) { expires = _expires; }
+
+  inline void setReason(const string& _reason) { reason = _reason; }
+
+  bool commit();
+  bool insertRecord();
+  bool deleteRecord();
+
+  void setAllMembers(int);
+
 protected:
- 
-	unsigned int	id ; 
-	unsigned int	channel_id ;
-	string		banmask ;
-	string		set_by ;
-	time_t		set_ts ;
-	unsigned short	level ;
-	time_t		expires ;
-	string		reason ; 
-	time_t		last_updated ;
-	
-	Logger*		logger;
-	dbHandle*	SQLDb;
-} ;
+  unsigned int id;
+  unsigned int channel_id;
+  string banmask;
+  string set_by;
+  time_t set_ts;
+  unsigned short level;
+  time_t expires;
+  string reason;
+  time_t last_updated;
 
-} 
+  Logger* logger;
+  dbHandle* SQLDb;
+};
+
+} // namespace gnuworld
 #endif // __SQLBAN_H

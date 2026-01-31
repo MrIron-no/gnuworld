@@ -41,7 +41,6 @@
 #endif
 #define RecentlyGlinedIpsSize 150
 
-
 namespace gnuworld {
 
 class EConfig;
@@ -55,328 +54,310 @@ class sqlFakeClient;
 class sqlUser;
 class Test;
 
-enum DS_STATE {
-	BURST,
-	RUN
-};
+enum DS_STATE { BURST, RUN };
 
-enum LOG_TYPE {
-	DBG,
-	INFO,
-	WARN,
-	ERR
-};
+enum LOG_TYPE { DBG, INFO, WARN, ERR };
 
 struct JCFLOODCLIENTS {
-	std::list<std::string> log;
-	std::list<std::string> chans;
-	std::list<std::string> nicks;
-    int count;
-    int ctime;
+  std::list<std::string> log;
+  std::list<std::string> chans;
+  std::list<std::string> nicks;
+  int count;
+  int ctime;
 };
-
 
 class dronescan : public xClient {
 public:
-	/** Constructor receives a configuration file name. */
-	dronescan( const std::string& ) ;
+  /** Constructor receives a configuration file name. */
+  dronescan(const std::string&);
 
-	/** Destructor to clean up after ourselves. */
-	inline virtual ~dronescan() ;
+  /** Destructor to clean up after ourselves. */
+  inline virtual ~dronescan();
 
-	/***********************************************************
-	 ** O V E R R I D E N   X C L I E N T   F U N C T I O N S **
-	 ***********************************************************/
+  /***********************************************************
+   ** O V E R R I D E N   X C L I E N T   F U N C T I O N S **
+   ***********************************************************/
 
-	/** This method is called when we have attached to the xServer. */
-	virtual void OnAttach() ;
+  /** This method is called when we have attached to the xServer. */
+  virtual void OnAttach();
 
-	/** This method is called after server connection. */
-	virtual void BurstChannels() ;
+  /** This method is called after server connection. */
+  virtual void BurstChannels();
 
-	/** This is called when we receive a CTCP */
-	virtual void OnCTCP( iClient*, const std::string&,
-			const std::string&, bool ) ;
+  /** This is called when we receive a CTCP */
+  virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool);
 
-	/** Receive network events. */
-	virtual void OnEvent( const eventType&, void*, void*, void*, void* ) ;
+  /** Receive network events. */
+  virtual void OnEvent(const eventType&, void*, void*, void*, void*);
 
-	/** Receive channel events. */
-	virtual void OnChannelEvent( const channelEventType&, Channel*,
-		void*, void*, void*, void* ) ;
+  /** Receive channel events. */
+  virtual void OnChannelEvent(const channelEventType&, Channel*, void*, void*, void*, void*);
 
-	/** Receive private messages. */
-	virtual void OnPrivateMessage( iClient*, const std::string&,
-			bool ) ;
+  /** Receive private messages. */
+  virtual void OnPrivateMessage(iClient*, const std::string&, bool);
 
-	/** When we are being detached by the xServer */
-	virtual void OnDetach(const std::string& = std::string( "Server Shutdown")) ;
+  /** When we are being detached by the xServer */
+  virtual void OnDetach(const std::string& = std::string("Server Shutdown"));
 
-	/** Receive our own timed events. */
-	virtual void OnTimer( const xServer::timerID& , void* ) ;
+  /** Receive our own timed events. */
+  virtual void OnTimer(const xServer::timerID&, void*);
 
-	/*****************************************
-	 ** D R O N E S C A N   T Y P E D E F S **
-	 *****************************************/
+  /*****************************************
+   ** D R O N E S C A N   T Y P E D E F S **
+   *****************************************/
 
-	typedef unsigned short int testEnabledType;
+  typedef unsigned short int testEnabledType;
 
-	typedef std::map< std::string , sqlUser* , noCaseCompare > 
-			userMapType;
-	typedef std::map< unsigned int , sqlFakeClient* > fcMapType;
-	typedef std::map< std::string , unsigned int > clientsIPMapType;
-	typedef struct JCFLOODCLIENTS jcFloodClients;
-	typedef std::map< std::string , jcFloodClients* > clientsIPFloodMapType;
-	typedef std::list< std::string > IPJQueueType;
-	typedef std::list< glineData* > glineQueueType;
-	typedef std::list< std::pair< std::string, int > > recentlyGlinedIpsType;
-	
-	/*******************************************
-	 ** D R O N E S C A N   F U N C T I O N S **
-	 *******************************************/
+  typedef std::map<std::string, sqlUser*, noCaseCompare> userMapType;
+  typedef std::map<unsigned int, sqlFakeClient*> fcMapType;
+  typedef std::map<std::string, unsigned int> clientsIPMapType;
+  typedef struct JCFLOODCLIENTS jcFloodClients;
+  typedef std::map<std::string, jcFloodClients*> clientsIPFloodMapType;
+  typedef std::list<std::string> IPJQueueType;
+  typedef std::list<glineData*> glineQueueType;
+  typedef std::list<std::pair<std::string, int>> recentlyGlinedIpsType;
 
-	/** Process the join / part floods */
-	void processJoinPartChannels();
-	
-	/** Process the gline queue */
-	void processGlineQueue();
-	
-	/** Report a SQL error to the appropriate places. */
-	void doSqlError(const std::string&, const std::string&);
+  /*******************************************
+   ** D R O N E S C A N   F U N C T I O N S **
+   *******************************************/
 
-	/** Change the current state. */
-	void changeState(DS_STATE) ;
+  /** Process the join / part floods */
+  void processJoinPartChannels();
 
-	/** Update the state according to the current network state */
-	void updateState();
+  /** Process the gline queue */
+  void processGlineQueue();
 
-	/** handles a channel join */
-	void handleChannelJoin( Channel*, iClient* );
+  /** Report a SQL error to the appropriate places. */
+  void doSqlError(const std::string&, const std::string&);
 
-	/** handles a channel part */
-	void handleChannelPart( Channel*, iClient* );
+  /** Change the current state. */
+  void changeState(DS_STATE);
 
-	/** get rounded unix time */
-	time_t getRoundedUnixTime(time_t, unsigned int);
+  /** Update the state according to the current network state */
+  void updateState();
 
-	/** addJoin() method */
-	void addJoin(jfChannel*, iClient*, unsigned int);
+  /** handles a channel join */
+  void handleChannelJoin(Channel*, iClient*);
 
-	/** This function handles new clients as they connect. */
-	void handleNewClient( iClient* ) ;
+  /** handles a channel part */
+  void handleChannelPart(Channel*, iClient*);
 
-	/** This function handles nick changes. */
-	void handleNickChange( iClient* ) ;
+  /** get rounded unix time */
+  time_t getRoundedUnixTime(time_t, unsigned int);
 
-	/** Calculate global entropy and store it. */
-	void calculateEntropy() ;
+  /** addJoin() method */
+  void addJoin(jfChannel*, iClient*, unsigned int);
 
-	/** Set states on global nicks. */
-	void setNickStates() ;
+  /** This function handles new clients as they connect. */
+  void handleNewClient(iClient*);
 
-	/** Convenience function to reset states and check channels. */
-	inline void resetAndCheck()
-		{ setConsoleTopic(); setNickStates(); checkChannels(); }
+  /** This function handles nick changes. */
+  void handleNickChange(iClient*);
 
-	/**
-	 * Check global channels for drones. This is a convenience wrapper
-	 * for isAbnormal( Channel* ).
-	 */
-	void checkChannels() ;
-	bool checkChannel( const Channel* , const iClient* = 0 ) ;
+  /** Calculate global entropy and store it. */
+  void calculateEntropy();
 
-	/** Calculate the entropy of a given string. */
-	double calculateEntropy( const std::string& ) ;
+  /** Set states on global nicks. */
+  void setNickStates();
 
-	/** Return the entropy of a given client. */
-	double calculateEntropy( const iClient* ) ;
+  /** Convenience function to reset states and check channels. */
+  inline void resetAndCheck() {
+    setConsoleTopic();
+    setNickStates();
+    checkChannels();
+  }
 
-	/** Check if a channel is normal. */
-	/** Check if an iClient's nick is normal. */
-	bool isNormal( const iClient* ) ;
+  /**
+   * Check global channels for drones. This is a convenience wrapper
+   * for isAbnormal( Channel* ).
+   */
+  void checkChannels();
+  bool checkChannel(const Channel*, const iClient* = 0);
 
-	/** Set a clientData's state depending on the iClient. */
-	CLIENT_STATE setClientState( iClient* );
+  /** Calculate the entropy of a given string. */
+  double calculateEntropy(const std::string&);
 
-	/** Log a message. */
-	void log(LOG_TYPE, const char*, ...) ;
+  /** Return the entropy of a given client. */
+  double calculateEntropy(const iClient*);
 
-	#ifdef ENABLE_LOG4CPLUS
-	void log(const char*,const char*, ...);
-	#endif
+  /** Check if a channel is normal. */
+  /** Check if an iClient's nick is normal. */
+  bool isNormal(const iClient*);
 
-	/** Set the topic of the console channel. */
-	void setConsoleTopic() ;
+  /** Set a clientData's state depending on the iClient. */
+  CLIENT_STATE setClientState(iClient*);
 
-	/** Reply to a given iClient. */
-	void Reply(const iClient*, const char*, ...) ;
+  /** Log a message. */
+  void log(LOG_TYPE, const char*, ...);
 
-	/** Return a users access */
-	sqlUser *getSqlUser( const std::string& ) ;
+#ifdef ENABLE_LOG4CPLUS
+  void log(const char*, const char*, ...);
+#endif
 
-	/* Preloaders */
-	bool updateDue(std::string);
-	void preloadFakeClientCache();
-	void preloadUserCache();
-	bool preloadExceptionalChannels();
-	
-	/* Allow commands access to the database pointer */
-	inline dbHandle *getSqlDb()
-		{ return SQLDb; }
+  /** Set the topic of the console channel. */
+  void setConsoleTopic();
 
-	inline DS_STATE getCurrentState()
-		{ return currentState; }
-		
-	inline int GetGlineQueueSize()
-		{ return glineQueue.size(); }
+  /** Reply to a given iClient. */
+  void Reply(const iClient*, const char*, ...);
 
-	/** Internal variables */
-	userMapType userMap;
-	fcMapType fakeClients;
-	clientsIPMapType clientsIPMap;
-	clientsIPFloodMapType clientsIPFloodMap;
-	int lastBurstTime;
-	int lastSplitTime;
+  /** Return a users access */
+  sqlUser* getSqlUser(const std::string&);
 
-	/** Typedef of currently seen drone channels */
-	typedef std::map< std::string , activeChannel* > droneChannelsType;
-	droneChannelsType droneChannels;
+  /* Preloaders */
+  bool updateDue(std::string);
+  void preloadFakeClientCache();
+  void preloadUserCache();
+  bool preloadExceptionalChannels();
 
-	/** Typedef of channels which are not checked for join/part floods */
-	typedef std::list< std::string > exceptionalChannelsType;
-	exceptionalChannelsType exceptionalChannels;
-	
-	/** The gline queue */
-	glineQueueType glineQueue;
-	IPJQueueType IPJQueue;
-	recentlyGlinedIpsType recentlyGlinedIps;
-	
-	bool isExceptionalChannel(const std::string&);
-	
-	bool addExceptionalChannel(const std::string&);
-	
-	bool remExceptionalChannel(const std::string&);
+  /* Allow commands access to the database pointer */
+  inline dbHandle* getSqlDb() { return SQLDb; }
 
-	virtual char*	Ago(long);
-	virtual char*	Duration(long);
+  inline DS_STATE getCurrentState() { return currentState; }
 
-	/** Join counter config options */
-	unsigned int jcInterval;
-	unsigned int jcCutoff;
-	unsigned int jcGracePeriodBurstOrSplit;
-	unsigned int jcMinJoinToGline;
-	unsigned int jcMinJoinToGlineJOnly;
-	unsigned int jcMinJoinsPerIPToGline;
-	unsigned int jcJoinsPerIPTime;
-	unsigned int jcMinJFSizeToGline;
-	unsigned int jcMinJFJOnlySizeToGline;
-	unsigned int jcIgnoreJoinFloodLag;
-	unsigned int jcIgnoreJoinFloodLagTS;
-	bool jcGlineEnable;
-	bool jcGlineEnableConf;
-	std::string jcGlineReason;
-	unsigned int jcGlineLength; 
-	unsigned int pcCutoff;			
-	unsigned int ncInterval;
-	unsigned int ncCutoff;
-	typedef std::map< std::string , jfChannel* , noCaseCompare >
-		jcChanMapType;
-	typedef jcChanMapType::const_iterator jcChanMapIterator;
-	jcChanMapType jcChanMap;
-	typedef std::map< std::string , unsigned int , noCaseCompare >
-		ncChanMapType;
-	ncChanMapType ncChanMap;
-	
-	/** Gline queue config options */
-	unsigned int gbCount;
-	unsigned int gbInterval;
+  inline int GetGlineQueueSize() { return glineQueue.size(); }
 
-	/* Test control */
-	/** Test map type. */
-	typedef std::map< std::string, Test* > testMapType;
-	typedef testMapType::value_type testPairType;
-	bool RegisterTest(Test*);
-	bool UnRegisterTest(const std::string&);
+  /** Internal variables */
+  userMapType userMap;
+  fcMapType fakeClients;
+  clientsIPMapType clientsIPMap;
+  clientsIPFloodMapType clientsIPFloodMap;
+  int lastBurstTime;
+  int lastSplitTime;
 
-	/** Tests map */
-	testMapType testMap;
+  /** Typedef of currently seen drone channels */
+  typedef std::map<std::string, activeChannel*> droneChannelsType;
+  droneChannelsType droneChannels;
 
-	/** Set a variable in one of the tests. */
-	Test *setTestVariable(const std::string&, const std::string&);
+  /** Typedef of channels which are not checked for join/part floods */
+  typedef std::list<std::string> exceptionalChannelsType;
+  exceptionalChannelsType exceptionalChannels;
 
-	/* Configuration variables used by tests. */
+  /** The gline queue */
+  glineQueueType glineQueue;
+  IPJQueueType IPJQueue;
+  recentlyGlinedIpsType recentlyGlinedIps;
 
-	/** Global options */
-	unsigned int voteCutoff;
+  bool isExceptionalChannel(const std::string&);
 
-	/** Abnormals options */
-	double channelMargin;
+  bool addExceptionalChannel(const std::string&);
+
+  bool remExceptionalChannel(const std::string&);
+
+  virtual char* Ago(long);
+  virtual char* Duration(long);
+
+  /** Join counter config options */
+  unsigned int jcInterval;
+  unsigned int jcCutoff;
+  unsigned int jcGracePeriodBurstOrSplit;
+  unsigned int jcMinJoinToGline;
+  unsigned int jcMinJoinToGlineJOnly;
+  unsigned int jcMinJoinsPerIPToGline;
+  unsigned int jcJoinsPerIPTime;
+  unsigned int jcMinJFSizeToGline;
+  unsigned int jcMinJFJOnlySizeToGline;
+  unsigned int jcIgnoreJoinFloodLag;
+  unsigned int jcIgnoreJoinFloodLagTS;
+  bool jcGlineEnable;
+  bool jcGlineEnableConf;
+  std::string jcGlineReason;
+  unsigned int jcGlineLength;
+  unsigned int pcCutoff;
+  unsigned int ncInterval;
+  unsigned int ncCutoff;
+  typedef std::map<std::string, jfChannel*, noCaseCompare> jcChanMapType;
+  typedef jcChanMapType::const_iterator jcChanMapIterator;
+  jcChanMapType jcChanMap;
+  typedef std::map<std::string, unsigned int, noCaseCompare> ncChanMapType;
+  ncChanMapType ncChanMap;
+
+  /** Gline queue config options */
+  unsigned int gbCount;
+  unsigned int gbInterval;
+
+  /* Test control */
+  /** Test map type. */
+  typedef std::map<std::string, Test*> testMapType;
+  typedef testMapType::value_type testPairType;
+  bool RegisterTest(Test*);
+  bool UnRegisterTest(const std::string&);
+
+  /** Tests map */
+  testMapType testMap;
+
+  /** Set a variable in one of the tests. */
+  Test* setTestVariable(const std::string&, const std::string&);
+
+  /* Configuration variables used by tests. */
+
+  /** Global options */
+  unsigned int voteCutoff;
+
+  /** Abnormals options */
+  double channelMargin;
 
 protected:
+  void outputNames(const std::string&, std::stringstream&, bool, bool);
+  /** Configuration file. */
+  EConfig* dronescanConfig;
 
-	void outputNames(const std::string&,std::stringstream&,bool,bool);
-	/** Configuration file. */
-	EConfig *dronescanConfig;
+  /** Our database instance */
+  dbHandle* SQLDb;
 
-	/** Our database instance */
-	dbHandle *SQLDb;
+  /** Configuration variables. */
+  std::string consoleChannel;
+  std::string consoleChannelModes;
 
-	/** Configuration variables. */
-	std::string consoleChannel;
-	std::string consoleChannelModes;
+  /** State variable. */
+  DS_STATE currentState;
 
-	/** State variable. */
-	DS_STATE currentState;
+  /** Character occurance frequencies. */
+  typedef std::map<char, double> charMapType;
+  charMapType charMap;
 
-	/** Character occurance frequencies. */
-	typedef std::map< char , double > charMapType;
-	charMapType charMap;
+  /** Average nickname entropy. */
+  double averageEntropy;
+  unsigned int totalNicks;
 
-	/** Average nickname entropy. */
-	double averageEntropy;
-	unsigned int totalNicks;
+  /** Margins. */
+  double nickMargin;
+  unsigned int channelCutoff;
 
-	/** Margins. */
-	double nickMargin;
-	unsigned int channelCutoff;
+  /** How often to show drone channels on join test */
+  unsigned int dcInterval;
+  xServer::timerID tidClearActiveList;
 
-	/** How often to show drone channels on join test */
-	unsigned int dcInterval;
-	xServer::timerID tidClearActiveList;
+  /** What level to log to the console. */
+  int consoleLevel;
 
-	/** What level to log to the console. */
-	int consoleLevel;
+  /** Stats. */
+  int customDataCounter;
 
-	/** Stats. */
-	int customDataCounter;
+  /** Internally used timer. */
+  Timer* theTimer;
 
-	/** Internally used timer. */
-	Timer *theTimer;
+  /** Timers for GNUWorld triggered events. */
+  xServer::timerID tidClearJoinCounter;
+  xServer::timerID tidClearNickCounter;
+  xServer::timerID tidRefreshCaches;
+  xServer::timerID tidGlineQueue;
 
-	/** Timers for GNUWorld triggered events. */
-	xServer::timerID tidClearJoinCounter;
-	xServer::timerID tidClearNickCounter;
-	xServer::timerID tidRefreshCaches;
-	xServer::timerID tidGlineQueue;
+  /** Command map type. */
+  typedef std::map<std::string, Command*, noCaseCompare> commandMapType;
+  typedef commandMapType::value_type commandPairType;
+  commandMapType commandMap;
+  bool RegisterCommand(Command*);
 
-	/** Command map type. */
-	typedef std::map< std::string , Command* , noCaseCompare >
-		commandMapType;
-	typedef commandMapType::value_type commandPairType;
-	commandMapType commandMap;
-	bool RegisterCommand(Command*);
+  /** Time of the last cache. */
+  std::map<std::string, time_t> lastUpdated;
 
-	/** Time of the last cache. */
-	std::map < std::string , time_t > lastUpdated;
+  /** How often to refresh caches. */
+  unsigned int rcInterval;
 
-	/** How often to refresh caches. */
-	unsigned int rcInterval;
+  /** Fake sqlUser record for opered clients without accounts. */
+  sqlUser* fakeOperUser;
 
-	/** Fake sqlUser record for opered clients without accounts. */
-	sqlUser *fakeOperUser;
-	
 }; // class dronescan
-
 
 } // namespace ds
 

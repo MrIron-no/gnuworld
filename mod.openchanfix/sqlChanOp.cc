@@ -21,38 +21,29 @@
  * $Id: sqlChanOp.cc,v 1.6 2010/03/04 04:24:12 hidden1 Exp $
  */
 
-#include	<sstream>
-#include	<string>
+#include <sstream>
+#include <string>
 
-#include	"dbHandle.h"
+#include "dbHandle.h"
 
-#include	"ELog.h"
-#include	"misc.h"
+#include "ELog.h"
+#include "misc.h"
 
-#include	"chanfix.h"
-#include	"sqlChanOp.h"
+#include "chanfix.h"
+#include "sqlChanOp.h"
 
-namespace gnuworld
-{
+namespace gnuworld {
 
-namespace cf
-{
+namespace cf {
 
-sqlChanOp::sqlChanOp(sqlManager* _myManager) :
-  channel(""),
-  account(""),
-  nickUserHost(""),
-  points(0),
-  ts_firstopped(0),
-  ts_lastopped(0),
-  day()
-{
+sqlChanOp::sqlChanOp(sqlManager* _myManager)
+    : channel(""), account(""), nickUserHost(""), points(0), ts_firstopped(0), ts_lastopped(0),
+      day() {
   myManager = _myManager;
   OldestOp = false;
 }
-	
-void sqlChanOp::setAllMembers(dbHandle* theDB, int row)
-{
+
+void sqlChanOp::setAllMembers(dbHandle* theDB, int row) {
   channel = theDB->GetValue(row, 0);
   account = theDB->GetValue(row, 1);
   nickUserHost = theDB->GetValue(row, 2);
@@ -75,8 +66,7 @@ void sqlChanOp::setAllMembers(dbHandle* theDB, int row)
   calcTotalPoints();
 }
 
-void sqlChanOp::calcTotalPoints()
-{
+void sqlChanOp::calcTotalPoints() {
   int i;
   points = 0;
   for (i = 0; i < DAYSAMPLES; i++) {
@@ -84,9 +74,8 @@ void sqlChanOp::calcTotalPoints()
   }
 }
 
-sqlChanOp::~sqlChanOp()
-{
-// No heap space allocated
+sqlChanOp::~sqlChanOp() {
+  // No heap space allocated
 }
 
 } // namespace cf

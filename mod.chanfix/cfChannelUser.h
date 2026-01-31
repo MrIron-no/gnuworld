@@ -28,25 +28,21 @@ namespace chanfix {
 
 class cfChannelUser {
 public:
-	cfChannelUser(const std::string&);
-	virtual ~cfChannelUser();
+  cfChannelUser(const std::string&);
+  virtual ~cfChannelUser();
 
-	void addPoints(unsigned int);
+  void addPoints(unsigned int);
 
-	inline void setPoints(unsigned int _points)
-		{ points = _points; }
+  inline void setPoints(unsigned int _points) { points = _points; }
 
-	inline unsigned int getPoints() const
-		{ return points; }
+  inline unsigned int getPoints() const { return points; }
 
-	inline const std::string& getName() const
-		{ return name; }
-
+  inline const std::string& getName() const { return name; }
 
 protected:
-	std::string name;
+  std::string name;
 
-	unsigned int points;
+  unsigned int points;
 }; // class cfChannelUser;
 
 } // namespace chanfix

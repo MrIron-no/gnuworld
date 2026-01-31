@@ -27,25 +27,32 @@ namespace gnuworld {
 
 class Timer {
 public:
-	inline Timer(bool autostart = true)
-		{ if(autostart) { Start(); } }
+  inline Timer(bool autostart = true) {
+    if (autostart) {
+      Start();
+    }
+  }
 
-	inline void Start()
-		{ gettimeofday(&startTime, 0); }
-	inline void Stop()
-		{ gettimeofday(&stopTime, 0); }
-	inline unsigned int getTimeMS()
-		{ return	(stopTime.tv_sec - startTime.tv_sec) * 1000 +
-				(stopTime.tv_usec - startTime.tv_usec) / 1000; }
-	inline unsigned long getTimeUS()
-		{ return	(stopTime.tv_sec - startTime.tv_sec) * 1000000 +
-				(stopTime.tv_usec - startTime.tv_usec); }
-	inline unsigned int stopTimeMS()
-		{ Stop(); return getTimeMS(); }
-	inline unsigned long stopTimeUS()
-		{ Stop(); return getTimeUS(); }
+  inline void Start() { gettimeofday(&startTime, 0); }
+  inline void Stop() { gettimeofday(&stopTime, 0); }
+  inline unsigned int getTimeMS() {
+    return (stopTime.tv_sec - startTime.tv_sec) * 1000 +
+           (stopTime.tv_usec - startTime.tv_usec) / 1000;
+  }
+  inline unsigned long getTimeUS() {
+    return (stopTime.tv_sec - startTime.tv_sec) * 1000000 + (stopTime.tv_usec - startTime.tv_usec);
+  }
+  inline unsigned int stopTimeMS() {
+    Stop();
+    return getTimeMS();
+  }
+  inline unsigned long stopTimeUS() {
+    Stop();
+    return getTimeUS();
+  }
+
 protected:
-	struct timeval startTime, stopTime;
+  struct timeval startTime, stopTime;
 }; // class Timer
 
 } // namespace gnuworld
