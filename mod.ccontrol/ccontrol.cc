@@ -6159,7 +6159,14 @@ bool ccontrol::glineChannelUsers(iClient* theClient, Channel* theChan, const str
     size_t ccontrol::iauthXQCheck(iServer * theServer, const string& Routing,
                                   const string& Message) {
         // What's going to be in Message?
-        // XQ <target server (me)> <routing> :CHECK nick user ip host [account] :fullname
+        // XQ <target server (me)> <routing> :CHECK nick user ip host [account|*] :fullname
+        //
+        // Optional account field (immediately before the trailing :fullname):
+        //   omitted  - legacy senders; treat as no account (backwards compatible)
+        //   *        - explicitly no account
+        //   <name>   - logged-in account name
+        // Realname is located by the first ':'-prefixed token at index >= 5,
+        // so the optional account token does not shift a fixed fullname index.
         StringTokenizer st(Message);
         if (st.size() < 6) {
             return 0;
