@@ -6159,7 +6159,7 @@ bool ccontrol::glineChannelUsers(iClient* theClient, Channel* theChan, const str
     size_t ccontrol::iauthXQCheck(iServer * theServer, const string& Routing,
                                   const string& Message) {
         // What's going to be in Message?
-        // XQ <target server (me)> <routing> :CHECK nick user ip host :fullname
+        // XQ <target server (me)> <routing> :CHECK nick user ip host [account] :fullname
         StringTokenizer st(Message);
         if (st.size() < 6) {
             return 0;
@@ -6180,7 +6180,15 @@ bool ccontrol::glineChannelUsers(iClient* theClient, Channel* theChan, const str
         irc_in_addr theIP;
         ipmask_parse(IP.c_str(), &theIP, NULL);
         string base64IP = string(xIP(theIP).GetBase64IP());
-        string fullname = st.assemble(5);
+
+        size_t fullnameIdx = 5;
+        for (size_t i = 5; i < st.size(); ++i) {
+            if (!st[i].empty() && st[i][0] == ':') {
+                fullnameIdx = i;
+                break;
+            }
+        }
+        string fullname = st.assemble(fullnameIdx);
         if (fullname.substr(0, 1) == ":")
             fullname = fullname.substr(1);
         fullname = theServer->getCharYY() + " " + fullname;
