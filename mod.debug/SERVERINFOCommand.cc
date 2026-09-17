@@ -38,9 +38,9 @@ void dumpServerInfo(debug* bot, const iClient* theClient, iServer* theServer) {
     bot->Notice(theClient, "Server: {}", theServer->getName());
     bot->Notice(theClient, "Description: {}", theServer->getDescription());
     bot->Notice(theClient, "Numeric: {} (intYY={})", theServer->getCharYY(), theServer->getIntYY());
-    bot->Notice(theClient, "Protocol: P{}", theServer->getProtocol())
-        bot->Notice(theClient, "Uplink: {} (intYY={})", uplink ? uplink->getName() : "(none)",
-                    theServer->getUplinkIntYY());
+    bot->Notice(theClient, "Protocol: P{}", theServer->getProtocol());
+    bot->Notice(theClient, "Uplink: {} (intYY={})", uplink ? uplink->getName() : "(none)",
+                theServer->getUplinkIntYY());
     bot->Notice(theClient, "Clients: {}", Network->countClients(theServer));
     bot->Notice(theClient, "Connected: {} ({} ago)", theServer->getConnectTime(),
                 prettyDuration(theServer->getConnectTime()));

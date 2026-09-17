@@ -56,4 +56,6 @@ libircu msg_NOOP WU
 libircu msg_NOOP MO
 libircu msg_NOOP 482
 libircu msg_NOOP 443
+# P11 link capabilities. We advertise none, so there is nothing to act on.
+libircu msg_NOOP CAP
 
