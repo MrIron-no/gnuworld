@@ -363,16 +363,18 @@ void testFormatLines() {
     CHECK(formatLines(prefix, changesFor("-k+k", {"old", "new"}), 1) ==
           Lines{"AzAAB M #modes -k+k old new 1"});
 
-    // At most MAX_CHAN_MODES modes on a line, flags included: gnuworld's
-    // reading of the limit, stricter than ircu's, which counts the arguments
+    // At most MAX_CHAN_MODES modes with an argument on a line, as ircu counts
+    // with its MAXMODEPARAMS; flags do not count against it
     auto lines = formatLines(
         prefix, changesFor("+tnooooooo", {"A1", "A2", "A3", "A4", "A5", "A6", "A7"}), 5);
     CHECK(lines ==
-          (Lines{"AzAAB M #modes +tnoooo A1 A2 A3 A4 5", "AzAAB M #modes +ooo A5 A6 A7 5"}));
-    lines = formatLines(prefix, changesFor("+mtinsc", {}), 5);
-    CHECK(lines == Lines{"AzAAB M #modes +mtinsc 5"});
-    lines = formatLines(prefix, changesFor("+mtinscC", {}), 5);
-    CHECK(lines == (Lines{"AzAAB M #modes +mtinsc 5", "AzAAB M #modes +C 5"}));
+          (Lines{"AzAAB M #modes +tnoooooo A1 A2 A3 A4 A5 A6 5", "AzAAB M #modes +o A7 5"}));
+    // Any number of flags fits on one line
+    lines = formatLines(prefix, changesFor("+mtinscCuMD", {}), 5);
+    CHECK(lines == Lines{"AzAAB M #modes +mtinscCuMD 5"});
+    // -l takes no argument, so it does not count either
+    lines = formatLines(prefix, changesFor("-l+oooooo", {"A1", "A2", "A3", "A4", "A5", "A6"}), 5);
+    CHECK(lines == Lines{"AzAAB M #modes -l+oooooo A1 A2 A3 A4 A5 A6 5"});
 
     // The polarity is restated on the next line
     lines =

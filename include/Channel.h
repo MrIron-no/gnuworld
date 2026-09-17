@@ -333,9 +333,9 @@ class Channel {
      * Format changes as complete MODE lines,
      * "<prefix> <modes> [<args>] <timestamp>", where prefix is
      * "<source> M <#channel>".  One sign per run of a polarity; at most
-     * MAX_CHAN_MODES modes on a line, flags included, and never past the
-     * line limit; the channel timestamp last, which a P11 peer requires;
-     * one space between fields.
+     * MAX_CHAN_MODES modes with an argument on a line, as ircu counts them,
+     * and never past the line limit; the channel timestamp last, which a
+     * P11 peer requires; one space between fields.
      */
     static std::vector<std::string> formatModeLines(std::string_view prefix,
                                                     std::span<const ModeChange> changes,

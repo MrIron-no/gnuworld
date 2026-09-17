@@ -53,7 +53,9 @@
 
 /**
  * MAX_CHAN_MODES
- * The maximum number of channel modes per command.
+ * The maximum number of channel modes with an argument (o, v, b, k, l...)
+ * in one MODE command.  This is ircu's MAXMODEPARAMS and has to agree with
+ * it.  Modes without an argument (m, t, n...) do not count against it.
  */
 #define MAX_CHAN_MODES 6
 

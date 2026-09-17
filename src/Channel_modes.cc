@@ -176,7 +176,7 @@ std::vector<std::string> Channel::formatModeLines(std::string_view prefix,
 
     std::string modeString;
     std::string argString;
-    std::size_t modesOnLine = 0;
+    std::size_t argsOnLine = 0;
     std::optional<bool> polarity;
 
     const auto flush = [&] {
@@ -185,7 +185,7 @@ std::vector<std::string> Channel::formatModeLines(std::string_view prefix,
         }
         modeString.clear();
         argString.clear();
-        modesOnLine = 0;
+        argsOnLine = 0;
         polarity.reset();
     };
 
@@ -199,11 +199,11 @@ std::vector<std::string> Channel::formatModeLines(std::string_view prefix,
         const std::size_t length =
             prefix.size() + 1 + modeString.size() + argString.size() + tail.size();
 
-        // MAX_CHAN_MODES is the number of modes per command, whether or not
-        // they take an argument.  ircu itself only counts the arguments, so
-        // this is the stricter reading, and the one gnuworld always applied.
+        // As ircu does with its MAXMODEPARAMS: the limit is on the modes that
+        // take an argument.  Flags do not count against it, and are bounded
+        // by the length of the line alone.
         if (!modeString.empty() &&
-            (modesOnLine == MAX_CHAN_MODES || length + growth > maxLineLength)) {
+            ((hasArg && argsOnLine == MAX_CHAN_MODES) || length + growth > maxLineLength)) {
             flush();
         }
 
@@ -215,8 +215,8 @@ std::vector<std::string> Channel::formatModeLines(std::string_view prefix,
         if (hasArg) {
             argString += ' ';
             argString += change.arg;
+            ++argsOnLine;
         }
-        ++modesOnLine;
     }
     flush();
 
