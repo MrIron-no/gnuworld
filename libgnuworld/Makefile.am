@@ -33,6 +33,7 @@ libgnuworld_la_CXXFLAGS = \
 EXTRA_DIST += \
 	libgnuworld/Buffer.h \
 	libgnuworld/ChannelModes.h \
+	libgnuworld/CheckedFormat.h \
 	libgnuworld/Connection.h \
 	libgnuworld/ConnectionHandler.h \
 	libgnuworld/ConnectionManager.h \

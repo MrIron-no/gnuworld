@@ -28,13 +28,6 @@
 
 namespace gnuworld {
 
-bool debug::Notice(const iClient* Target, const std::string& Message) {
-    if (IsStealth()) {
-        return getUplink()->Notice(const_cast<iClient*>(Target), Message);
-    }
-    return xClient::Notice(Target, Message);
-}
-
 void debug::OnPrivateMessage(iClient* theClient, const std::string& Message, bool) {
     if (!hasAccess(theClient->getAccount())) {
         return;

@@ -224,7 +224,7 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st,
     }
 
     if (st.size() < (takesReason ? 4U : isInvite ? 2U : 3U)) {
-        Notice(requester, "Usage: %s #channel %s", st[0].c_str(),
+        Notice(requester, "Usage: {} #channel {}", st[0],
                takesReason  ? "nick reason"
                : takesMasks ? "banmask [banmask ...]"
                : takesNicks ? "nick [nick ...]"
@@ -286,11 +286,11 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st,
     for (StringTokenizer::size_type i = 2; i < lastNick; ++i) {
         iClient* target = Network->findNick(st[i]);
         if (NULL == target) {
-            Notice(requester, "Unable to find nickname: %s", st[i].c_str());
+            Notice(requester, "Unable to find nickname: {}", st[i]);
             return true;
         }
         if (0 == theChan->findUser(target)) {
-            Notice(requester, "%s doesn't appear to be on that channel", st[i].c_str());
+            Notice(requester, "{} doesn't appear to be on that channel", st[i]);
             return true;
         }
         targets.push_back(target);
@@ -366,7 +366,7 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         Notice(theClient, "--- Help Menu ---");
         for (helpTableType::const_iterator hItr = helpTable.begin(); hItr != helpTable.end();
              ++hItr) {
-            Notice(theClient, "%s: %s", hItr->first.c_str(), hItr->second.c_str());
+            Notice(theClient, "{}: {}", hItr->first, hItr->second);
         }
         return;
     }
@@ -409,8 +409,7 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         // fakesay|fakenotice <fakenick> <#channel|nick> <text>
         iClient* fake = (st.size() >= 4) ? Network->findNick(st[1]) : 0;
         if (0 == fake || Network->findFakeClientOwner(fake) != this) {
-            Notice(theClient, "Usage: %s <one of my fake clients> <#channel|nick> <text>",
-                   st[0].c_str());
+            Notice(theClient, "Usage: {} <one of my fake clients> <#channel|nick> <text>", st[0]);
             return;
         }
         const bool notice = (st[0] == "fakenotice");
@@ -425,7 +424,7 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         } else {
             iClient* target = Network->findNick(st[2]);
             if (NULL == target) {
-                Notice(theClient, "Unable to find nickname: %s", st[2].c_str());
+                Notice(theClient, "Unable to find nickname: {}", st[2]);
                 return;
             }
             notice ? FakeNotice(target, fake, st.assemble(3))
@@ -607,7 +606,7 @@ void gnutest::spawnServer(iClient* requestingClient, const StringTokenizer& st) 
     } else {
         elog << "gnutest::spawnServer> Added new iServer: " << *newServer << endl;
 
-        Notice(requestingClient, "Added new server with description: %s", description.c_str());
+        Notice(requestingClient, "Added new server with description: {}", description);
     }
 }
 
@@ -622,18 +621,18 @@ void gnutest::removeServer(iClient* requestingClient, const StringTokenizer& st)
     if (0 == theServer) {
         elog << "gnutest::removeServer> Failed to find server name: " << name << endl;
 
-        Notice(requestingClient, "Failed to find server: %s", name.c_str());
+        Notice(requestingClient, "Failed to find server: {}", name);
         return;
     }
 
     if (!MyUplink->DetachServer(theServer)) {
         elog << "gnutest::removeServer> Failed to DetachServer(): " << *theServer << endl;
 
-        Notice(requestingClient, "Failed to remove server: %s", name.c_str());
+        Notice(requestingClient, "Failed to remove server: {}", name);
     } else {
         elog << "gnutest::removeServer> Successfully removed server: " << *theServer << endl;
 
-        Notice(requestingClient, "Successfully removed server: %s", name.c_str());
+        Notice(requestingClient, "Successfully removed server: {}", name);
         delete theServer;
         theServer = 0;
     }
@@ -651,7 +650,7 @@ void gnutest::removeClient(iClient* requestingClient, const StringTokenizer& st)
 
     iClient* removeMe = Network->findFakeNick(nickName);
     if (0 == removeMe) {
-        Notice(requestingClient, "Unable to find fake client: %s", nickName.c_str());
+        Notice(requestingClient, "Unable to find fake client: {}", nickName);
         return;
     }
 
@@ -663,14 +662,14 @@ void gnutest::removeClient(iClient* requestingClient, const StringTokenizer& st)
     }
 
     if (MyUplink->DetachClient(removeMe, "Requested shutdown") != 0) {
-        Notice(requestingClient, "Successfully removed fake client: %s", nickName.c_str());
+        Notice(requestingClient, "Successfully removed fake client: {}", nickName);
 
         // This module allocated the client, so this module will
         // deallocate it.
         delete removeMe;
         removeMe = 0;
     } else {
-        Notice(requestingClient, "Failed to remove fake client: %s", nickName.c_str());
+        Notice(requestingClient, "Failed to remove fake client: {}", nickName);
     }
 }
 
@@ -715,7 +714,7 @@ void gnutest::spawnClient(iClient* requestingClient, const StringTokenizer& st) 
         delete newClient;
         newClient = 0;
     } else {
-        Notice(requestingClient, "Created new client %s", nickName.c_str());
+        Notice(requestingClient, "Created new client {}", nickName);
         elog << "gnutest::spawnClient> Added client: " << *newClient << endl;
     }
 }
@@ -778,7 +777,7 @@ void gnutest::spawnJoin(iClient* srcClient, const StringTokenizer& st) {
     // Find the client
     iClient* fakeClient = Network->findNick(st[1]);
     if (0 == fakeClient) {
-        Notice(srcClient, "Nick \'%s\' does not exist", st[1].c_str());
+        Notice(srcClient, "Nick \'{}\' does not exist", st[1]);
         return;
     }
 
@@ -791,11 +790,11 @@ void gnutest::spawnJoin(iClient* srcClient, const StringTokenizer& st) {
 
     if (!getUplink()->JoinChannel(fakeClient, st[2])) {
         Notice(srcClient,
-               "Unable to make \'%s\' join channel "
-               "%s",
-               st[1].c_str(), st[2].c_str());
+               "Unable to make \'{}\' join channel "
+               "{}",
+               st[1], st[2]);
     } else {
-        Notice(srcClient, "%s successfully joined %s", st[1].c_str(), st[2].c_str());
+        Notice(srcClient, "{} successfully joined {}", st[1], st[2]);
     }
 }
 
@@ -810,7 +809,7 @@ void gnutest::spawnPart(iClient* srcClient, const StringTokenizer& st) {
     // Find the client
     iClient* fakeClient = Network->findNick(st[1]);
     if (0 == fakeClient) {
-        Notice(srcClient, "Nick \'%s\' does not exist", st[1].c_str());
+        Notice(srcClient, "Nick \'{}\' does not exist", st[1]);
         return;
     }
 
@@ -822,7 +821,7 @@ void gnutest::spawnPart(iClient* srcClient, const StringTokenizer& st) {
     }
 
     getUplink()->PartChannel(fakeClient, st[2]);
-    Notice(srcClient, "%s successfully parted %s", st[1].c_str(), st[2].c_str());
+    Notice(srcClient, "{} successfully parted {}", st[1], st[2]);
 }
 
 void gnutest::chanInfo(const Channel* theChan) {

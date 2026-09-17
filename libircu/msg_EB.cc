@@ -92,12 +92,12 @@ bool msg_EB::Execute(const xParameters& params) {
 
         if (theServer->getSendEB()) {
             // Send our EB
-            theServer->Write("%s EB\n", theServer->getCharYY().c_str());
+            theServer->Write("{} EB\n", theServer->getCharYY());
         }
 
         if (theServer->getSendEA()) {
             // Acknowledge their end of burst
-            theServer->Write("%s EA\n", theServer->getCharYY().c_str());
+            theServer->Write("{} EA\n", theServer->getCharYY());
         }
 
         // Is the burstOutputBuffer empty?

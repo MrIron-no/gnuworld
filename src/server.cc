@@ -837,8 +837,8 @@ void xServer::BurstServer(iServer* fakeServer) {
     if (fakeServer->isJupe()) {
         // source_numeric JU +servername * expiration_time lastmod :reason
         // expiration: 604800 (max)
-        Write("%s JU * +%s 604800 %d :%s", getCharYY().c_str(), fakeServer->getName().c_str(),
-              ::time(0), fakeServer->getDescription().c_str());
+        Write("{} JU * +{} 604800 {} :{}", getCharYY(), fakeServer->getName(), ::time(0),
+              fakeServer->getDescription());
     } else {
         // Burst the new server's info./
         // IRCu checks for "JUPE " as being the beginning of the
@@ -846,14 +846,15 @@ void xServer::BurstServer(iServer* fakeServer) {
         // couldn't link without [ip] being added to their realname
         // field unless they were juped by uworld.  Now anyone can
         // link with that name, oh well.
-        Write("%s S %s %d %d %d J%02d %s 0 :%s\n", getCharYY().c_str(),
-              fakeServer->getName().c_str(), 2, 0, fakeServer->getConnectTime(),
-              10, // version
-              fakeServer->getCharYYXXX().c_str(), fakeServer->getDescription().c_str());
+        Write("{} S {} {} {} {} J{:02} {} 0 :{}\n", getCharYY(), fakeServer->getName(), 2, 0,
+              fakeServer->getConnectTime(),
+              Version, // a server of ours speaks what we speak; this was a literal 10
+              fakeServer->getCharYYXXX(), fakeServer->getDescription());
+        fakeServer->setProtocol(static_cast<unsigned int>(Version));
 
         // Write burst acknowledgements.
-        Write("%s EB\n", fakeServer->getCharYY().c_str());
-        Write("%s EA\n", fakeServer->getCharYY().c_str());
+        Write("{} EB\n", fakeServer->getCharYY());
+        Write("{} EA\n", fakeServer->getCharYY());
     }
 }
 
@@ -1040,12 +1041,10 @@ void xServer::BurstClient(iClient* fakeClient) {
                          std::to_string(fakeClient->getAccountID()) + ":" +
                          std::to_string(fakeClient->getAccountFlags());
 
-    Write("%s N %s %d %d %s %s %s%s %s %s :%s\n", fakeServer->getCharYY().c_str(),
-          fakeClient->getNickName().c_str(), hopCount, fakeClient->getNickTS(),
-          fakeClient->getUserName().c_str(), fakeClient->getRealInsecureHost().c_str(),
-          fakeClient->getStringModes().c_str(), accountString.c_str(),
-          xIP(fakeClient->getIP()).GetBase64IP().c_str(), fakeClient->getCharYYXXX().c_str(),
-          description.c_str());
+    Write("{} N {} {} {} {} {} {}{} {} {} :{}\n", fakeServer->getCharYY(),
+          fakeClient->getNickName(), hopCount, fakeClient->getNickTS(), fakeClient->getUserName(),
+          fakeClient->getRealInsecureHost(), fakeClient->getStringModes(), accountString,
+          xIP(fakeClient->getIP()).GetBase64IP(), fakeClient->getCharYYXXX(), description);
 
     PostEvent(EVT_NICK, static_cast<void*>(fakeClient));
 }
@@ -1884,8 +1883,7 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source
     // "-b <timestamp>", which removes nothing.
     bool sent = true;
     if (!from.isClient() || from.client()->isOper()) {
-        sent = Write("%s CM %s :%s\r\n", numericOf(from).c_str(), theChan->getName().c_str(),
-                     letters.c_str());
+        sent = Write("{} CM {} :{}\r\n", numericOf(from), theChan->getName(), letters);
     } else if (canChangeChannel(from, theChan)) {
         sent = SendChannelModes(numericOf(from), theChan, changes);
     } else {
@@ -2137,12 +2135,11 @@ bool xServer::Topic(Channel* theChan, const std::string& newTopic, const Source&
     if (Uplink != 0 && Uplink->getProtocol() >= 11) {
         // With the channel's creation time, so that the topic is not applied
         // to a younger channel of the same name, and the topic's own time
-        sent = Write("%s T %s %ld %ld :%s", numericOf(from).c_str(), theChan->getName().c_str(),
-                     static_cast<long>(theChan->getCreationTime()), static_cast<long>(now),
-                     newTopic.c_str());
+        sent =
+            Write("{} T {} {} {} :{}", numericOf(from), theChan->getName(),
+                  static_cast<long>(theChan->getCreationTime()), static_cast<long>(now), newTopic);
     } else {
-        sent = Write("%s T %s :%s", numericOf(from).c_str(), theChan->getName().c_str(),
-                     newTopic.c_str());
+        sent = Write("{} T {} :{}", numericOf(from), theChan->getName(), newTopic);
     }
 
 #ifdef TOPIC_TRACK
@@ -2172,11 +2169,10 @@ bool xServer::Invite(iClient* target, Channel* theChan, const Source& from) {
     // A P11 link names the invitee by numnick and takes the channel's
     // creation time; a P10 link wants the nick.
     if (Uplink != 0 && Uplink->getProtocol() >= 11) {
-        return Write("%s I %s %s %ld", numericOf(from).c_str(), target->getCharYYXXX().c_str(),
-                     theChan->getName().c_str(), static_cast<long>(theChan->getCreationTime()));
+        return Write("{} I {} {} {}", numericOf(from), target->getCharYYXXX(), theChan->getName(),
+                     static_cast<long>(theChan->getCreationTime()));
     }
-    return Write("%s I %s %s", numericOf(from).c_str(), target->getNickName().c_str(),
-                 theChan->getName().c_str());
+    return Write("{} I {} {}", numericOf(from), target->getNickName(), theChan->getName());
 }
 
 std::vector<iClient*> xServer::planKick(const Channel* theChan,
@@ -2205,8 +2201,7 @@ std::vector<iClient*> xServer::planKick(const Channel* theChan,
 void xServer::commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
                          std::span<iClient* const> targets, const std::string& reason) {
     for (iClient* target : targets) {
-        Write("%s K %s %s :%s", sourceNumeric.c_str(), theChan->getName().c_str(),
-              target->getCharYYXXX().c_str(), reason.c_str());
+        Write("{} K {} {} :{}", sourceNumeric, theChan->getName(), target->getCharYYXXX(), reason);
 
         // Take the member off the channel now.  A PART that a server sends
         // for it later is ignored, and this way a fake client of ours is
@@ -2680,9 +2675,9 @@ bool xServer::DetachClient(iClient* fakeClient, const string& quitMessage) {
     }
 
     if (!quitMessage.empty()) {
-        Write("%s Q :%s", fakeClient->getCharYYXXX().c_str(), quitMessage.c_str());
+        Write("{} Q :{}", fakeClient->getCharYYXXX(), quitMessage);
     } else {
-        Write("%s Q :Exiting", fakeClient->getCharYYXXX().c_str());
+        Write("{} Q :Exiting", fakeClient->getCharYYXXX());
     }
 
     PostEvent(EVT_QUIT, static_cast<void*>(fakeClient));
@@ -2701,12 +2696,12 @@ bool xServer::DetachServer(iServer* fakeServer) {
     if (fakeServer->isJupe()) {
         // source_numeric JU -servername * expiration_time lastmod :reason
         // expiration: 604800 (max)
-        Write("%s JU * -%s  604800 %d :%s", getCharYY().c_str(), fakeServer->getName().c_str(),
-              ::time(0), fakeServer->getDescription().c_str());
+        Write("{} JU * -{}  604800 {} :{}", getCharYY(), fakeServer->getName(), ::time(0),
+              fakeServer->getDescription());
     }
 
     else {
-        Write("%s SQ %s %d :Unloading server", getCharYY().c_str(), fakeServer->getCharYY().c_str(),
+        Write("{} SQ {} {} :Unloading server", getCharYY(), fakeServer->getCharYY(),
               fakeServer->getConnectTime());
     }
 
@@ -3021,32 +3016,6 @@ bool xServer::Notice(iClient* theClient, const string& message) {
     }
 
     return SendNotice(Source(), theClient->getCharYYXXX(), message);
-}
-
-bool xServer::Notice(iClient* theClient, const char* format, ...) {
-    assert(theClient != 0);
-
-    char buf[1024] = {0};
-    va_list _list;
-
-    va_start(_list, format);
-    vsnprintf(buf, 1024, format, _list);
-    va_end(_list);
-
-    return SendNotice(Source(), theClient->getCharYYXXX(), buf);
-}
-
-bool xServer::serverNotice(Channel* theChan, const char* format, ...) {
-    assert(theChan != 0);
-
-    char buf[1024] = {0};
-    va_list _list;
-
-    va_start(_list, format);
-    vsnprintf(buf, 1024, format, _list);
-    va_end(_list);
-
-    return SendNotice(Source(), theChan->getName(), buf);
 }
 
 bool xServer::serverNotice(Channel* theChan, const string& Message) {

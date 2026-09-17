@@ -192,40 +192,11 @@ bool xClient::QuoteAsServer(const string& Message) {
 
 bool xClient::Wallops(const string& Message) { return Write(getCharYYXXX() + " WA :" + Message); }
 
-bool xClient::Wallops(const char* Format, ...) {
-    if (isConnected() && Format && Format[0] != 0) {
-        char buffer[1024];
-        memset(buffer, 0, 1024);
-        va_list list;
-
-        va_start(list, Format);
-        vsnprintf(buffer, 1024, Format, list);
-        va_end(list);
-
-        return MyUplink->Write("%s WA :%s", getCharYYXXX().c_str(), buffer);
-    }
-    return false;
-}
-
 bool xClient::WallopsAsServer(const string& buf) {
     if (!isConnected()) {
         return false;
     }
     return MyUplink->Wallops(buf);
-}
-
-bool xClient::WallopsAsServer(const char* Format, ...) {
-    if (isConnected() && Format && Format[0] != 0) {
-        char buffer[1024] = {0};
-        va_list list;
-
-        va_start(list, Format);
-        vsnprintf(buffer, 1024, Format, list);
-        va_end(list);
-
-        return MyUplink->Wallops(buffer);
-    }
-    return false;
 }
 
 bool xClient::Mode(const string& chanName, const string& modes, const string& args,
@@ -244,6 +215,8 @@ bool xClient::Mode(const string& chanName, const string& modes, const string& ar
 
 bool xClient::Mode(Channel* theChan, const string& modes, const string& args, bool modeAsServer) {
     assert(theChan != 0);
+    // A stealth module has no client on the network to act as
+    modeAsServer = modeAsServer || IsStealth();
 
     if (!isConnected()) {
         return false;
@@ -290,26 +263,17 @@ string channelName(const string& name) {
 
 } // namespace
 
-/// Expands a printf-style `Message` and its arguments into `buffer`.
-#define FORMAT_MESSAGE(buffer, Message)                                                            \
-    char buffer[1024] = {0};                                                                       \
-    do {                                                                                           \
-        va_list list;                                                                              \
-        va_start(list, Message);                                                                   \
-        vsnprintf(buffer, sizeof(buffer), Message, list);                                          \
-        va_end(list);                                                                              \
-    } while (0)
-
 /*
  * Every message below is sent by xServer::SendMessage(), SendNotice() or
- * SendWallchops().  A stealth client does not talk to users.
+ * SendWallchops(), from source(): this client, or the server if it is a
+ * stealth module with no client on the network.
  */
 
 bool xClient::DoCTCP(iClient* Target, const string& CTCP, const string& Message) {
-    if (!isConnected() || IsStealth()) {
+    if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(Source(me), Target->getCharYYXXX(), ctcpText(CTCP, Message));
+    return MyUplink->SendNotice(source(), Target->getCharYYXXX(), ctcpText(CTCP, Message));
 }
 
 bool xClient::DoFakeCTCP(const iClient* destClient, const iClient* srcClient, const string& CTCP,
@@ -356,26 +320,10 @@ bool xClient::FakeNotice(const Channel* theChan, const iClient* srcClient, const
 }
 
 bool xClient::Message(const iClient* Target, const string& Message) {
-    if (!isConnected() || IsStealth()) {
+    if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(Source(me), Target->getCharYYXXX(), Message);
-}
-
-bool xClient::Message(const iClient* Target, const char* Message, ...) {
-    if (!isConnected() || IsStealth() || !Message || Message[0] == 0) {
-        return false;
-    }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendMessage(Source(me), Target->getCharYYXXX(), buffer);
-}
-
-bool xClient::Message(const string& Channel, const char* Message, ...) {
-    if (!isConnected() || !Message || Message[0] == 0) {
-        return false;
-    }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendMessage(Source(me), channelName(Channel), buffer);
+    return MyUplink->SendMessage(source(), Target->getCharYYXXX(), Message);
 }
 
 bool xClient::Message(const Channel* theChan, const string& Message) {
@@ -384,47 +332,28 @@ bool xClient::Message(const Channel* theChan, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(Source(me), theChan->getName(), Message);
+    return MyUplink->SendMessage(source(), theChan->getName(), Message);
 }
 
 bool xClient::Message(const string& chanName, const string& Message) {
     if (chanName.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(Source(me), chanName, Message);
-}
-
-bool xClient::Message(const Channel* theChan, const char* Message, ...) {
-    assert(theChan != 0);
-
-    if (!isConnected() || !Message || Message[0] == 0) {
-        return false;
-    }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendMessage(Source(me), theChan->getName(), buffer);
+    return MyUplink->SendMessage(source(), channelName(chanName), Message);
 }
 
 bool xClient::Notice(const iClient* Target, const string& Message) {
-    if (!isConnected() || IsStealth()) {
+    if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(Source(me), Target->getCharYYXXX(), Message);
+    return MyUplink->SendNotice(source(), Target->getCharYYXXX(), Message);
 }
 
-bool xClient::Notice(const iClient* Target, const char* Message, ...) {
-    if (!isConnected() || IsStealth() || !Message || Message[0] == 0) {
+bool xClient::Notice(const string& Channel, const string& Message) {
+    if (Channel.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendNotice(Source(me), Target->getCharYYXXX(), buffer);
-}
-
-bool xClient::Notice(const string& Channel, const char* Message, ...) {
-    if (!isConnected() || !Message || Message[0] == 0) {
-        return false;
-    }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendNotice(Source(me), channelName(Channel), buffer);
+    return MyUplink->SendNotice(source(), channelName(Channel), Message);
 }
 
 bool xClient::Notice(const Channel* theChan, const string& Message) {
@@ -433,43 +362,23 @@ bool xClient::Notice(const Channel* theChan, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(Source(me), theChan->getName(), Message);
+    return MyUplink->SendNotice(source(), theChan->getName(), Message);
 }
 
-bool xClient::Notice(const Channel* theChan, const char* Message, ...) {
-    assert(theChan != 0);
-
-    if (!isConnected() || !Message || Message[0] == 0) {
-        return false;
-    }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendNotice(Source(me), theChan->getName(), buffer);
-}
-
-bool xClient::NoticeChannelOps(const Channel* theChan, const char* Message, ...) {
+bool xClient::NoticeChannelOps(const Channel* theChan, const string& Message) {
     assert(theChan != 0);
 
     // Nothing to say is not a failure, as it never was
-    if (!isConnected() || !Message || Message[0] == 0) {
+    if (Message.empty() || !isConnected()) {
         return true;
     }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendWallchops(Source(me), theChan, buffer);
+    return MyUplink->SendWallchops(source(), theChan, Message);
 }
 
-bool xClient::NoticeChannelOps(const string& chanName, const char* Message, ...) {
+bool xClient::NoticeChannelOps(const string& chanName, const string& Message) {
     const Channel* theChan = Network->findChannel(chanName);
-    if (0 == theChan) {
-        return false;
-    }
-    if (!isConnected() || !Message || Message[0] == 0) {
-        return true;
-    }
-    FORMAT_MESSAGE(buffer, Message);
-    return MyUplink->SendWallchops(Source(me), theChan, buffer);
+    return (theChan != 0) && NoticeChannelOps(theChan, Message);
 }
-
-#undef FORMAT_MESSAGE
 
 void xClient::OnCTCP(iClient*, const string&, const string&, bool) {}
 
@@ -549,19 +458,19 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
 
     if (asServer) {
         if (getUplink()->getUplink()->getProtocol() < 11) {
-            Write("%s D %s :%s (%s)", MyUplink->getCharYY().c_str(),
-                  theClient->getCharYYXXX().c_str(), MyUplink->getName().c_str(), reason.c_str());
+            Write("{} D {} :{} ({})", MyUplink->getCharYY(), theClient->getCharYYXXX(),
+                  MyUplink->getName(), reason);
         } else {
-            Write("%s D %s %s :%s", MyUplink->getCharYY().c_str(),
-                  theClient->getCharYYXXX().c_str(), MyUplink->getName().c_str(), reason.c_str());
+            Write("{} D {} {} :{}", MyUplink->getCharYY(), theClient->getCharYYXXX(),
+                  MyUplink->getName(), reason);
         }
     } else {
         if (getUplink()->getUplink()->getProtocol() < 11) {
-            Write("%s D %s :%s (%s)", getCharYYXXX().c_str(), theClient->getCharYYXXX().c_str(),
-                  getNickName().c_str(), reason.c_str());
+            Write("{} D {} :{} ({})", getCharYYXXX(), theClient->getCharYYXXX(), getNickName(),
+                  reason);
         } else {
-            Write("%s D %s %s :%s", getCharYYXXX().c_str(), theClient->getCharYYXXX().c_str(),
-                  getNickName().c_str(), reason.c_str());
+            Write("{} D {} {} :{}", getCharYYXXX(), theClient->getCharYYXXX(), getNickName(),
+                  reason);
         }
     }
 
@@ -578,6 +487,13 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
     delete Network->removeClient(theClient);
 
     return true;
+}
+
+Source xClient::source() const {
+    // A stealth module has no iClient on the network, so there is no
+    // numeric of its own to send from.  The server is the only source it
+    // has, and whatever it does goes out as the server's doing.
+    return IsStealth() ? Source() : Source(me);
 }
 
 bool xClient::enterToChange(Channel* theChan, bool& joined) {
@@ -610,6 +526,13 @@ bool xClient::changeMembers(Channel* theChan, char letter, bool set,
 
     if (!isConnected()) {
         return false;
+    }
+
+    if (IsStealth()) {
+        const std::vector<iClient*> all(targets.begin(), targets.end());
+        const bool isOp = ('o' == letter);
+        return isOp ? (set ? MyUplink->Op(theChan, all) : MyUplink->DeOp(theChan, all))
+                    : (set ? MyUplink->Voice(theChan, all) : MyUplink->DeVoice(theChan, all));
     }
 
     const std::optional<xServer::opVectorType> members =
@@ -645,6 +568,9 @@ bool xClient::changeBans(Channel* theChan, xServer::banVectorType bans) {
     }
     if (bans.empty()) {
         return true;
+    }
+    if (IsStealth()) {
+        return MyUplink->Ban(theChan, bans);
     }
 
     bool joined = false;
@@ -773,8 +699,7 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
     const chanmode::Change ban{true, *chanmode::find('b'), banMask};
     MyUplink->SendChannelModes(getCharYYXXX(), theChan, std::span(&ban, 1));
 
-    Write("%s K %s %s :%s", getCharYYXXX().c_str(), theChan->getName().c_str(),
-          theClient->getCharYYXXX().c_str(), reason.c_str());
+    Write("{} K {} {} :{}", getCharYYXXX(), theChan->getName(), theClient->getCharYYXXX(), reason);
 
     if (!OnChannel) {
         Part(theChan);
@@ -794,6 +719,11 @@ bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
         return false;
     }
 
+    if (IsStealth()) {
+        // No client on the network to join with: the server sets it
+        return MyUplink->Topic(theChan, newTopic);
+    }
+
     // We have to be on the channel, and opped if it is +t.  Joining has
     // the server op us; if we are already there without ops, it does so now.
     bool joined = false;
@@ -804,7 +734,7 @@ bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
         MyUplink->Op(theChan, me);
     }
 
-    const bool sent = MyUplink->Topic(theChan, newTopic, Source(me));
+    const bool sent = MyUplink->Topic(theChan, newTopic, source());
 
     if (joined) {
         Part(theChan);
@@ -827,6 +757,8 @@ bool xClient::Kick(Channel* theChan, iClient* theClient, const string& reason, b
 bool xClient::Kick(Channel* theChan, const std::vector<iClient*>& theClients, const string& reason,
                    bool modeAsServer) {
     assert(theChan != NULL);
+    // A stealth module has no client on the network to act as
+    modeAsServer = modeAsServer || IsStealth();
 
     if (!isConnected()) {
         return false;
@@ -968,7 +900,7 @@ bool xClient::Invite(iClient* theClient, Channel* theChan) {
         return false;
     }
     // A service may invite to a channel it is not on, so nothing is joined
-    return MyUplink->Invite(theClient, theChan, Source(me));
+    return MyUplink->Invite(theClient, theChan, source());
 }
 
 bool xClient::isOnChannel(const string& chanName) const {
@@ -985,24 +917,6 @@ bool xClient::isOnChannel(const Channel* theChan) const {
     ChannelUser* meUser = theChan->findUser(me);
 
     return (meUser != NULL);
-}
-
-bool xClient::Write(const char* format, ...) {
-    assert(format != 0);
-
-    if (!isConnected()) {
-        return false;
-    }
-
-    char buf[4096];
-    memset(buf, 0, 4096);
-    va_list _list;
-
-    va_start(_list, format);
-    vsnprintf(buf, 4096, format, _list);
-    va_end(_list);
-
-    return Write(string(buf));
 }
 
 void xClient::OnJoin(Channel* theChan) {
@@ -1055,8 +969,8 @@ bool xClient::ClearMode(Channel* theChan, const string& modes, bool modeAsServer
     }
     // As the server, or as ourselves.  An oper needs no ops for a CLEARMODE;
     // anybody else has to be opped on the channel, or it fails.
-    return modeAsServer ? MyUplink->ClearMode(theChan, modes)
-                        : MyUplink->ClearMode(theChan, modes, Source(me));
+    return (modeAsServer || IsStealth()) ? MyUplink->ClearMode(theChan, modes)
+                                         : MyUplink->ClearMode(theChan, modes, source());
 }
 
 bool xClient::checkMigrationsAfterDBConnect(const std::string& moduleName, dbHandle* db) {

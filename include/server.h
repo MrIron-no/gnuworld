@@ -25,6 +25,7 @@
 #define __SERVER_H "$Id: server.h,v 1.107 2010/08/31 21:16:45 denspike Exp $"
 
 #include <optional>
+#include <format>
 #include <span>
 #include <string>
 #include <string_view>
@@ -39,6 +40,7 @@
 #include <cassert>
 
 #include "ChannelModes.h"
+#include "CheckedFormat.h"
 #include "Source.h"
 #include "NetworkTarget.h"
 #include "iServer.h"
@@ -217,7 +219,10 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     virtual bool Write(const xParameters::tagListType& tags, const std::string& line);
     virtual bool Write(const xParameters::tagListType& tags, const std::stringstream& line);
-    virtual bool Write(const xParameters::tagListType& tags, const char* format, ...);
+    template <typename... Args>
+    bool Write(const xParameters::tagListType& tags, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Write(tags, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Append a message with an IRCv3 @time tag (server-time)
@@ -225,7 +230,9 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     virtual bool WriteWithTime(const std::string& line);
     virtual bool WriteWithTime(const std::stringstream& line);
-    virtual bool WriteWithTime(const char* format, ...);
+    template <typename... Args> bool WriteWithTime(CheckedFormat<Args...> fmt, Args&&... args) {
+        return WriteWithTime(std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Similar to the above signature of Write() except that data
@@ -241,14 +248,18 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * method cannot support a final default argument -- this method
      * defaults to NOT writing during burst.
      */
-    virtual bool Write(const char*, ...);
+    template <typename... Args> bool Write(CheckedFormat<Args...> fmt, Args&&... args) {
+        return Write(std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * This method is similar to the above Write(), except
      * that the data will be written to the normal output
      * buffer even during burst time.
      */
-    virtual bool WriteDuringBurst(const char*, ...);
+    template <typename... Args> bool WriteDuringBurst(CheckedFormat<Args...> fmt, Args&&... args) {
+        return WriteDuringBurst(std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Append a std::stringstream to the output buffer.
@@ -507,12 +518,18 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * Sent a notice to a client as the server.
      */
     virtual bool Notice(iClient*, const std::string&);
-    virtual bool Notice(iClient*, const char*, ...);
+    template <typename... Args>
+    bool Notice(iClient* theClient, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Notice(theClient, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Sent a notice to a channel as the server.
      */
-    virtual bool serverNotice(Channel*, const char*, ...);
+    template <typename... Args>
+    bool serverNotice(Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
+        return serverNotice(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     virtual bool serverNotice(Channel*, const std::string&);
 

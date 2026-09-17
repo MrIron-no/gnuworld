@@ -104,12 +104,11 @@ void xServer::OnConnect(Connection* theConn) {
          << serverConnection->getRemotePort() << endl;
 
     // Login to the uplink.
-    WriteDuringBurst("PASS :%s\n", Password.c_str());
+    WriteDuringBurst("PASS :{}\n", Password);
 
     // Send our server information.
-    WriteDuringBurst("SERVER %s %d %d %d J%02d %s +s6 :%s\n", ServerName.c_str(), 1, StartTime,
-                     ConnectionTime, Version, (string(getCharYY()) + "]]]").c_str(),
-                     ServerDescription.c_str());
+    WriteDuringBurst("SERVER {} {} {} {} J{:02} {} +s6 :{}\n", ServerName, 1, StartTime,
+                     ConnectionTime, Version, (string(getCharYY()) + "]]]"), ServerDescription);
 
     // Send our capabilities (none!).
     WriteDuringBurst("CAP");
@@ -321,15 +320,6 @@ bool xServer::Write(const xParameters::tagListType& tags, const stringstream& li
     return Write(tags, string(line.str()));
 }
 
-bool xServer::Write(const xParameters::tagListType& tags, const char* format, ...) {
-    char buffer[4096] = {0};
-    va_list _list;
-    va_start(_list, format);
-    vsnprintf(buffer, sizeof(buffer), format, _list);
-    va_end(_list);
-    return Write(tags, string(buffer));
-}
-
 bool xServer::WriteWithTime(const string& line) {
     if (!(Uplink && Uplink->getProtocol() >= 11)) {
         return Write(line);
@@ -339,15 +329,6 @@ bool xServer::WriteWithTime(const string& line) {
 }
 
 bool xServer::WriteWithTime(const stringstream& line) { return WriteWithTime(string(line.str())); }
-
-bool xServer::WriteWithTime(const char* format, ...) {
-    char buffer[4096] = {0};
-    va_list _list;
-    va_start(_list, format);
-    vsnprintf(buffer, sizeof(buffer), format, _list);
-    va_end(_list);
-    return WriteWithTime(string(buffer));
-}
 
 bool xServer::WriteDuringBurst(const string& buf) { return writeLine(buf, true); }
 
@@ -365,24 +346,6 @@ bool xServer::WriteDuringBurst(const stringstream& s) { return WriteDuringBurst(
  * true otherwise.
  * I despise this function. --dan
  */
-bool xServer::Write(const char* format, ...) {
-    char buffer[4096] = {0};
-    va_list _list;
-    va_start(_list, format);
-    vsnprintf(buffer, sizeof(buffer), format, _list);
-    va_end(_list);
-    return writeLine(buffer, false);
-}
-
-bool xServer::WriteDuringBurst(const char* format, ...) {
-    char buffer[4096] = {0};
-    va_list _list;
-    va_start(_list, format);
-    vsnprintf(buffer, sizeof(buffer), format, _list);
-    va_end(_list);
-    return writeLine(buffer, true);
-}
-
 void xServer::WriteBurstBuffer() {
     if (!isConnected()) {
         return;

@@ -302,8 +302,7 @@ void xServer::mainLoop() {
             // All output for the xClients should be in the
             // output buffer by now, go ahead and put the
             // server's SQ message there as well
-            Write("%s SQ %s :%s", getCharYY().c_str(), getCharYY().c_str(),
-                  getShutDownReason().c_str());
+            Write("{} SQ {} :{}", getCharYY(), getCharYY(), getShutDownReason());
 
             // Make sure the SQ and all previous data are flushed
             // to the network before disconnecting.

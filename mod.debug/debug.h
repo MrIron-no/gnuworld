@@ -46,15 +46,6 @@ class debug : public xClient {
 
     [[nodiscard]] bool hasAccess(const std::string&) const;
 
-    // xClient overrides (see debug-xclient.cc). Stealth routes NOTICEs
-    // via the uplink; format overload hides printf-style Notice.
-    bool Notice(const iClient* Target, const std::string&) override;
-
-    template <typename... Args>
-    bool Notice(const iClient* Target, std::format_string<Args...> fmt, Args&&... args) {
-        return Notice(Target, std::format(fmt, std::forward<Args>(args)...));
-    }
-
   protected:
     using commandMapType = std::unordered_map<std::string, std::unique_ptr<Command>>;
 

@@ -27,10 +27,12 @@
 #include <map>
 #include <sstream>
 #include <span>
+#include <format>
 #include <string>
 
 #include "NetworkTarget.h"
 #include "server.h"
+#include "CheckedFormat.h"
 #include "Source.h"
 #include "iClient.h"
 #include "events.h"
@@ -119,7 +121,9 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Write a variable length argument list to the network.
      */
-    virtual bool Write(const char*, ...);
+    template <typename... Args> bool Write(CheckedFormat<Args...> fmt, Args&&... args) {
+        return Write(std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * This method will change modes in a channel.
@@ -608,7 +612,10 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Message will PRIVMSG a string of data to the given iClient.
      */
-    virtual bool Message(const iClient* Target, const char* Message, ...);
+    template <typename... Args>
+    bool Message(const iClient* Target, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Message(Target, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Message an iClient with a fake client interface.
@@ -643,7 +650,10 @@ class xClient : public TimerHandler, public NetworkTarget {
      * This format of Message will write a string of data
      * to a channel.
      */
-    virtual bool Message(const std::string& Channel, const char* Message, ...);
+    template <typename... Args>
+    bool Message(const std::string& Channel, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Message(Channel, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * This format of Message will write a string of data
@@ -660,12 +670,18 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Have this module message a channel.
      */
-    virtual bool Message(const Channel* theChan, const char* Format, ...);
+    template <typename... Args>
+    bool Message(const Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Message(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Notice will send a NOTICE command to the given iClient.
      */
-    virtual bool Notice(const iClient* Target, const char* Message, ...);
+    template <typename... Args>
+    bool Notice(const iClient* Target, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Notice(Target, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Notice will send a NOTICE command to the given iClient.
@@ -675,22 +691,41 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * This Notice() signature will send a channel NOTICE.
      */
-    virtual bool Notice(const std::string& Channel, const char* Message, ...);
+    /// To a channel by name; the '#' may be left off.
+    virtual bool Notice(const std::string& Channel, const std::string& Message);
+
+    template <typename... Args>
+    bool Notice(const std::string& Channel, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Notice(Channel, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * This Notice() signature will send a channel NOTICE.
      */
-    virtual bool Notice(const Channel* theChan, const char* Message, ...);
+    template <typename... Args>
+    bool Notice(const Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
+        return Notice(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Notice channel operators with given message.
      */
-    virtual bool NoticeChannelOps(const Channel* theChan, const char* Message, ...);
+    virtual bool NoticeChannelOps(const Channel* theChan, const std::string& Message);
+
+    template <typename... Args>
+    bool NoticeChannelOps(const Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
+        return NoticeChannelOps(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Notice channel operators with given message.
      */
-    virtual bool NoticeChannelOps(const string& chanName, const char* Message, ...);
+    virtual bool NoticeChannelOps(const std::string& chanName, const std::string& Message);
+
+    template <typename... Args>
+    bool NoticeChannelOps(const std::string& chanName, CheckedFormat<Args...> fmt, Args&&... args) {
+        return NoticeChannelOps(chanName, std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * This Notice() signature will send a channel NOTICE.
@@ -705,7 +740,9 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Have this bot send a global wallops message.
      */
-    virtual bool Wallops(const char* Format, ...);
+    template <typename... Args> bool Wallops(CheckedFormat<Args...> fmt, Args&&... args) {
+        return Wallops(std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Have the server send a wallops.
@@ -715,7 +752,9 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Have the server send a wallops.
      */
-    virtual bool WallopsAsServer(const char* Format, ...);
+    template <typename... Args> bool WallopsAsServer(CheckedFormat<Args...> fmt, Args&&... args) {
+        return WallopsAsServer(std::format(fmt.format, std::forward<Args>(args)...));
+    }
 
     /**
      * Return this xClient's network instance (iClient*).
@@ -842,6 +881,10 @@ class xClient : public TimerHandler, public NetworkTarget {
      * the channel without ops: the network would bounce the change.
      */
     bool enterToChange(Channel* theChan, bool& joined);
+
+    /// Who we send as: ourselves, or the server if we are a stealth module,
+    /// which has no client on the network to send from.
+    Source source() const;
 
     /// Op(), DeOp(), Voice() and DeVoice(), for one target or several.
     bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets);

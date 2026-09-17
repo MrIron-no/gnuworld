@@ -67,3 +67,23 @@ async def test_messages_from_a_fake_client(gnutest_linked_p11):
     assert await run("fakenotice fakey alice fyi") == [f"{fake} O {v['alice']} :fyi"]
     # FakeNotice() to a channel sent a PRIVMSG, having been copied from FakeMessage()
     assert await run(f"fakenotice fakey {CHAN} fyi all") == [f"{fake} O {CHAN} :fyi all"]
+
+
+@pytest.mark.asyncio
+async def test_a_stealth_module_speaks_as_the_server(debug_linked_p11):
+    """A stealth module has no client on the network, so no numeric of its own.
+    The core sends what it says from the server; mod.debug used to need an
+    override of Notice() for that, without which the core refused to send."""
+    hub, _proc = debug_linked_p11
+    assert hub.get_user_numnick("debug") is None  # stealth: gnuworld never introduced it
+
+    asker = await hub.introduce_nick("asker", username="asker")
+    await hub.send_account(asker, "MrIron")
+
+    after = len(hub.received)
+    await hub.send_privmsg(asker, f"debug@{hub.peer_name}", "CHANINFO #nowhere")
+    reply = await hub.wait_for(
+        lambda line: p10_token(line) == "O" and "Unable to find channel" in line,
+        timeout=10.0, after=after,
+    )
+    assert strip_msg_tags(reply).split(" ")[:3] == [hub.peer_numeric, "O", asker]
