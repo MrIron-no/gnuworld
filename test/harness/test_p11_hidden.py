@@ -12,6 +12,7 @@ import time
 
 import pytest
 
+from debugquery import chaninfo
 from p10 import p10_token
 
 PERMIT_ACCOUNT = "MrIron"
@@ -19,25 +20,8 @@ CHAN = "#hidden"
 
 
 async def _chaninfo(hub, asker: str, channel: str) -> dict[str, str]:
-    """PRIVMSG debug CHANINFO and return {nick: "hide" | "none" | "+o" | ...}."""
-    after = len(hub.received)
-    await hub.send_privmsg(asker, f"debug@{hub.peer_name}", f"CHANINFO {channel}")
-
-    def is_summary(line: str) -> bool:
-        return p10_token(line) == "O" and "Number of channel users:" in line
-
-    await hub.wait_for(is_summary, timeout=10.0, after=after)
-
-    members: dict[str, str] = {}
-    for line in hub.received[after:]:
-        if p10_token(line) != "O" or "(numeric: " not in line:
-            continue
-        # "... :  hide: nick!user@host (numeric: ABAAC)"
-        text = line.split(" :", 1)[1].strip()
-        # The status label is padded to a fixed width: "+o:   nick!user@host"
-        status, rest = text.split(":", 1)
-        members[rest.strip().split("!", 1)[0]] = status.strip()
-    return members
+    """{nick: "hide" | "none" | "+v" | "+o" | "+o+v"} as mod.debug sees the channel."""
+    return (await chaninfo(hub, asker, channel)).members
 
 
 async def _setup(hub) -> tuple[str, dict[str, str], int]:

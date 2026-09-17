@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,32 @@ from gnuworld_proc import (
     DockerStack,
     GnuworldProc,
 )
+
+
+def built_modules() -> set[str] | None:
+    """The modules this tree was configured with, or None if that is unknown.
+
+    The image runs whatever is installed under lib/. A module that is not part
+    of the current build may still be there from an older one, built against
+    a core that has since changed, and then gnuworld does not even start.
+    """
+    config_status = Path(__file__).resolve().parents[2] / "config.status"
+    try:
+        text = config_status.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    match = re.search(r"--enable-modules=([A-Za-z0-9_,]+)", text)
+    return set(match.group(1).split(",")) if match else None
+
+
+def require_module(name: str) -> None:
+    """Skip the calling test unless module ``name`` is part of the current build."""
+    modules = built_modules()
+    if modules is not None and name not in modules:
+        pytest.skip(
+            f"mod.{name} is not in this build (configured with "
+            f"--enable-modules={','.join(sorted(modules))}); the copy under lib/ is stale"
+        )
 
 
 @pytest.fixture(scope="session")
@@ -86,6 +114,7 @@ async def linked(gnuworld):
 @pytest_asyncio.fixture
 async def ccontrol_linked(docker_stack, fake_hub, tmp_path):
     """Dockerized gnuworld with libccontrol against compose Postgres."""
+    require_module("ccontrol")
     hub = fake_hub
     conf_dir = _prepare_conf_dir(tmp_path)
     GnuworldProc.write_ccontrol_config(conf_dir / "ccontrol.conf")
@@ -135,29 +164,61 @@ async def debug_linked(docker_stack, fake_hub, tmp_path):
         await proc.terminate()
 
 
-@pytest_asyncio.fixture
-async def debug_linked_p11(docker_stack, fake_hub_p11, tmp_path):
-    """Dockerized gnuworld with stealth mod.debug, linked to a P11 hub."""
-    hub = fake_hub_p11
+@asynccontextmanager
+async def link_debug(
+    hub: FakeHub,
+    tmp_path: Path,
+    burst: list[str] | None = None,
+    *,
+    gnutest: bool = False,
+):
+    """Run a Dockerized gnuworld with stealth mod.debug linked to ``hub``.
+
+    ``burst`` is what the hub sends as its net burst (see fake_hub.load_capture).
+    ``gnutest`` also loads mod.gnutest, which calls the core API from chat
+    commands (see gnutest_client.py).
+    Needs the docker_stack fixture to be active. Yields (hub, proc).
+    """
+    require_module("debug")
+    if gnutest:
+        require_module("gnutest")
     conf_dir = _prepare_conf_dir(tmp_path)
     GnuworldProc.write_debug_config(conf_dir / "debug.conf")
+    modules = [f"module = libdebug.la {CONTAINER_CONF_DIR}/debug.conf"]
+    if gnutest:
+        GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
+        modules.append(f"module = libgnutest.la {CONTAINER_CONF_DIR}/gnutest.conf")
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",
         uplink=CONTAINER_UPLINK,
         port=hub.port,
         password=hub.password,
-        module_lines=f"module = libdebug.la {CONTAINER_CONF_DIR}/debug.conf",
+        module_lines="\n".join(modules),
     )
 
     proc = GnuworldProc(conf_dir=conf_dir)
     await proc.start()
     try:
-        await hub.accept_and_handshake(timeout=90.0)
+        await hub.accept_and_handshake(timeout=90.0, burst=burst)
         await proc.wait_for_stdout("Connected", timeout=60.0)
         await proc.wait_for_stdout("Loaded stealth client, nickname: debug", timeout=30.0)
         yield hub, proc
     finally:
         await proc.terminate()
+
+
+@pytest_asyncio.fixture
+async def debug_linked_p11(docker_stack, fake_hub_p11, tmp_path):
+    """Dockerized gnuworld with stealth mod.debug, linked to a P11 hub."""
+    async with link_debug(fake_hub_p11, tmp_path) as linked:
+        yield linked
+
+
+@pytest_asyncio.fixture
+async def gnutest_linked_p11(docker_stack, fake_hub_p11, tmp_path):
+    """Dockerized gnuworld with mod.debug and mod.gnutest, linked to a P11 hub."""
+    async with link_debug(fake_hub_p11, tmp_path, gnutest=True) as linked:
+        yield linked
 
 
 @pytest_asyncio.fixture

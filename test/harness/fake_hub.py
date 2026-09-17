@@ -24,6 +24,34 @@ logger = logging.getLogger("fake_hub")
 Predicate = Callable[[str], bool]
 
 
+def load_capture(path: str | Path, hub_numeric: str = "AB") -> tuple[list[str], list[str]]:
+    """Split a recorded inbound stream (``gnuworld -l``) into (burst, after).
+
+    ``burst`` holds the lines the hub sent between its SERVER/CAP and its own
+    EB, ready for ``accept_and_handshake(burst=...)``. ``after`` holds what
+    followed its EA. Message tags are kept: parsing them is part of what a
+    replay exercises. Dropped: the receive timestamp in front of every line,
+    the handshake itself (FakeHub does its own), and PING/PONG, which refer to
+    the clock and name of the gnuworld that was recorded.
+    """
+    burst: list[str] = []
+    after: list[str] = []
+    target = burst
+    for raw in Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw.split(" ", 1)[1].rstrip() if raw[:1].isdigit() else raw.rstrip()
+        if not line:
+            continue
+        first = strip_msg_tags(line).split(" ")[0]
+        token = p10_token(line)
+        if first in ("PASS", "SERVER", "CAP") or token in ("G", "Z"):
+            continue
+        if first == hub_numeric and token in ("EB", "EA"):
+            target = after
+            continue
+        target.append(line)
+    return burst, after
+
+
 class FakeHub:
     """A fake IRC hub that listens and speaks P10 to an inbound GNUWorld.
 
@@ -129,8 +157,13 @@ class FakeHub:
         peer = writer.get_extra_info("peername")
         logger.debug("Accepted connection from %s", peer)
 
-    async def accept_and_handshake(self, timeout: float = 30.0) -> None:
+    async def accept_and_handshake(
+        self, timeout: float = 30.0, burst: list[str] | None = None
+    ) -> None:
         """Wait for GNUWorld to connect, then complete the P10 handshake.
+
+        ``burst`` is sent verbatim between our SERVER line and our EB, which is
+        where a real hub sends its net burst (see ``load_capture``).
 
         Expected order:
           << PASS / SERVER from gnuworld
@@ -169,7 +202,9 @@ class FakeHub:
         if self.protocol >= 11:
             # A real P11 hub follows SERVER with its link capabilities
             await self._send("CAP :")
-        # Empty network burst from the hub
+        # The net burst: empty unless the caller supplied one
+        for burst_line in burst or []:
+            await self._send(burst_line)
         await self._send(f"{self._num} EB")
 
         # Wait for peer EB then EA

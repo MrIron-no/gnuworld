@@ -29,6 +29,7 @@ COMPOSE_FILE = HARNESS_DIR / "docker-compose.yml"
 CONF_TEMPLATE = HARNESS_DIR / "data" / "gnuworld.harness.conf.in"
 CCONTROL_CONF_TEMPLATE = HARNESS_DIR / "data" / "ccontrol.harness.conf.in"
 DEBUG_CONF_TEMPLATE = HARNESS_DIR / "data" / "debug.harness.conf.in"
+GNUTEST_CONF_TEMPLATE = HARNESS_DIR / "data" / "gnutest.harness.conf.in"
 TLS_DIR = HARNESS_DIR / "data" / "tls"
 RUN_DIR = HARNESS_DIR / "run"
 
@@ -214,6 +215,16 @@ class GnuworldProc:
             text.replace("@PERMIT_USER@", permit_user),
             encoding="utf-8",
         )
+        return path
+
+    @staticmethod
+    def write_gnutest_config(
+        path: Path,
+        *,
+        operchan: str = "#gnutest-opers",
+    ) -> Path:
+        text = GNUTEST_CONF_TEMPLATE.read_text(encoding="utf-8")
+        path.write_text(text.replace("@OPERCHAN@", operchan), encoding="utf-8")
         return path
 
     async def start(self) -> None:

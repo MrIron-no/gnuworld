@@ -1,0 +1,9 @@
+# mod.gnutest for the pytest harness. gnutest calls the core API from chat
+# commands, so a test can trigger an outbound operation and inspect the line
+# gnuworld sends for it.
+username = gnutest
+nickname = gnutest
+hostname = undernet.org
+userdescription = GNUTest Test Client
+mode = +ik
+operchan = @OPERCHAN@
