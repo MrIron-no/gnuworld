@@ -6,17 +6,18 @@ prefixed with the Unix time it was received. The `PASS` line is stripped.
 
 ## `p11-burst-scenario.log`
 
-A full P11 net burst, as sent by a hub on ircu2 `p11-integration` (5856fbc) to a
-freshly linked gnuworld, after `p11-env/scenario.py` had built its channels.
-`OPLEVELS` was off, so ops are burst as `:o` and there are no digit op levels.
+A full P11 net burst followed by a live reveal, as sent by a hub on ircu2
+`p11-integration` (9fe8642, the first with the REVEAL token) to a freshly linked
+gnuworld, after `p11-env/scenario.py` had built its channels. `OPLEVELS` was
+off, so ops are burst as `:o` and there are no digit op levels.
 
 | Numeric | Nick | | Numeric | Nick |
 |---|---|---|---|---|
-| `ACAAJ` | OpTwo | | `ACAAO` | PlainOne |
-| `ACAAK` | HidOne | | `ACAAP` | OpVoice |
-| `ACAAL` | HidThree | | `ACAAQ` | VoiceOne |
-| `ACAAM` | HidTwo | | `ACAAR` | OpOne |
-| `ACAAN` | PlainTwo | | | |
+| `ACAAK` | OpTwo | | `ACAAP` | VoiceOne |
+| `ACAAL` | OpVoice | | `ACAAQ` | PlainOne |
+| `ACAAM` | OpOne | | `ACAAR` | HidTwo |
+| `ACAAN` | HidThree | | `ACAAS` | HidOne |
+| `ACAAO` | PlainTwo | | | |
 
 What it covers:
 
@@ -24,10 +25,9 @@ What it covers:
 - `#p11-bans`: three ban triples (`mask timestamp setter`) from two setters, and
   the mode block `+tnlk 25 sekrit` (limit before key).
 - `#p11-plain`: status-less members, `:v`, `:o`, and op plus voice sent as `:vo`.
-- `#p11-deljoin`: a `:d` group of three on a `+D` channel.
-- `#p11-wasdel`: a `:d` group on a channel that is no longer `+D`.
-
-The `:d` groups include PlainOne and PlainTwo although both had spoken, which
-reveals them on their own server. The hub never saw those messages (it routes
-channel messages only toward servers with members on the channel), so its view
-of who is hidden was stale when it sent this burst.
+- `#p11-deljoin`: a `:d` group of two (HidTwo, HidOne) on a `+D` channel.
+  PlainOne had joined hidden and then spoken, and is burst as a plain member:
+  the hub learned of that through REVEAL.
+- `#p11-wasdel`: a `:d` group (HidThree) on a channel that is no longer `+D`.
+- After the burst, `ACAAS RV #p11-deljoin <ts>`: HidOne speaks and is revealed
+  while gnuworld is linked.

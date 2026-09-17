@@ -1,6 +1,7 @@
 #!/bin/sh
 # Wrapper around `docker compose` for the P11 capture stack.
-#   ./run.sh up        build and start hub, leaf and gnuworld (mod.debug only)
+#   ./run.sh up        build and start hub, leaf and gnuworld (mod.debug + mod.gnutest)
+#   ./run.sh wait-linked   block until the hub has introduced the leaf to gnuworld
 #   ./run.sh logs -f gnuworld
 #   ./run.sh down      stop and remove containers
 # Any other arguments are passed straight to `docker compose`.
@@ -33,16 +34,20 @@ generate() {
   # development environment's, and sharing its cache would force a full
   # reconfigure on both sides every time either one builds.
   sed -E \
-    -e 's/--enable-modules=[A-Za-z0-9_,]+/--enable-modules=debug/' \
+    -e 's/--enable-modules=[A-Za-z0-9_,]+/--enable-modules=debug,gnutest/' \
     -e 's/id=undernet-gnuworld-(work|ccache)-[A-Za-z0-9]+/id=gnuworld-p11-\1-v1/g' \
     "$DEVENV_DIR/Dockerfile.gnuworld" > "$P11_GEN_DIR/Dockerfile.gnuworld"
-  grep -q -- '--enable-modules=debug ' "$P11_GEN_DIR/Dockerfile.gnuworld" ||
+  grep -q -- '--enable-modules=debug,gnutest ' "$P11_GEN_DIR/Dockerfile.gnuworld" ||
     { echo "run.sh: could not rewrite --enable-modules in Dockerfile.gnuworld" >&2; exit 1; }
 
   { grep -vE '^[[:space:]]*module[[:space:]]*=' "$src_etc/gnuworld.conf"
     echo 'module = libdebug.la /gnuworld/etc/debug.conf'
+    echo 'module = libgnutest.la /gnuworld/etc/gnutest.conf'
   } > "$P11_GEN_DIR/etc/gnuworld.conf"
   cp "$src_etc/debug.conf" "$src_etc/logging.properties" "$P11_GEN_DIR/etc/"
+  # The development environment does not run gnutest, so its config comes
+  # from this repository's example.
+  cp "$GNUWORLD_SRC/bin/gnutest.example.conf" "$P11_GEN_DIR/etc/gnutest.conf"
 }
 
 compose() {
@@ -53,7 +58,21 @@ compose() {
 }
 
 generate
+# The hub dials the leaf. If the leaf is not listening yet when the hub
+# starts, the retry can take a minute, and clients connected to the leaf in
+# the meantime are on an unlinked server that gnuworld never hears about.
+wait_linked() {
+  i=0
+  until grep -q ' S leaf\.undernet\.org ' "$P11_CAPTURE_DIR/socket.log" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -le 180 ] || { echo "run.sh: leaf did not link to the hub within 180 s" >&2; exit 1; }
+    sleep 1
+  done
+  echo "leaf is linked"
+}
+
 case "${1:-}" in
-  up)  shift; compose up -d --build "$@" hub leaf gnuworld ;;
+  up)  shift; compose up -d --build "$@" hub leaf gnuworld; wait_linked ;;
+  wait-linked) wait_linked ;;
   *)   compose "$@" ;;
 esac

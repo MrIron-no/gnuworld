@@ -5,7 +5,7 @@ replayed as fixtures by the pytest harness one directory up.
 
 It runs a second, isolated copy of
 [undernet-development-env](https://github.com/MrIron-no/undernet-development-env)
-(hub, leaf and a gnuworld running `mod.debug` only) and is safe to run next to other ircu stacks on
+(hub, leaf and a gnuworld running only `mod.debug` and `mod.gnutest`) and is safe to run next to other ircu stacks on
 the same host: it has its own compose project (`gnuworld-p11`), its own image
 tags (`ircu2:p11-harness`, `gnuworld:p11-harness`) and its own host ports.
 
@@ -20,15 +20,18 @@ tags (`ircu2:p11-harness`, `gnuworld:p11-harness`) and its own host ports.
 | `DEVENV_DIR` | `../undernet-development-env` | only its compose file, Dockerfiles and `etc/` are used |
 | `IRCU2_SRC` | `../ircu/ircu2-p11-harness` | **must be on `p11-integration`**; keep it a separate clone so nobody switches its branch under you |
 | `IAUTHD_SRC` | `../ircu/iauthd-c` | |
-| `GNUWORLD_SRC` | this repository | built inside Docker with `--enable-modules=debug`; host build artifacts are ignored |
+| `GNUWORLD_SRC` | this repository | built inside Docker with `--enable-modules=debug,gnutest`; host build artifacts are ignored |
 
 The development environment's own `.env` is deliberately not read.
 
-gnuworld is built and run with `mod.debug` only. The core is being overhauled
-and `mod.debug` is the one module guaranteed to compile against it; it also has
-no database, so Postgres is not started. `run.sh` derives the debug-only
-Dockerfile and `gnuworld.conf` from the development environment's originals on
-every run and writes them to `.generated/`, which git ignores.
+gnuworld is built and run with `mod.debug` and `mod.gnutest` only. The core is
+being overhauled and these two are the modules guaranteed to compile against
+it. `mod.debug` reports internal state; `mod.gnutest` calls the core API from
+chat commands (`/msg gnutest help`), which lets a test trigger an outbound
+operation and inspect the line gnuworld sends. Neither has a database, so
+Postgres is not started. `run.sh` derives the Dockerfile and `gnuworld.conf`
+from the development environment's originals on every run and writes them to
+`.generated/`, which git ignores.
 
 ## Host ports
 
@@ -45,8 +48,8 @@ A burst is only sent when a server links, so build the channel state first and
 then make gnuworld relink.
 
 ```sh
-./run.sh up                    # first run compiles ircu and the gnuworld core: slow
-./scenario.py &                # builds the state and keeps its clients online
+./run.sh up                    # first run compiles ircu and gnuworld: slow. Returns once the leaf is linked
+./scenario.py --late-reveal 40 &   # builds the state, keeps its clients online, reveals HidOne 40 s later
 ./run.sh restart gnuworld      # gnuworld relinks and receives the full burst
 ./run.sh logs gnuworld | grep -F '[OUT]'     # what gnuworld sent
 cp capture/socket.log ../data/captures/<name>.log

@@ -97,6 +97,9 @@ async def main() -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=16667, help="leaf client port (run.sh maps 16667)")
     ap.add_argument("--hold", type=float, default=0, help="seconds to stay online; 0 = until Ctrl-C")
+    ap.add_argument("--late-reveal", type=float, default=0, metavar="SECONDS",
+                    help="this long after the state is built, HidOne speaks in #p11-deljoin; "
+                         "relink gnuworld in between to see the resulting P11 REVEAL (RV) live")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -148,6 +151,11 @@ async def main() -> int:
     await c["OpTwo"].do("MODE #p11-wasdel -D")  # HidThree stays hidden: local +d
 
     print("state built; clients staying online" + (f" for {args.hold:g}s" if args.hold else " (Ctrl-C to quit)"), flush=True)
+    if args.late_reveal:
+        await asyncio.sleep(args.late_reveal)
+        await c["HidOne"].do("PRIVMSG #p11-deljoin :a late reveal, after gnuworld relinked")
+        print("HidOne has spoken in #p11-deljoin", flush=True)
+
     try:
         if args.hold:
             await asyncio.sleep(args.hold)
