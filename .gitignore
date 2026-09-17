@@ -54,3 +54,8 @@ CLAUDE.md
 /libltdl/config.h
 /libltdl/stamp-h1
 /libltdl/libtool
+
+# Test programs (configure --with-test) and "make check" results
+/test_*
+*.trs
+/test-suite.log

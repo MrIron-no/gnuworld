@@ -72,7 +72,7 @@ testBot::testBot(const string& fileName) : keepRunning(true), uplinkPort(0), myC
 testBot::~testBot() {}
 
 void testBot::Run() {
-    myConnect = cm.Connect(this, uplinkName, uplinkPort);
+    myConnect = cm.Connect(this, uplinkName, uplinkPort, false);
     if (!myConnect) {
         cout << "Run> Failed to connect" << endl;
         return;

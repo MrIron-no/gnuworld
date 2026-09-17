@@ -4,6 +4,7 @@
 noinst_LTLIBRARIES += libgnuworld.la
 libgnuworld_la_SOURCES = \
 	libgnuworld/Buffer.cc \
+	libgnuworld/ChannelModes.cc \
 	libgnuworld/Connection.cc \
 	libgnuworld/ConnectionHandler.cc \
 	libgnuworld/ConnectionManager.cc \
@@ -31,6 +32,7 @@ libgnuworld_la_CXXFLAGS = \
 
 EXTRA_DIST += \
 	libgnuworld/Buffer.h \
+	libgnuworld/ChannelModes.h \
 	libgnuworld/Connection.h \
 	libgnuworld/ConnectionHandler.h \
 	libgnuworld/ConnectionManager.h \

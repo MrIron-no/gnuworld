@@ -14,7 +14,8 @@ noinst_PROGRAMS = test_burst \
 	test_bot \
 	test_kick_transaction \
 	test_xparameters_tags \
-	test_stringtokenizer_trailing
+	test_stringtokenizer_trailing \
+	test_channelmodes
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
@@ -95,3 +96,11 @@ EXTRA_DIST += \
 	test/README.stringtokenizer \
 	test/README.testBot \
 	test/README.test_kick_transaction
+
+test_channelmodes_SOURCES = test/channelmodes.cc
+test_channelmodes_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_channelmodes_LDADD = libgnuworld.la
+
+# Run by "make check".  The other programs in this directory are
+# interactive or benchmarks, not tests.
+TESTS = test_channelmodes
