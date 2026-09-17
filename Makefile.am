@@ -144,6 +144,7 @@ EXTRA_DIST = bin/logging.properties \
 	doc/nickserv/USAGE \
 	include/defs.h \
 	include/Channel.h \
+	include/ChannelModeApply.h \
 	include/ChannelUser.h \
 	include/Gline.h \
 	include/LoadClientTimerHandler.h \

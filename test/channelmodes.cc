@@ -4,6 +4,7 @@
  * Exits non-zero if any check fails, so it can run under "make check".
  */
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -28,7 +29,7 @@ int failures = 0;
     } while (0)
 
 Parsed parseArgs(string_view modeString, std::vector<string_view> args, bool timestamp = false) {
-    return parse(modeString, args, timestamp);
+    return parse(modeString, args, {.trailingTimestamp = timestamp});
 }
 
 /// "+t -l +k:sekrit": the changes, flattened so that a check fits on one line.
@@ -105,6 +106,43 @@ void testTable() {
     static_assert(find('k')->kind == Kind::Key);
     static_assert(!find('q'));
     static_assert(maxParamsPerLine == 6 && maxKeyLength == 23);
+}
+
+/// "kAU" and "AkU" are the same group: the order inside one carries no meaning.
+std::string sorted(std::string_view s) {
+    std::string out(s);
+    std::ranges::sort(out);
+    return out;
+}
+
+void testIsupportGroups() {
+    CHECK(find('b')->type() == Type::A);
+    CHECK(find('k')->type() == Type::B && find('A')->type() == Type::B &&
+          find('U')->type() == Type::B);
+    CHECK(find('l')->type() == Type::C);
+    CHECK(find('m')->type() == Type::D && find('D')->type() == Type::D);
+    CHECK(find('o')->type() == Type::Prefix && find('v')->type() == Type::Prefix);
+
+    // What ircu advertises in RPL_ISUPPORT with OPLEVELS on (include/supported.h):
+    //   CHANMODES=b,AkU,l,imnpstrDdRcCuMZ   PREFIX=(ov)@+
+    // Group for group it must be our table, give or take the server-local 'd'.
+    const std::string ours = isupportChanmodes();
+    const std::string_view ircu = "b,AkU,l,imnpstrDdRcCuMZ";
+    std::size_t ourStart = 0;
+    std::size_t ircuStart = 0;
+    for (int group = 0; group < 4; ++group) {
+        const std::size_t ourEnd = std::min(ours.find(',', ourStart), ours.size());
+        const std::size_t ircuEnd = std::min(ircu.find(',', ircuStart), ircu.size());
+        std::string theirs(ircu.substr(ircuStart, ircuEnd - ircuStart));
+        std::erase_if(theirs, isLocalOnly);
+        CHECK(sorted(ours.substr(ourStart, ourEnd - ourStart)) == sorted(theirs));
+        ourStart = ourEnd + 1;
+        ircuStart = ircuEnd + 1;
+    }
+    CHECK(std::ranges::count(ours, ',') == 3);
+
+    // o and v are PREFIX modes, so they are in no CHANMODES group
+    CHECK(ours.find('o') == std::string::npos && ours.find('v') == std::string::npos);
 }
 
 void testParseValid() {
@@ -240,14 +278,131 @@ void testTimestamp() {
     CHECK(flat(parsed) == "-b:1789642110" && !parsed.timestamp);
 }
 
+void testBurstModeBlock() {
+    // "AB B #p11-bans 1789637417 +tnlk 25 sekrit ACAAK:o,ACAAM :%<bans>": the
+    // mode block's arguments are followed by the member list.
+    const std::vector<string_view> rest{"25", "sekrit", "ACAAK:o,ACAAM"};
+    auto parsed = parse("+tnlk", rest, {.allowLeftover = true});
+    CHECK(parsed.ok() && flat(parsed) == "+t +n +l:25 +k:sekrit" && parsed.argsUsed == 2);
+
+    // Without the option the member list is reported, but still not consumed
+    parsed = parse("+tnlk", rest);
+    CHECK(parsed.argsUsed == 2 && onlyProblem(parsed, Error::UnusedArgument, 0, "ACAAK:o,ACAAM"));
+
+    // A mode block with no arguments uses none
+    parsed = parse("+tn", std::vector<string_view>{"ACAAO,ACAAN:d"}, {.allowLeftover = true});
+    CHECK(parsed.ok() && parsed.argsUsed == 0);
+
+    // A truncated burst: "+l" with nothing behind it must not read past the end
+    parsed = parse("+tl", std::vector<string_view>{}, {.allowLeftover = true});
+    CHECK(flat(parsed) == "+t" && parsed.argsUsed == 0 &&
+          onlyProblem(parsed, Error::MissingArgument, 'l'));
+
+    // The timestamp counts as used
+    parsed = parseArgs("+l", {"10", "1789642110"}, true);
+    CHECK(parsed.argsUsed == 2);
+}
+
+std::vector<Change> changesFor(string_view modeString, std::vector<string_view> args) {
+    const Parsed parsed = parse(modeString, args);
+    CHECK(parsed.ok());
+    return parsed.changes;
+}
+
+void testFormatLines() {
+    const string_view prefix = "AzAAB M #modes";
+    using Lines = std::vector<std::string>;
+
+    CHECK(formatLines(prefix, {}, 1789642110).empty());
+
+    // One space between fields, the timestamp last.  These are the lines of
+    // test_outbound_channel.py without their doubled spaces.
+    CHECK(formatLines(prefix, changesFor("+m", {}), 1789642110) ==
+          Lines{"AzAAB M #modes +m 1789642110"});
+    CHECK(formatLines(prefix, changesFor("+l", {"10"}), 1789642110) ==
+          Lines{"AzAAB M #modes +l 10 1789642110"});
+    CHECK(formatLines(prefix, changesFor("+oo", {"ABAAC", "ABAAD"}), 1789642110) ==
+          Lines{"AzAAB M #modes +oo ABAAC ABAAD 1789642110"});
+
+    // One sign per run of a polarity: "+ov", not "+o+v"; "-lk", not "-l-k"
+    CHECK(formatLines(prefix, changesFor("+o+v", {"ABAAC", "ABAAD"}), 1) ==
+          Lines{"AzAAB M #modes +ov ABAAC ABAAD 1"});
+    CHECK(formatLines(prefix, changesFor("-l-k", {"sekrit"}), 1) ==
+          Lines{"AzAAB M #modes -lk sekrit 1"});
+    CHECK(formatLines(prefix, changesFor("+m-i+s-t", {}), 1) == Lines{"AzAAB M #modes +m-i+s-t 1"});
+    CHECK(formatLines(prefix, changesFor("-k+k", {"old", "new"}), 1) ==
+          Lines{"AzAAB M #modes -k+k old new 1"});
+
+    // At most six modes with an argument on a line; flags do not count
+    auto lines = formatLines(
+        prefix, changesFor("+tnooooooo", {"A1", "A2", "A3", "A4", "A5", "A6", "A7"}), 5);
+    CHECK(lines ==
+          (Lines{"AzAAB M #modes +tnoooooo A1 A2 A3 A4 A5 A6 5", "AzAAB M #modes +o A7 5"}));
+
+    // The polarity is restated on the next line
+    lines =
+        formatLines(prefix, changesFor("-vvvvvvv", {"A1", "A2", "A3", "A4", "A5", "A6", "A7"}), 5);
+    CHECK(lines.size() == 2 && lines[1] == "AzAAB M #modes -v A7 5");
+
+    // Long masks: split before the line passes 510 bytes, and lose nothing
+    const std::string mask = "*!*@" + std::string(116, 'x') + ".example.net";
+    const std::vector<string_view> masks(6, mask);
+    lines = formatLines(prefix, changesFor("+bbbbbb", masks), 1789642110);
+    CHECK(lines.size() == 2);
+    std::size_t sent = 0;
+    for (const std::string& line : lines) {
+        CHECK(line.size() <= maxLineLength);
+        CHECK(line.ends_with(" 1789642110") && line.starts_with("AzAAB M #modes +b"));
+        sent += static_cast<std::size_t>(std::ranges::count(line, '!'));
+    }
+    CHECK(sent == 6);
+
+    // Whatever it sends, parse() reads back as the same changes
+    const std::vector<Change> mixed =
+        changesFor("+tk-l+ob-v", {"sekrit", "ABAAC", "*!*@spam.example.net", "ABAAD"});
+    lines = formatLines("X", mixed, 42);
+    CHECK(lines.size() == 1);
+    std::vector<string_view> fields;
+    for (std::size_t start = 2; start <= lines[0].size();) {
+        const std::size_t end = std::min(lines[0].find(' ', start), lines[0].size());
+        fields.emplace_back(string_view(lines[0]).substr(start, end - start));
+        start = end + 1;
+    }
+    const Parsed reread = parse(fields[0], std::span<const string_view>(fields).subspan(1),
+                                {.trailingTimestamp = true});
+    CHECK(reread.ok() && reread.changes == mixed && reread.timestamp == std::uint64_t{42});
+}
+
+void testBurstModeBlockOutput() {
+    // As recorded from ircu: "+tnlk 25 sekrit", the limit before the key
+    CHECK(burstModeBlock(changesFor("+ktln", {"sekrit", "25"})) == "+tnlk 25 sekrit");
+    CHECK(burstModeBlock(changesFor("+nt", {})) == "+tn");
+    CHECK(burstModeBlock(changesFor("+D", {})) == "+D");
+
+    // Nothing to set, no block: the BURST line then has none, rather than a gap
+    CHECK(burstModeBlock({}).empty());
+    CHECK(burstModeBlock(changesFor("-m", {})).empty());
+
+    // Only what is being set, and never members or bans
+    CHECK(burstModeBlock(changesFor("+t-m+ob", {"ABAAC", "*!*@x"})) == "+t");
+
+    // It reads back as what went in
+    const Parsed reread = parseArgs("+tnlk", {"25", "sekrit"});
+    CHECK(burstModeBlock(reread.changes) == "+tnlk 25 sekrit");
+}
+
 } // namespace
 
 int main() {
     testTable();
+    testIsupportGroups();
     testParseValid();
     testParseProblems();
     testKeysAndLimits();
     testTimestamp();
+    testBurstModeBlock();
+    testFormatLines();
+    testBurstModeBlockOutput();
 
     if (failures != 0) {
         std::cerr << failures << " check(s) failed\n";

@@ -86,7 +86,7 @@ bool isValidLimit(std::string_view limit) noexcept {
 }
 
 Parsed parse(std::string_view modeString, std::span<const std::string_view> args,
-             bool trailingTimestamp) {
+             ParseOptions options) {
     Parsed result;
     bool set = true;
     std::size_t nextArg = 0;
@@ -125,7 +125,7 @@ Parsed parse(std::string_view modeString, std::span<const std::string_view> args
         result.changes.push_back({set, *mode, std::string(arg)});
     }
 
-    if (trailingTimestamp && nextArg + 1 == args.size() && allDigits(args[nextArg])) {
+    if (options.trailingTimestamp && nextArg + 1 == args.size() && allDigits(args[nextArg])) {
         std::uint64_t timestamp = 0;
         const std::string_view text = args[nextArg];
         const auto [end, error] =
@@ -136,11 +136,105 @@ Parsed parse(std::string_view modeString, std::span<const std::string_view> args
         }
     }
 
-    for (; nextArg < args.size(); ++nextArg) {
-        result.problems.push_back({Error::UnusedArgument, 0, std::string(args[nextArg])});
+    result.argsUsed = nextArg;
+
+    if (!options.allowLeftover) {
+        for (; nextArg < args.size(); ++nextArg) {
+            result.problems.push_back({Error::UnusedArgument, 0, std::string(args[nextArg])});
+        }
     }
 
     return result;
+}
+
+std::vector<std::string> formatLines(std::string_view prefix, std::span<const Change> changes,
+                                     std::uint64_t timestamp) {
+    std::vector<std::string> lines;
+    const std::string tail = ' ' + std::to_string(timestamp);
+
+    std::string modeString;
+    std::string argString;
+    std::size_t params = 0;
+    std::optional<bool> polarity;
+
+    const auto flush = [&] {
+        if (!modeString.empty()) {
+            lines.push_back(std::string(prefix) + ' ' + modeString + argString + tail);
+        }
+        modeString.clear();
+        argString.clear();
+        params = 0;
+        polarity.reset();
+    };
+
+    for (const Change& change : changes) {
+        const bool hasArg = !change.arg.empty();
+
+        // What this change adds to the line: a sign if the polarity turns,
+        // the letter, and " <arg>".
+        const std::size_t growth =
+            (polarity == change.set ? 0 : 1) + 1 + (hasArg ? 1 + change.arg.size() : 0);
+        const std::size_t length =
+            prefix.size() + 1 + modeString.size() + argString.size() + tail.size();
+
+        if (!modeString.empty() &&
+            ((hasArg && params == maxParamsPerLine) || length + growth > maxLineLength)) {
+            flush();
+        }
+
+        if (polarity != change.set) {
+            modeString += change.set ? '+' : '-';
+            polarity = change.set;
+        }
+        modeString += change.mode.letter;
+        if (hasArg) {
+            argString += ' ';
+            argString += change.arg;
+            ++params;
+        }
+    }
+    flush();
+
+    return lines;
+}
+
+std::string burstModeBlock(std::span<const Change> changes) {
+    std::vector<const Change*> block;
+    for (const Change& change : changes) {
+        if (change.set && change.mode.kind != Kind::Member && change.mode.kind != Kind::Ban) {
+            block.push_back(&change);
+        }
+    }
+    if (block.empty()) {
+        return {};
+    }
+
+    std::ranges::stable_sort(block, {}, [](const Change* c) { return burstOrder(c->mode); });
+
+    std::string out = "+";
+    std::string args;
+    for (const Change* change : block) {
+        out += change->mode.letter;
+        if (!change->arg.empty()) {
+            args += ' ' + change->arg;
+        }
+    }
+    return out + args;
+}
+
+std::string isupportChanmodes() {
+    std::string out;
+    for (const Type type : {Type::A, Type::B, Type::C, Type::D}) {
+        if (type != Type::A) {
+            out += ',';
+        }
+        for (const Mode& mode : modes) {
+            if (mode.type() == type) {
+                out += mode.letter;
+            }
+        }
+    }
+    return out;
 }
 
 std::string_view describe(Error error) noexcept {

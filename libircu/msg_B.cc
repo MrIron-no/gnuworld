@@ -27,6 +27,7 @@
 #include <new>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <iostream>
 #include <utility>
@@ -43,6 +44,8 @@
 #include "Network.h"
 #include "iClient.h"
 #include "ServerCommandHandler.h"
+#include "ChannelModeApply.h"
+#include "ChannelModes.h"
 
 namespace gnuworld {
 using std::endl;
@@ -167,91 +170,18 @@ bool msg_B::Execute(const xParameters& Param) {
 
     // Channel modes will always be the first thing to follow if it's in the burst
     if ('+' == Param[whichToken][0]) {
-        // channel modes
-        const char* currentPtr = Param[whichToken];
+        // The arguments of the mode block are followed by the member list,
+        // so leftovers are expected; argsUsed says where the members start.
+        const std::vector<std::string_view> args = modeArguments(Param, whichToken + 1);
+        const chanmode::Parsed parsed =
+            chanmode::parse(Param[whichToken], args, {.allowLeftover = true});
+        logModeProblems("msg_B>", theChan->getName(), parsed.problems);
 
-        // Skip over the '+'
-        ++currentPtr;
+        const ModeApplyResult applied = applyChannelModes(*theServer, *theChan, 0, parsed.changes);
+        logModeProblems("msg_B>", theChan->getName(), applied.problems);
 
-        xServer::modeVectorType modeVector;
-
-        for (; currentPtr && *currentPtr; ++currentPtr) {
-            switch (*currentPtr) {
-            case 't':
-                modeVector.push_back(make_pair(true, Channel::MODE_T));
-                break;
-            case 'n':
-                modeVector.push_back(make_pair(true, Channel::MODE_N));
-                break;
-            case 'm':
-                modeVector.push_back(make_pair(true, Channel::MODE_M));
-                break;
-            case 'p':
-                modeVector.push_back(make_pair(true, Channel::MODE_P));
-                break;
-            case 's':
-                modeVector.push_back(make_pair(true, Channel::MODE_S));
-                break;
-            case 'i':
-                modeVector.push_back(make_pair(true, Channel::MODE_I));
-                break;
-            case 'r':
-                modeVector.push_back(make_pair(true, Channel::MODE_R));
-                break;
-            case 'R':
-                modeVector.push_back(make_pair(true, Channel::MODE_REG));
-                break;
-            case 'D':
-                modeVector.push_back(make_pair(true, Channel::MODE_D));
-                break;
-            case 'c':
-                modeVector.push_back(make_pair(true, Channel::MODE_C));
-                break;
-            case 'C':
-                modeVector.push_back(make_pair(true, Channel::MODE_CTCP));
-                break;
-            case 'u':
-                modeVector.push_back(make_pair(true, Channel::MODE_PART));
-                break;
-            case 'M':
-                modeVector.push_back(make_pair(true, Channel::MODE_MNOREG));
-                break;
-            case 'Z':
-                modeVector.push_back(make_pair(true, Channel::MODE_Z));
-                break;
-            case 'l':
-                theServer->OnChannelModeL(theChan, true, 0, ::atoi(Param[whichToken + 1]));
-                whichToken++;
-                break;
-            case 'k':
-                theServer->OnChannelModeK(theChan, true, 0, Param[whichToken + 1]);
-                whichToken++;
-                break;
-            case 'A':
-                theServer->OnChannelModeA(theChan, true, 0, Param[whichToken + 1]);
-                whichToken++;
-                break;
-            case 'U':
-                theServer->OnChannelModeU(theChan, true, 0, Param[whichToken + 1]);
-                whichToken++;
-                break;
-            default:
-                break;
-            } // switch
-
-        } // for( currentPtr != endPtr )
-
-        if (!modeVector.empty()) {
-            theServer->OnChannelMode(theChan, 0, modeVector);
-        }
-
-        // Skip over the modes token
-        // whichToken either points to the modes token if no +l/+k
-        // was specified, or it points to the last +l/+k argument;
-        // skip over this token no matter which.
-        whichToken++;
-
-    } // if( '+' == Param[ whichToken ][ 0 ]
+        whichToken += 1 + parsed.argsUsed;
+    }
 
     // Have we reached the end of this burst command?
     if (whichToken >= Param.size()) {

@@ -23,6 +23,7 @@
 #include <new>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <iostream>
 
@@ -38,6 +39,8 @@
 #include "ELog.h"
 #include "StringTokenizer.h"
 #include "ServerCommandHandler.h"
+#include "ChannelModeApply.h"
+#include "ChannelModes.h"
 
 namespace gnuworld {
 
@@ -137,206 +140,25 @@ bool msg_M::Execute(const xParameters& Param) {
         }
     }
 
-    bool polarity = true;
-    xParameters::size_type argPos = 3;
+    // <source> M <#channel> <modes> [<args>...] [<channel timestamp>]
+    const std::vector<std::string_view> args = modeArguments(Param, 3);
+    const chanmode::Parsed parsed = chanmode::parse(Param[2], args, {.trailingTimestamp = true});
+    logModeProblems("msg_M>", theChan->getName(), parsed.problems);
 
-    xServer::opVectorType opVector;
-    xServer::voiceVectorType voiceVector;
-    xServer::banVectorType banVector;
-    xServer::modeVectorType modeVector;
-
-    for (const char* modePtr = Param[2]; *modePtr; ++modePtr) {
-        switch (*modePtr) {
-        case '+':
-            polarity = true;
-            break;
-        case '-':
-            polarity = false;
-            break;
-        case 't':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_T));
-            break;
-        case 'n':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_N));
-            break;
-        case 's':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_S));
-            break;
-        case 'p':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_P));
-            break;
-        case 'm':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_M));
-            break;
-        case 'i':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_I));
-            break;
-        case 'r':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_R));
-            break;
-        case 'R':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_REG));
-            break;
-        case 'D':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_D));
-            break;
-        case 'c':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_C));
-            break;
-        case 'C':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_CTCP));
-            break;
-        case 'u':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_PART));
-            break;
-        case 'M':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_MNOREG));
-            break;
-        case 'Z':
-            modeVector.push_back(make_pair(polarity, Channel::MODE_Z));
-            break;
-        // Channel mode l only has an argument if
-        // it is being added, but not removed
-        case 'l':
-            if (polarity && (argPos >= Param.size())) {
-                elog << "msg_M> Invalid "
-                     << "format for message: missing "
-                     << "argument to mode +l"
-                     << " in channel " << *theChan << endl;
-                continue;
-            }
-
-            theServer->OnChannelModeL(theChan, polarity, theUser,
-                                      polarity ? atoi(Param[argPos++]) : 0);
-            break;
-
-        // Channel mode k always has an argument
-        case 'k':
-            if (argPos >= Param.size()) {
-                elog << "msg_M> Invalid "
-                     << "format for message: missing "
-                     << "argument for mode 'k'"
-                     << " in channel " << *theChan << endl;
-                continue;
-            }
-
-            theServer->OnChannelModeK(theChan, polarity, theUser, Param[argPos++]);
-            break;
-        case 'o': {
-            if (argPos >= Param.size()) {
-                elog << "msg_M> Invalid "
-                     << "format for message: missing "
-                     << "argument for mode 'o'"
-                     << " in channel " << *theChan << endl;
-                continue;
-            }
-
-            iClient* targetClient = Network->findClient(Param[argPos++]);
-            if (NULL == targetClient) {
-                //				elog	<< "msg_M> Unable to "
-                //					<< "find op target client: "
-                //					<< Param[ argPos - 1 ]
-                //					<< " in channel "
-                //					<< *theChan
-                //					<< endl ;
-                break;
-            }
-            ChannelUser* targetUser = theChan->findUser(targetClient);
-            if (NULL == targetUser) {
-                //				elog	<< "msg_M> Unable to "
-                //					<< "find op target user: "
-                //					<< Param[ argPos - 1 ]
-                //					<< " in channel "
-                //					<< *theChan
-                //					<< endl ;
-                break;
-            }
-            opVector.push_back(pair<bool, ChannelUser*>(polarity, targetUser));
-
-            // If the op mode is +o, remove the ZOMBIE
-            // state from this user.
-            //			if( polarity && targetUser->isZombie() )
-            //				{
-            //				targetUser->removeZombie() ;
-            //				elog	<< "msg_M> Removing "
-            //					<< "zombie"
-            //					<< endl ;
-            //				}
-            break;
-        }
-        case 'v': {
-            if (argPos >= Param.size()) {
-                elog << "msg_M> Invalid "
-                     << "format for message: missing "
-                     << "argument for mode 'v'"
-                     << " in channel " << *theChan << endl;
-                continue;
-            }
-
-            iClient* targetClient = Network->findClient(Param[argPos++]);
-            if (NULL == targetClient) {
-                //				elog	<< "msg_M> Unable to "
-                //					<< "find voice target client: "
-                //					<< Param[ argPos - 1 ]
-                //					<< " in channel "
-                //					<< *theChan
-                //					<< endl ;
-                break;
-            }
-            ChannelUser* targetUser = theChan->findUser(targetClient);
-            if (NULL == targetUser) {
-                //				elog	<< "msg_M> Unable to "
-                //					<< "find voice target user: "
-                //					<< Param[ argPos - 1 ]
-                //					<< " in channel "
-                //					<< *theChan
-                //					<< endl ;
-                break;
-            }
-            voiceVector.push_back(pair<bool, ChannelUser*>(polarity, targetUser));
-            break;
-        }
-        case 'b': {
-            if (argPos >= Param.size()) {
-                elog << "msg_M> Invalid "
-                     << "format for message: missing "
-                     << "argument for mode 'b'"
-                     << " in channel " << *theChan << endl;
-                continue;
-            }
-
-            const char* targetBan = Param[argPos++];
-            banVector.push_back(pair<bool, string>(polarity, string(targetBan)));
-            break;
-        }
-
-        } // switch()
-    } // for()
-
-    if (argPos < Param.size()) {
-        // Last argument is creation time
-        // Update creation timestamp if older
-        time_t newCreationTime = static_cast<time_t>(::atoi(Param[argPos++]));
-
-        // Is the old TS greater than the new TS?
+    // An older timestamp means the sender knows an older instance of the
+    // channel, and we adopt it.  Only a real timestamp counts: this used to
+    // run atoi() over whatever argument was left, so a stray one reset the
+    // creation time to 0.
+    if (parsed.timestamp && *parsed.timestamp != 0) {
+        const time_t newCreationTime = static_cast<time_t>(*parsed.timestamp);
         if (theChan->getCreationTime() > newCreationTime) {
-            // Nope, update the timestamp
             theChan->setCreationTime(newCreationTime);
         }
     }
 
-    if (!modeVector.empty()) {
-        theServer->OnChannelMode(theChan, theUser, modeVector);
-    }
-    if (!opVector.empty()) {
-        theServer->OnChannelModeO(theChan, theUser, opVector);
-    }
-    if (!voiceVector.empty()) {
-        theServer->OnChannelModeV(theChan, theUser, voiceVector);
-    }
-    if (!banVector.empty()) {
-        theServer->OnChannelModeB(theChan, theUser, banVector);
-    }
+    const ModeApplyResult applied =
+        applyChannelModes(*theServer, *theChan, theUser, parsed.changes);
+    logModeProblems("msg_M>", theChan->getName(), applied.problems);
 
     return true;
 }

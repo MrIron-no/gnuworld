@@ -42,7 +42,9 @@
  */
 namespace gnuworld::chanmode {
 
-/// What a mode is, which decides how its argument is validated.
+/// What a mode is, which decides how its argument is validated.  Finer
+/// grained than Type: a key and a limit are both settings, but only one of
+/// them is a number.
 enum class Kind : std::uint8_t {
     Flag,     ///< +m: no argument
     Key,      ///< +k <key>, -k <key>
@@ -52,8 +54,23 @@ enum class Kind : std::uint8_t {
     Ban       ///< +b <mask>
 };
 
-/// When a mode carries an argument.
-enum class Arg : std::uint8_t { Never, OnSet, Always };
+/**
+ * The group a mode belongs to, which says when it carries an argument.
+ *
+ * A to D are the four groups of the CHANMODES token that a server advertises
+ * in RPL_ISUPPORT (005), "CHANMODES=A,B,C,D".  This is the ISUPPORT draft's
+ * classification, not RFC 1459's, and it is what clients use to parse a MODE
+ * line without knowing the letters.  ircu sends
+ * "CHANMODES=b,AkU,l,imnpstrDdRcCuMZ" and "PREFIX=(ov)@+".
+ */
+enum class Type : std::uint8_t {
+    A,     ///< a list: always an argument, and it adds to or removes from the list (b)
+    B,     ///< a setting: always an argument, when set and when unset (k, A, U)
+    C,     ///< a setting: an argument only when set (l)
+    D,     ///< a flag: never an argument (m, t, n, ...)
+    Prefix ///< a member's status: always an argument.  Not part of CHANMODES;
+           ///< advertised in the PREFIX token instead (o, v)
+};
 
 struct Mode {
     char letter;
@@ -66,19 +83,32 @@ struct Mode {
     /// Only a server may set or clear it (+R, registered with services).
     bool serverOnly = false;
 
-    constexpr Arg arg() const noexcept {
+    constexpr Type type() const noexcept {
         switch (kind) {
-        case Kind::Flag:
-            return Arg::Never;
+        case Kind::Ban:
+            return Type::A;
+        case Kind::Key:
+        case Kind::Password:
+            return Type::B;
         case Kind::Limit:
-            return Arg::OnSet;
-        default:
-            return Arg::Always;
+            return Type::C;
+        case Kind::Flag:
+            return Type::D;
+        case Kind::Member:
+            return Type::Prefix;
         }
+        return Type::D;
     }
 
     constexpr bool takesArg(bool set) const noexcept {
-        return arg() == Arg::Always || (arg() == Arg::OnSet && set);
+        switch (type()) {
+        case Type::D:
+            return false;
+        case Type::C:
+            return set;
+        default:
+            return true;
+        }
     }
 
     friend constexpr bool operator==(const Mode&, const Mode&) = default;
@@ -185,7 +215,23 @@ struct Parsed {
     /// The channel timestamp, if one was asked for and found.
     std::optional<std::uint64_t> timestamp;
 
+    /// How many of the arguments were consumed, the timestamp included.
+    std::size_t argsUsed = 0;
+
     bool ok() const noexcept { return problems.empty(); }
+};
+
+struct ParseOptions {
+    /// One all-digit argument left over after every mode has taken its own
+    /// is the channel timestamp that ends a MODE line between servers.
+    /// Counting from the modes, rather than looking at the last argument,
+    /// is what tells "+l 10" from "+m 1700000000".
+    bool trailingTimestamp = false;
+
+    /// Arguments nobody asked for are not a problem.  A BURST has its
+    /// member list right behind the arguments of its mode block; see
+    /// Parsed::argsUsed.
+    bool allowLeftover = false;
 };
 
 /**
@@ -196,14 +242,9 @@ struct Parsed {
  * so the caller decides what a problem means: a line from the network is
  * applied as far as it is valid, while a change we are about to send should
  * not go out at all unless ok().
- *
- * With trailingTimestamp, one all-digit argument left over after every mode
- * has taken its own is the channel timestamp that ends a MODE line between
- * servers.  Counting from the modes, rather than looking at the last
- * argument, is what tells "+l 10" from "+m 1700000000".
  */
 Parsed parse(std::string_view modeString, std::span<const std::string_view> args,
-             bool trailingTimestamp = false);
+             ParseOptions options = {});
 
 /// ircu's is_clean_key(): not empty, at most maxKeyLength, no leading ':',
 /// and no comma, space or control character.
@@ -211,6 +252,38 @@ bool isValidKey(std::string_view key) noexcept;
 
 /// A channel limit: decimal digits only, from 1 to INT_MAX.
 bool isValidLimit(std::string_view limit) noexcept;
+
+/// The longest line we send, without its CR LF: RFC 1459's 512 less the two.
+inline constexpr std::size_t maxLineLength = 510;
+
+/**
+ * Format changes as complete MODE lines: "<prefix> <modes> [<args>] <timestamp>".
+ *
+ * prefix is everything in front of the mode string, "<source> M <#channel>"
+ * (or "... OM ..." for an OPMODE).  Consecutive changes of one polarity share
+ * a sign, so +o and +v come out as "+ov" and not "+o+v".  A new line is
+ * started when the next change would be the seventh with an argument
+ * (maxParamsPerLine) or would take the line past maxLineLength; every line
+ * ends in the channel timestamp, which a P11 peer requires.  There is
+ * exactly one space between any two fields.
+ *
+ * The changes are sent as given: run them through parse() first if they
+ * come from outside.  No changes, no lines.
+ */
+std::vector<std::string> formatLines(std::string_view prefix, std::span<const Change> changes,
+                                     std::uint64_t timestamp);
+
+/**
+ * The mode block of a BURST line, "+tnlk 25 sekrit": the modes being set, in
+ * the order ircu bursts them, with their arguments behind.  Changes that
+ * clear a mode, and members and bans, have no place in a mode block and are
+ * left out.  Empty if nothing remains, in which case the BURST has no block.
+ */
+std::string burstModeBlock(std::span<const Change> changes);
+
+/// The modes of each CHANMODES group as one string, "A,B,C,D".  The
+/// server-local 'd' and 'z' are not in the table, so not in here either.
+std::string isupportChanmodes();
 
 /// A short name for an Error, for logs.
 std::string_view describe(Error error) noexcept;

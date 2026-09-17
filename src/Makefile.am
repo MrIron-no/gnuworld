@@ -4,6 +4,7 @@
 lib_LTLIBRARIES += libgnuworldcore.la
 libgnuworldcore_la_SOURCES = \
 	src/Channel.cc \
+	src/ChannelModeApply.cc \
 	src/ChannelUser.cc \
 	src/LoadClientTimerHandler.cc \
 	src/Network.cc \

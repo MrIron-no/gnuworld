@@ -296,7 +296,7 @@ void Channel::onModeA(bool polarity, const string& newApass) {
         setMode(MODE_A);
         setApass(newApass);
     } else {
-        removeMode(MODE_K);
+        removeMode(MODE_A);
         setApass(string());
     }
 }
