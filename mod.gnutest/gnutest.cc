@@ -74,8 +74,8 @@ gnutest::gnutest(const string& fileName) : xClient(fileName) {
         std::make_pair("mode <chan> <modestring>", "Change modes in a channel as the client"));
     helpTable.insert(std::make_pair("op <chan> <nick> [nick ...]", "Op nicks in a channel"));
     helpTable.insert(std::make_pair("deop <chan> <nick> [nick ...]", "Deop nicks in a channel"));
-    helpTable.insert(
-        std::make_pair("servop <chan> <nick>", "Op a nick in a channel as the server"));
+    helpTable.insert(std::make_pair("serv<op|deop|voice|devoice|ban|unban|banmask> ...",
+                                    "The same, sent as the server"));
     helpTable.insert(std::make_pair("schedule <chan>", "Schedule a visit to a channel!"));
     helpTable.insert(std::make_pair("voice <chan> <nick> [nick ...]", "Voice nicks in a channel"));
     helpTable.insert(
@@ -187,19 +187,23 @@ void gnutest::OnChannelMessage(iClient* theClient, Channel* theChan, const strin
  * Returns false if st[0] is not one of these commands.
  */
 bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
-    const string& cmd = st[0];
+    // "serv" in front of a command sends it as the server: servop, servban...
+    // "servkick" predates this and is kept as a command of its own.
+    const bool asServer = st[0].starts_with("serv") && st[0] != "servkick" && st[0] != "servmode";
+    const SendAs as = asServer ? SendAs::Server : SendAs::Client;
+    const string cmd = asServer ? st[0].substr(4) : st[0];
 
     const bool takesReason = (cmd == "kick" || cmd == "servkick" || cmd == "bankick");
     const bool takesMasks = (cmd == "unban" || cmd == "banmask");
-    const bool takesNicks = (cmd == "op" || cmd == "deop" || cmd == "voice" || cmd == "devoice" ||
-                             cmd == "ban" || cmd == "servop");
+    const bool takesNicks =
+        (cmd == "op" || cmd == "deop" || cmd == "voice" || cmd == "devoice" || cmd == "ban");
 
     if (!takesReason && !takesMasks && !takesNicks && cmd != "topic") {
         return false;
     }
 
     if (st.size() < (takesReason ? 4U : 3U)) {
-        Notice(requester, "Usage: %s #channel %s", cmd.c_str(),
+        Notice(requester, "Usage: %s #channel %s", st[0].c_str(),
                takesReason  ? "nick reason"
                : takesMasks ? "banmask [banmask ...]"
                : takesNicks ? "nick [nick ...]"
@@ -225,7 +229,7 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
                 Notice(requester, "Unable to find ban");
                 return true;
             }
-            UnBan(theChan, st[2]);
+            UnBan(theChan, st[2], as);
             return true;
         }
 
@@ -234,9 +238,9 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
             banVector.push_back(xServer::banVectorType::value_type(adding, st[i]));
         }
         if (adding) {
-            Ban(theChan, banVector);
+            Ban(theChan, banVector, as);
         } else {
-            UnBan(theChan, banVector);
+            UnBan(theChan, banVector, as);
         }
         return true;
     }
@@ -265,20 +269,16 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
         Kick(theChan, targets[0], st.assemble(3), true);
     } else if (cmd == "bankick") {
         BanKick(theChan, targets[0], st.assemble(3));
-    } else if (cmd == "servop") {
-        // xServer::Mode() takes nicks, not numerics, and a null source
-        // makes the server itself the source of the mode.
-        getUplink()->Mode(0, theChan, "+o", targets[0]->getNickName());
     } else if (cmd == "op") {
-        single ? Op(theChan, targets[0]) : Op(theChan, targets);
+        single ? Op(theChan, targets[0], as) : Op(theChan, targets, as);
     } else if (cmd == "deop") {
-        single ? DeOp(theChan, targets[0]) : DeOp(theChan, targets);
+        single ? DeOp(theChan, targets[0], as) : DeOp(theChan, targets, as);
     } else if (cmd == "voice") {
-        single ? Voice(theChan, targets[0]) : Voice(theChan, targets);
+        single ? Voice(theChan, targets[0], as) : Voice(theChan, targets, as);
     } else if (cmd == "devoice") {
-        single ? DeVoice(theChan, targets[0]) : DeVoice(theChan, targets);
+        single ? DeVoice(theChan, targets[0], as) : DeVoice(theChan, targets, as);
     } else if (cmd == "ban") {
-        single ? Ban(theChan, targets[0]) : Ban(theChan, targets);
+        single ? Ban(theChan, targets[0], as) : Ban(theChan, targets, as);
     }
 
     return true;
@@ -371,7 +371,7 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
             return;
         }
 
-        ClearMode(theChan, st[2], false);
+        ClearMode(theChan, st[2], SendAs::Client);
     } else if (st[0] == "chaninfo") {
         Channel* theChan = Network->findChannel(st[1]);
         if (NULL == theChan) {
@@ -395,7 +395,7 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
 
         // Note that this only exercises the first argument of
         // Mode()
-        Mode(theChan, st.assemble(2), string(), true);
+        Mode(theChan, st.assemble(2), string(), SendAs::Server);
     } else if (st[0] == "mode") {
         // mode #chan <mode string>
         if (st.size() < 3) {
@@ -411,7 +411,7 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
 
         // Note that this only exercises the first argument of
         // Mode()
-        Mode(theChan, st.assemble(2), string(), false);
+        Mode(theChan, st.assemble(2), string(), SendAs::Client);
     } else if (st[0] == "schedule") {
         Channel* theChan = Network->findChannel(st[1]);
         if (NULL == theChan) {
