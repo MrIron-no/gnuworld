@@ -1221,8 +1221,9 @@ bool xClient::DeVoice(Channel* theChan, const std::vector<iClient*>& clientVecto
 
         if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
             stringstream s;
+            // args already ends in a space
             s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "-" << modeString << ' '
-              << args;
+              << args << theChan->getCreationTime();
 
             Write(s);
 
@@ -1283,7 +1284,7 @@ bool xClient::Ban(Channel* theChan, iClient* theClient) {
 
     string banMask = Channel::createBan(theClient);
 
-    Write("%s M %s +b :%s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
+    Write("%s M %s +b %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
           theChan->getCreationTime());
 
     // No users are kicked by just setting a ban.
@@ -1542,7 +1543,7 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
 
     string banMask = Channel::createBan(theClient);
 
-    Write("%s M %s +b :%s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
+    Write("%s M %s +b %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
           theChan->getCreationTime());
 
     Write("%s K %s %s :%s", getCharYYXXX().c_str(), theChan->getName().c_str(),

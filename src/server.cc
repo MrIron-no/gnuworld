@@ -76,7 +76,6 @@ namespace gnuworld {
 using std::clog;
 using std::cout;
 using std::endl;
-using std::ends;
 using std::list;
 using std::make_pair;
 using std::min;
@@ -545,8 +544,16 @@ void xServer::Process(char* s) {
     // Check for incoming numeric
     if (s[0] != ':') {
 
+        // The first token is a numeric (at most 5 characters) or a short
+        // bare command such as SERVER.  It comes straight off the wire, so
+        // never copy more than fits: a longer one cannot be valid.
         char* yxxPtr = YXX;
+        const char* const yxxEnd = YXX + sizeof(YXX) - 1;
         while (*s && (' ' != *s)) {
+            if (yxxPtr == yxxEnd) {
+                elog << "xServer::Process> Dropping line with oversized first token" << endl;
+                return;
+            }
             *yxxPtr++ = *s++;
         }
 
@@ -2233,11 +2240,11 @@ bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, co
 
                 OnChannelModeL(theChan, polarityBool, theUser, chanLimit);
 
+                // Not via a stringstream and std::ends: that put a NUL byte
+                // into the argument, and so into the middle of the line sent.
                 std::string chanLimitString;
                 if (chanLimit != 0) {
-                    std::stringstream chanLimitSS;
-                    chanLimitSS << chanLimit << ends;
-                    chanLimitSS >> chanLimitString;
+                    chanLimitString = std::to_string(chanLimit);
                 }
 
                 //				elog	<< "xServer::Mode> limit: "
@@ -2974,7 +2981,7 @@ bool xServer::Notice(iClient* theClient, const char* format, ...) {
     va_end(_list);
 
     stringstream s;
-    s << getCharYY() << " O " << theClient->getCharYYXXX() << " :" << buf << ends;
+    s << getCharYY() << " O " << theClient->getCharYYXXX() << " :" << buf;
 
     return Write(s);
 }
@@ -2990,7 +2997,7 @@ bool xServer::serverNotice(Channel* theChan, const char* format, ...) {
     va_end(_list);
 
     stringstream s;
-    s << getCharYY() << " O " << theChan->getName() << " :" << buf << ends;
+    s << getCharYY() << " O " << theChan->getName() << " :" << buf;
 
     return Write(s);
 }
@@ -3003,7 +3010,7 @@ bool xServer::serverNotice(Channel* theChan, const string& Message) {
     }
 
     stringstream s;
-    s << getCharYY() << " O " << theChan->getName() << " :" << Message << ends;
+    s << getCharYY() << " O " << theChan->getName() << " :" << Message;
 
     return Write(s);
 }
