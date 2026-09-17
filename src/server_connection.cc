@@ -28,6 +28,7 @@
 
 #include <new>
 #include <string>
+#include <string_view>
 // #include	<list>
 // #include	<vector>
 // #include	<algorithm>
@@ -263,45 +264,51 @@ void xServer::OnRead(Connection* theConn, const string& line) {
  * Returns false if there is no valid connection,
  * true otherwise.
  */
-bool xServer::Write(const string& buf) {
-    // Is there a valid connection?
+bool xServer::writeLine(std::string_view text, bool duringBurst) {
     if (!isConnected()) {
+        if (duringBurst) {
+            elog << "xServer::writeLine> Not connected" << endl;
+        }
+        return false;
+    }
+
+    // One call is one line.  Callers may or may not supply the line ending.
+    while (!text.empty() && ('\n' == text.back() || '\r' == text.back())) {
+        text.remove_suffix(1);
+    }
+
+    // ircu ends a line at CR as well as at LF, so text with either inside
+    // it, a channel description out of the database say, would start a new
+    // server-to-server line of somebody else's choosing.  Cut it there.  A
+    // NUL ends the line for ircu too, which is how a timestamp once got lost.
+    const std::string_view::size_type cut = text.find_first_of(std::string_view("\r\n\0", 3));
+    if (cut != std::string_view::npos) {
+        elog << "xServer::writeLine> Dropped " << (text.size() - cut)
+             << " bytes behind a line break inside: " << text.substr(0, cut) << endl;
+        text = text.substr(0, cut);
+    }
+
+    if (text.empty()) {
         return false;
     }
 
     if (verbose) {
-        // Output the debugging information
-        // to the console.
-        clog << "[OUT]: " << buf;
-
-        // Should we output a trailing newline
-        // character?
-        if (buf[buf.size() - 1] != '\n') {
-            clog << endl;
-        }
+        clog << "[OUT]: " << text << endl;
     }
 
-    // Newline terminate the string if it's
-    // not already done and append it to
-    // the output buffer.
-    //
-    if (buf[buf.size() - 1] != '\n') {
-        if (useHoldBuffer) {
-            burstHoldBuffer += buf + '\n';
-        } else {
-            serverConnection->Write(buf + '\n');
-        }
+    std::string line(text);
+    line += '\n';
+
+    // Outside of our own burst, output is held back until the burst is done
+    if (!duringBurst && useHoldBuffer) {
+        burstHoldBuffer += line;
     } else {
-        if (useHoldBuffer) {
-            burstHoldBuffer += buf;
-        } else {
-            serverConnection->Write(buf);
-        }
+        serverConnection->Write(line);
     }
-
-    // Return success.
     return true;
 }
+
+bool xServer::Write(const string& buf) { return writeLine(buf, false); }
 
 bool xServer::Write(const xParameters::tagListType& tags, const string& line) {
     if (tags.empty() || !(Uplink && Uplink->getProtocol() >= 11)) {
@@ -342,36 +349,7 @@ bool xServer::WriteWithTime(const char* format, ...) {
     return WriteWithTime(string(buffer));
 }
 
-bool xServer::WriteDuringBurst(const string& buf) {
-    // Is there a valid connection?
-    if (!isConnected()) {
-        elog << "xServer::WriteDuringBurst> Not connected" << endl;
-        return 0;
-    }
-
-    if (verbose) {
-        // Output the debugging information
-        // to the console.
-        clog << "[OUT]: " << buf;
-
-        // Should we output a trailing newline
-        // character?
-        if (buf[buf.size() - 1] != '\n') {
-            clog << endl;
-        }
-    }
-
-    // Newline terminate the string if it's
-    // not already done and append it to
-    // the output buffer.
-    //
-    serverConnection->Write(buf);
-
-    if (buf[buf.size() - 1] != '\n') {
-        serverConnection->Write(string("\n"));
-    }
-    return true;
-}
+bool xServer::WriteDuringBurst(const string& buf) { return writeLine(buf, true); }
 
 /**
  * Write the contents of a std::stringstream to the uplink connection.
@@ -388,85 +366,21 @@ bool xServer::WriteDuringBurst(const stringstream& s) { return WriteDuringBurst(
  * I despise this function. --dan
  */
 bool xServer::Write(const char* format, ...) {
-    // Is there a valid connection?
-    if (!isConnected()) {
-        // Nope, return false.
-        return false;
-    }
-
-    // Go through the motions of putting the
-    // string into a buffer.
     char buffer[4096] = {0};
     va_list _list;
-
     va_start(_list, format);
-    vsnprintf(buffer, 4096, format, _list);
+    vsnprintf(buffer, sizeof(buffer), format, _list);
     va_end(_list);
-
-    if (verbose) {
-        // Output the string to the console.
-        clog << "[OUT]: " << buffer;
-
-        // Do we need to newline terminate it?
-        if (buffer[strlen(buffer) - 1] != '\n') {
-            clog << endl;
-        }
-    }
-
-    if (buffer[strlen(buffer) - 1] != '\n') {
-        if (useHoldBuffer) {
-            burstHoldBuffer += buffer;
-            burstHoldBuffer += "\n";
-        } else {
-            serverConnection->Write(buffer);
-            serverConnection->Write(string("\n"));
-        }
-    } else {
-        if (useHoldBuffer) {
-            burstHoldBuffer += buffer;
-        } else {
-            serverConnection->Write(buffer);
-        }
-    }
-
-    return true;
+    return writeLine(buffer, false);
 }
 
 bool xServer::WriteDuringBurst(const char* format, ...) {
-
-    // Is there a valid connection?
-    if (!isConnected()) {
-        // Nope, return false.
-        return false;
-    }
-
-    // Go through the motions of putting the
-    // string into a buffer.
     char buffer[4096] = {0};
     va_list _list;
-
     va_start(_list, format);
-    vsnprintf(buffer, 4096, format, _list);
+    vsnprintf(buffer, sizeof(buffer), format, _list);
     va_end(_list);
-
-    if (verbose) {
-        // Output the string to the console.
-        clog << "[OUT]: " << buffer;
-
-        // Do we need to newline terminate it?
-        if (buffer[strlen(buffer) - 1] != '\n') {
-            clog << endl;
-        }
-    }
-
-    // Append the line to the output buffer.
-    serverConnection->Write(buffer);
-    if (buffer[strlen(buffer) - 1] != '\n') {
-        serverConnection->Write(string("\n"));
-    }
-
-    // Return success
-    return true;
+    return writeLine(buffer, true);
 }
 
 void xServer::WriteBurstBuffer() {

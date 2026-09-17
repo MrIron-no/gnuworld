@@ -27,6 +27,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <list>
 #include <sstream>
@@ -1118,6 +1119,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * Update a channel for these modes without raising any event.  For our
      * own clients' joins, which have never raised mode events.
      */
+    /**
+     * Every Write*() ends up here.  Sends exactly one line: the line ending
+     * is ours to add, and anything behind a CR, LF or NUL inside the text is
+     * dropped, and logged, so that text cannot start a line of its own.
+     */
+    bool writeLine(std::string_view text, bool duringBurst);
+
     void applyModesSilently(Channel* theChan, std::span<const chanmode::Change> changes);
 
     bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets,
