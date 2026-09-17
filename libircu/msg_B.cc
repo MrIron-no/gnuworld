@@ -92,6 +92,14 @@ CREATE_LOADER(msg_B)
 // BG B #nails 1036089823
 // We ignore this case.
 //
+// P11 adds a delayed-join bucket, flagged ":d".  Those clients are on
+// the channel but not yet revealed, and hold no op or voice:
+// AB B #chan 1700000000 +tnD ABAAA:o,ABAAB,ABAAC:d,ABAAD
+//
+// In P11 each ban is burst as a "mask timestamp setter" triplet:
+// AB B #chan 1700000000 +tn ABAAA:o :%*!*@bad.host 1700000100 nick
+// *!*@other.host 1700000200 some.server.net
+//
 // With u2.10.12's oplevels, we have to deal with an extra case:
 // <numeric> B <channel> <ts> <modes...> <numnick>:<oplevel>
 // Ck B #test 1128024142 +tnAU apass upass BBAAA:999
@@ -282,9 +290,14 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
     //  Parse out users and their modes
     StringTokenizer st(theUsers, ',');
 
-    // Used to track op/voice/opvoice mode state switches.
-    // 1 = op, 2 = voice, 3 = opvoice.
+    // Tracks the mode state of the current bucket as a bitmask.
+    // 0 = none (also P11 delayed join), 1 = op, 2 = voice, 3 = opvoice.
     unsigned short int mode_state = 0;
+
+    // True while the next oplevel digits seen are an absolute value
+    // rather than an increment on the previous one.  Absolute at the
+    // start of every B line and again after each 'v'.
+    bool oplevelAbsolute = true;
 
     typedef xServer::opVectorType opVectorType;
     typedef xServer::voiceVectorType voiceVectorType;
@@ -296,16 +309,76 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
         // Each token is of the form:
         // abc or abc:modes
         string::size_type pos = (*ptr).find_first_of(':');
+        const string numeric((*ptr).substr(0, pos));
+
+        // Parse the suffix before looking the client up, as ircu does:
+        // the bucket state must advance even if this member is skipped.
+        if (string::npos != pos) {
+            // A suffix opens a new bucket.  Mirroring ircu's m_burst:
+            // the first 'o', 'v', 'd' or absolute oplevel in a suffix
+            // replaces the mode state for this client and for every
+            // suffix-less client that follows.  An oplevel *increment*
+            // keeps the current state, so ":v999" then ":5" stays +ov.
+            bool needsReset = true;
+
+            for (pos++; pos < (*ptr).size(); ++pos) {
+                const char flag = (*ptr)[pos];
+
+                if ('o' == flag) {
+                    if (needsReset) {
+                        mode_state = 0;
+                        needsReset = false;
+                    }
+                    mode_state |= 1;
+                    // Pre-oplevel op: later digits are increments
+                    oplevelAbsolute = false;
+                } else if ('v' == flag) {
+                    if (needsReset) {
+                        mode_state = 0;
+                        needsReset = false;
+                    }
+                    mode_state |= 2;
+                    // Digits after a 'v' are an absolute oplevel
+                    oplevelAbsolute = true;
+                } else if ('d' == flag) {
+                    /* P11: delayed join.  The client is on the (+D)
+                     * channel but has not been revealed yet, and holds
+                     * neither op nor voice.  We cannot track the reveal
+                     * (we do not see channel messages where we have no
+                     * client), so it is kept as a plain member.
+                     */
+                    if (needsReset) {
+                        mode_state = 0;
+                        needsReset = false;
+                    }
+                } else if (flag >= '0' && flag <= '9') {
+                    /* An oplevel.  We do not track the level itself, but
+                     * carrying one means the client is a chanop.
+                     */
+                    if (oplevelAbsolute) {
+                        if (needsReset) {
+                            mode_state = 0;
+                            needsReset = false;
+                        }
+                        oplevelAbsolute = false;
+                    }
+                    mode_state |= 1;
+                } else {
+                    elog << "msg_B::parseBurstUsers> "
+                         << "Unknown mode: " << flag << endl;
+                }
+            } // for()
+        }
 
         // Find the client in the client table
-        iClient* theClient = Network->findClient((*ptr).substr(0, pos));
+        iClient* theClient = Network->findClient(numeric);
 
         // Was the search successful?
         if (NULL == theClient) {
             // Nope, no such user
             // Log the error
             elog << "msg_B::parseBurstUsers> (" << theChan->getName() << ")"
-                 << ": Unable to find client: " << (*ptr).substr(0, pos) << endl;
+                 << ": Unable to find client: " << numeric << endl;
 
             // Skip this user
             continue;
@@ -362,64 +435,13 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
         if (tmpChan->findUser(theClient) == 0)
             continue;
 
-        // Is there a ':' in this client's info?
-        if (string::npos == pos) {
-            // no ':' in this string, add the user with the current
-            // MODE state.
-            switch (mode_state) {
-            case 1:
-                opVector.push_back(opVectorType::value_type(true, chanUser));
-                break;
-            case 2:
-                voiceVector.push_back(voiceVectorType::value_type(true, chanUser));
-                break;
-            case 3:
-                opVector.push_back(opVectorType::value_type(true, chanUser));
-                voiceVector.push_back(voiceVectorType::value_type(true, chanUser));
-                break;
-            }
-
-            // mode_state still 0, not opped or voiced.
-            continue;
+        // Apply the current bucket's state to this client.
+        if (mode_state & 1) {
+            opVector.push_back(opVectorType::value_type(true, chanUser));
         }
-
-        // Otherwise, user modes have been specified.
-        for (pos++; pos < (*ptr).size(); ++pos) {
-            switch ((*ptr)[pos]) {
-            case 'o':
-                opVector.push_back(opVectorType::value_type(true, chanUser));
-                mode_state = 1;
-                break;
-            case 'v':
-                // Does the user already
-                // have mode 'o'?
-                if (1 == mode_state) {
-                    // User has 'o' mode already
-                    opVector.push_back(opVectorType::value_type(true, chanUser));
-                }
-                voiceVector.push_back(voiceVectorType::value_type(true, chanUser));
-                mode_state = (mode_state == 1) ? 3 : 2;
-                break;
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
-                /* This is an oplevel, which we are not (currently) interested in.
-                 * However, we also don't want it to cause an error!
-                 */
-                break;
-            default:
-                elog << "msg_B::parseBurstUsers> "
-                     << "Unknown mode: " << (*ptr)[pos] << endl;
-                break;
-            } // switch
-        } // for()
+        if (mode_state & 2) {
+            voiceVector.push_back(voiceVectorType::value_type(true, chanUser));
+        }
 
     } // while( ptr != st.end() )
 
@@ -446,11 +468,41 @@ void msg_B::parseBurstBans(Channel* theChan, const string& theBans) {
     // Tokenize the ban string
     StringTokenizer st(theBans);
 
-    typedef xServer::banVectorType banVectorType;
-    banVectorType banVector(st.size());
+    // P10 bursts a flat list of masks.  P11 bursts each ban as a
+    // "mask timestamp setter" triplet.
+    const bool isP11 = theServer->getUplink()->getProtocol() >= 11;
+    const StringTokenizer::size_type stride = isP11 ? 3 : 1;
 
-    // Move through each token and add the ban
-    for (StringTokenizer::size_type i = 0; i < st.size(); ++i) {
+    // Validate the framing of the whole section before applying any of
+    // it.  ircu rejects a malformed section outright, so applying the
+    // part that fits would leave our ban list out of step with it.
+    if (isP11) {
+        if ((st.size() % stride) != 0) {
+            elog << "msg_B::parseBurstBans> (" << theChan->getName() << ") Ban section has "
+                 << st.size() << " tokens, not a multiple of 3, ignored: " << theBans << endl;
+            return;
+        }
+
+        for (StringTokenizer::size_type i = 0; i < st.size(); i += stride) {
+            // st[ i ]: mask, st[ i + 1 ]: time the ban was set,
+            // st[ i + 2 ]: who set it.
+            const string& banTS = st[i + 1];
+            if (banTS.empty() || banTS.find_first_not_of("0123456789") != string::npos) {
+                elog << "msg_B::parseBurstBans> (" << theChan->getName()
+                     << ") Invalid ban timestamp: " << banTS << ", section ignored: " << theBans
+                     << endl;
+                return;
+            }
+        }
+    }
+
+    typedef xServer::banVectorType banVectorType;
+    banVectorType banVector;
+    banVector.reserve(st.size() / stride);
+
+    // Channel only stores the mask, so the timestamp and setter of a
+    // P11 triplet are skipped over.
+    for (StringTokenizer::size_type i = 0; i < st.size(); i += stride) {
         banVector.push_back(banVectorType::value_type(true, st[i]));
     }
 
