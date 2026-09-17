@@ -30,6 +30,9 @@ CONF_TEMPLATE = HARNESS_DIR / "data" / "gnuworld.harness.conf.in"
 CCONTROL_CONF_TEMPLATE = HARNESS_DIR / "data" / "ccontrol.harness.conf.in"
 DEBUG_CONF_TEMPLATE = HARNESS_DIR / "data" / "debug.harness.conf.in"
 GNUTEST_CONF_TEMPLATE = HARNESS_DIR / "data" / "gnutest.harness.conf.in"
+
+# Set on the image by docker/Dockerfile
+IMAGE_LABEL = "org.gnuworld.harness=1"
 TLS_DIR = HARNESS_DIR / "data" / "tls"
 RUN_DIR = HARNESS_DIR / "run"
 
@@ -65,6 +68,15 @@ class DockerStack:
             _compose_cmd("build", "gnuworld"),
             cwd=str(HARNESS_DIR),
             check=True,
+        )
+        # The image copies the freshly installed binaries, so nearly every
+        # session builds a new one and leaves the last one untagged: 240 MB a
+        # time, which filled a disk within a day. Drop those, and only those:
+        # the label keeps this away from anybody else's dangling images.
+        subprocess.run(
+            ["docker", "image", "prune", "-f", "--filter", f"label={IMAGE_LABEL}"],
+            check=False,
+            capture_output=True,
         )
         subprocess.run(
             _compose_cmd("up", "-d", "postgres"),

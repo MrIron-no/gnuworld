@@ -1,6 +1,10 @@
 # Runtime image for integration tests: host-built binaries + libs.
 FROM debian:trixie-slim
 
+# Lets the harness find, and prune, the images it has built and replaced
+# (see DockerStack.up in gnuworld_proc.py).
+LABEL org.gnuworld.harness=1
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
