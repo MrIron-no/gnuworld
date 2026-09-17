@@ -31,7 +31,7 @@
 
 #include "NetworkTarget.h"
 #include "server.h"
-#include "SendAs.h"
+#include "Source.h"
 #include "iClient.h"
 #include "events.h"
 #include "TimerHandler.h"
@@ -131,11 +131,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      * Removing mode 'l' requires NO argument to be issued.
      */
     virtual bool Mode(const std::string& chanName, const std::string& modes,
-                      const std::string& args, SendAs as = SendAs::Client);
-
-    /// As above, with the source as a bool.  Prefer the SendAs form.
-    virtual bool Mode(const std::string& chanName, const std::string& modes,
-                      const std::string& args, bool modeAsServer);
+                      const std::string& args, bool modeAsServer = false);
 
     /**
      * This method will change modes in a channel.
@@ -147,12 +143,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      * Removing mode 'l' requires NO argument to be issued.
      */
     virtual bool Mode(Channel*, const std::string& modes, const std::string& args,
-                      SendAs as = SendAs::Client);
-
-    /// As above, with the source as a bool.  Prefer the SendAs form, which
-    /// says at the call site who the modes come from.
-    virtual bool Mode(Channel*, const std::string& modes, const std::string& args,
-                      bool modeAsServer);
+                      bool modeAsServer = false);
 
     /**
      * Mode is used to set the bot's modes.  If connected to the
@@ -167,10 +158,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      * This method will also post a channel event for each
      * mode.
      */
-    virtual bool ClearMode(Channel* theChan, const std::string& modes, SendAs as = SendAs::Client);
-
-    /// As above, with the source as a bool.  Prefer the SendAs form.
-    virtual bool ClearMode(Channel* theChan, const std::string& modes, bool modeAsServer);
+    virtual bool ClearMode(Channel* theChan, const std::string& modes, bool modeAsServer = false);
 
     /**
      * OnConnect is called when the server connects to the
@@ -446,61 +434,61 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Op a user on a channel, join/part the channel if necessary.
      */
-    virtual bool Op(Channel*, iClient*, SendAs as = SendAs::Client);
+    virtual bool Op(Channel*, iClient*);
 
     /**
      * Op one or more users on a channel, join/part the channel
      * if necessary.
      */
-    virtual bool Op(Channel*, const std::vector<iClient*>&, SendAs as = SendAs::Client);
+    virtual bool Op(Channel*, const std::vector<iClient*>&);
 
     /**
      * Voice a user on a channel, join/part the channel if necessary.
      */
-    virtual bool Voice(Channel*, iClient*, SendAs as = SendAs::Client);
+    virtual bool Voice(Channel*, iClient*);
 
     /**
      * Voice one or more users on a channel, join/part the channel
      * if necessary.
      */
-    virtual bool Voice(Channel*, const std::vector<iClient*>&, SendAs as = SendAs::Client);
+    virtual bool Voice(Channel*, const std::vector<iClient*>&);
 
     /**
      * Deop a user on a channel, join/part the channel if necessary.
      */
-    virtual bool DeOp(Channel*, iClient*, SendAs as = SendAs::Client);
+    virtual bool DeOp(Channel*, iClient*);
 
     /**
      * Deop a user on a channel, join/part the channel if necessary.
      */
-    virtual bool DeOp(Channel*, const std::vector<iClient*>&, SendAs as = SendAs::Client);
+    virtual bool DeOp(Channel*, const std::vector<iClient*>&);
 
     /**
      * Devoice a user on a channel, join/part the channel if necessary.
      */
-    virtual bool DeVoice(Channel*, iClient*, SendAs as = SendAs::Client);
+    virtual bool DeVoice(Channel*, iClient*);
 
     /**
      * Devoice one or more users on a channel, join/part the channel
      * if necessary.
      */
-    virtual bool DeVoice(Channel*, const std::vector<iClient*>&, SendAs as = SendAs::Client);
+    virtual bool DeVoice(Channel*, const std::vector<iClient*>&);
 
     /**
      * Set a ban on a channel, join/part the channel if necessary.
      */
-    virtual bool Ban(Channel*, iClient*, SendAs as = SendAs::Client);
+    virtual bool Ban(Channel*, iClient*);
 
     /**
      * Set a ban on a channel, join/part the channel if necessary.
      */
-    virtual bool Ban(Channel*, const std::vector<iClient*>&, SendAs as = SendAs::Client);
+    virtual bool Ban(Channel*, const std::vector<iClient*>&);
 
     /**
      * Set bans on a channel from a banVector, join/part the channel if necessary.
      * The banVector must not include duplicates.
      */
-    virtual bool Ban(Channel*, const xServer::banVectorType&, SendAs as = SendAs::Client);
+    virtual bool Ban(Channel*, const xServer::banVectorType&);
 
     /**
      * Ban kick a client from a channel for the given reason.
@@ -510,14 +498,14 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Remove a channel ban.
      */
-    virtual bool UnBan(Channel*, const std::string&, SendAs as = SendAs::Client);
+    virtual bool UnBan(Channel*, const std::string&);
 
     /**
      * Removes channel bans from a banVector, join/part the channel if necessary.
      * The banVector must not include duplicates, and only include exact existing
      * bans on the channel.
      */
-    virtual bool UnBan(Channel*, const xServer::banVectorType&, SendAs as = SendAs::Client);
+    virtual bool UnBan(Channel*, const xServer::banVectorType&);
 
     /**
      * Kick a user from a channel, join/part if necessary.
@@ -847,33 +835,19 @@ class xClient : public TimerHandler, public NetworkTarget {
     }
 
   protected:
-    /// The numeric a change goes out under: ours, or the server's.
-    std::string sourceFor(SendAs as) const;
-
     /**
-     * Make sure a channel change can be made as `as`.  For SendAs::Client
-     * that means being on the channel, opped: if we are not on it we join
-     * with ops, and `joined` tells the caller to part again afterwards.
-     * Returns false if we are on the channel without ops.
+     * Make sure we can change this channel as ourselves, which means being
+     * on it, opped.  If we are not on it we join with ops, and `joined`
+     * tells the caller to part again afterwards.  Returns false if we are on
+     * the channel without ops: the network would bounce the change.
      */
-    bool enterToChange(Channel* theChan, SendAs as, bool& joined);
+    bool enterToChange(Channel* theChan, bool& joined);
 
     /// Op(), DeOp(), Voice() and DeVoice(), for one target or several.
-    bool setMemberModes(Channel* theChan, char letter, bool set, std::span<iClient* const> targets,
-                        SendAs as);
+    bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets);
 
     /// Every Ban() and UnBan().
-    bool setBans(Channel* theChan, const xServer::banVectorType& bans, SendAs as);
-
-    /**
-     * Send +/-o or +/-v for these members.  Writes only: the caller updates
-     * the channel through MyUplink->OnChannelMode*().
-     */
-    bool sendMemberModes(Channel* theChan, char letter, const xServer::opVectorType& members,
-                         SendAs as);
-
-    /// Send these ban changes.  Writes only.
-    bool sendBanModes(Channel* theChan, const xServer::banVectorType& bans, SendAs as);
+    bool changeBans(Channel* theChan, xServer::banVectorType bans);
 
     /**
      * Allow sub classes to call default constructor

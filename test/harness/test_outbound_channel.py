@@ -75,7 +75,8 @@ STEPS: list[tuple[str, list[str]]] = [
     ("topic {c} hello there", ["{me} T {c} :hello there"]),
     ("invite {c}", ["{me} I {asker} {c}"]),
     ("kick {c} dave go away", ["{me} K {c} {dave} :go away"]),
-    ("servkick {c} carol and you", ["{srv} K {c} {carol} :and you"]),
+    # xClient::Kick(..., true): the bool form, still there for the modules
+    ("kickasserver {c} carol and you", ["{srv} K {c} {carol} :and you"]),
     ("bankick {c} bob bye now", [
         "{me} M {c} +b {bobmask} {ts}",
         "{me} K {c} {bob} :bye now",

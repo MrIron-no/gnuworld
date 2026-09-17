@@ -31,6 +31,7 @@
 
 #include <new>
 #include <string>
+#include <optional>
 #include <charconv>
 #include <string_view>
 #include <span>
@@ -60,6 +61,7 @@
 #include "server.h"
 #include "ChannelModeApply.h"
 #include "ChannelModes.h"
+#include "Source.h"
 #include "Network.h"
 #include "iServer.h"
 #include "iClient.h"
@@ -1813,6 +1815,401 @@ int xServer::Wallops(const string& msg) {
     return Write(s);
 }
 
+bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source& from) {
+    assert(theChan != 0);
+
+    if (modes.empty()) {
+        return false;
+    }
+
+    // Work out what clearing these modes removes from the channel as it is
+    // now: for a flag or a setting the mode itself, for 'o' and 'v' every
+    // member that holds it, for 'b' every ban.
+    std::vector<chanmode::Change> changes;
+    string letters;
+
+    for (const char letter : modes) {
+        const std::optional<chanmode::Mode> mode = chanmode::find(letter);
+        if (!mode) {
+            elog << "xServer::ClearMode> (" << theChan->getName() << "): "
+                 << (chanmode::isLocalOnly(letter) ? "mode is local to a server: "
+                                                   : "unknown mode: ")
+                 << letter << endl;
+            continue;
+        }
+        letters += letter;
+
+        switch (mode->kind) {
+        case chanmode::Kind::Flag:
+        case chanmode::Kind::Limit:
+            if (theChan->getMode(mode->flag)) {
+                changes.push_back({false, *mode, string()});
+            }
+            break;
+        case chanmode::Kind::Key:
+            if (theChan->getMode(mode->flag)) {
+                changes.push_back({false, *mode, theChan->getKey()});
+            }
+            break;
+        case chanmode::Kind::Password:
+            if (theChan->getMode(mode->flag)) {
+                changes.push_back(
+                    {false, *mode, ('A' == letter) ? theChan->getApass() : theChan->getUpass()});
+            }
+            break;
+        case chanmode::Kind::Member:
+            for (const auto& [id, member] : theChan->users()) {
+                (void)id;
+                if (('o' == letter) ? member->isModeO() : member->isModeV()) {
+                    changes.push_back({false, *mode, member->getCharYYXXX()});
+                }
+            }
+            break;
+        case chanmode::Kind::Ban:
+            for (Channel::const_banIterator ban = theChan->banList_begin();
+                 ban != theChan->banList_end(); ++ban) {
+                changes.push_back({false, *mode, *ban});
+            }
+            break;
+        }
+    }
+
+    if (letters.empty()) {
+        return false;
+    }
+
+    // A server, or an oper, can have it all done with one CLEARMODE.  Any
+    // other client has to be opped, and takes the modes off one by one with
+    // their arguments: this used to send the bare letters,
+    // "-b <timestamp>", which removes nothing.
+    bool sent = true;
+    if (!from.isClient() || from.client()->isOper()) {
+        sent = Write("%s CM %s :%s\r\n", numericOf(from).c_str(), theChan->getName().c_str(),
+                     letters.c_str());
+    } else if (canChangeChannel(from, theChan)) {
+        sent = SendChannelModes(numericOf(from), theChan, changes);
+    } else {
+        return false;
+    }
+
+    // The network first, then our tables and the modules
+    const ModeApplyResult applied = applyChannelModes(*this, *theChan, 0, changes);
+    logModeProblems("xServer::ClearMode>", theChan->getName(), applied.problems);
+
+    return sent;
+}
+
+std::string xServer::numericOf(const Source& from) const {
+    if (from.isClient()) {
+        return from.client()->getCharYYXXX();
+    }
+    return (from.server() != 0) ? from.server()->getCharYY() : string(getCharYY());
+}
+
+bool xServer::canChangeChannel(const Source& from, const Channel* theChan) const {
+    if (!from.isClient()) {
+        // The network applies a server's change without asking who is opped
+        return true;
+    }
+    const ChannelUser* member = theChan->findUser(from.client());
+    return (member != 0) && member->isModeO();
+}
+
+std::optional<xServer::opVectorType> xServer::planMemberModes(Channel* theChan, char letter,
+                                                              bool set,
+                                                              std::span<iClient* const> targets) {
+    assert(theChan != 0);
+
+    // With a single target a problem with it fails the call; with several,
+    // that target is skipped.
+    const bool single = (1 == targets.size());
+    const bool isOp = ('o' == letter);
+
+    opVectorType members;
+    for (iClient* target : targets) {
+        if (NULL == target) {
+            elog << "xServer::planMemberModes> Found NULL iClient for channel: "
+                 << theChan->getName() << endl;
+            if (single) {
+                return std::nullopt;
+            }
+            continue;
+        }
+
+        // A network service (+k) is not deopped
+        if (isOp && !set && target->isModeK()) {
+            if (single) {
+                return std::nullopt;
+            }
+            continue;
+        }
+
+        ChannelUser* member = theChan->findUser(target);
+        if (NULL == member) {
+            elog << "xServer::planMemberModes> " << *target
+                 << " is not on channel: " << theChan->getName() << endl;
+            if (single) {
+                return std::nullopt;
+            }
+            continue;
+        }
+
+        // Leave out what would change nothing
+        if ((isOp ? member->isModeO() : member->isModeV()) != set) {
+            members.emplace_back(set, member);
+        }
+    }
+    return members;
+}
+
+void xServer::commitMemberModes(const std::string& sourceNumeric, ChannelUser* eventSource,
+                                Channel* theChan, char letter, const opVectorType& members) {
+    if (members.empty()) {
+        return;
+    }
+
+    const std::optional<chanmode::Mode> mode = chanmode::find(letter);
+    assert(mode && chanmode::Kind::Member == mode->kind);
+
+    std::vector<chanmode::Change> changes;
+    changes.reserve(members.size());
+    for (const auto& [set, member] : members) {
+        changes.push_back({set, *mode, member->getCharYYXXX()});
+    }
+
+    // The network first, then our tables and the modules
+    SendChannelModes(sourceNumeric, theChan, changes);
+    if ('o' == letter) {
+        OnChannelModeO(theChan, eventSource, members);
+    } else {
+        OnChannelModeV(theChan, eventSource, members);
+    }
+}
+
+xServer::banVectorType xServer::planBans(const Channel* theChan, const banVectorType& bans) const {
+    // Leave out what would change nothing: a ban that is already set, and
+    // the removal of one that is not.  We see every ban on the network, so
+    // our list is the network's.
+    banVectorType changes;
+    for (const auto& [set, mask] : bans) {
+        if (theChan->findBan(mask) != set) {
+            changes.emplace_back(set, mask);
+        }
+    }
+    return changes;
+}
+
+xServer::banVectorType xServer::planBans(const Channel* theChan,
+                                         std::span<iClient* const> targets) const {
+    banVectorType bans;
+    for (const iClient* target : targets) {
+        if (NULL == target) {
+            elog << "xServer::planBans> Found NULL iClient for channel: " << theChan->getName()
+                 << endl;
+            continue;
+        }
+        // A network service (+k) is not banned, and neither is somebody
+        // who is not on the channel
+        if (target->isModeK() || 0 == theChan->findUser(target)) {
+            continue;
+        }
+        bans.emplace_back(true, Channel::createBan(target));
+    }
+    return planBans(theChan, bans);
+}
+
+void xServer::commitBans(const std::string& sourceNumeric, ChannelUser* eventSource,
+                         Channel* theChan, banVectorType bans) {
+    if (bans.empty()) {
+        return;
+    }
+
+    std::vector<chanmode::Change> changes;
+    changes.reserve(bans.size());
+    for (const auto& [set, mask] : bans) {
+        changes.push_back({set, *chanmode::find('b'), mask});
+    }
+
+    SendChannelModes(sourceNumeric, theChan, changes);
+
+    // OnChannelModeB() appends the bans that a new one overrides, which is
+    // why it is given a vector of its own.
+    OnChannelModeB(theChan, eventSource, bans);
+}
+
+bool xServer::changeMembers(Channel* theChan, char letter, bool set,
+                            std::span<iClient* const> targets, const Source& from) {
+    const std::optional<opVectorType> members = planMemberModes(theChan, letter, set, targets);
+    if (!members) {
+        return false;
+    }
+    if (members->empty()) {
+        return true;
+    }
+    if (!canChangeChannel(from, theChan)) {
+        return false;
+    }
+    commitMemberModes(numericOf(from), from.isClient() ? theChan->findUser(from.client()) : 0,
+                      theChan, letter, *members);
+    return true;
+}
+
+bool xServer::changeBans(Channel* theChan, banVectorType bans, const Source& from) {
+    if (bans.empty()) {
+        return true;
+    }
+    if (!canChangeChannel(from, theChan)) {
+        return false;
+    }
+    commitBans(numericOf(from), from.isClient() ? theChan->findUser(from.client()) : 0, theChan,
+               std::move(bans));
+    return true;
+}
+
+std::vector<iClient*> xServer::planKick(const Channel* theChan,
+                                        std::span<iClient* const> targets) const {
+    std::vector<iClient*> kicked;
+    for (iClient* target : targets) {
+        if (NULL == target) {
+            elog << "xServer::planKick> Found NULL iClient for channel: " << theChan->getName()
+                 << endl;
+            continue;
+        }
+        // A network service (+k) is not kicked
+        if (target->isModeK()) {
+            continue;
+        }
+        if (NULL == theChan->findUser(target)) {
+            elog << "xServer::planKick> Can't find " << target->getNickName() << " on channel "
+                 << theChan->getName() << endl;
+            continue;
+        }
+        kicked.push_back(target);
+    }
+    return kicked;
+}
+
+void xServer::commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
+                         std::span<iClient* const> targets, const std::string& reason) {
+    for (iClient* target : targets) {
+        Write("%s K %s %s :%s", sourceNumeric.c_str(), theChan->getName().c_str(),
+              target->getCharYYXXX().c_str(), reason.c_str());
+
+        // Take the member off the channel now.  A PART that a server sends
+        // for it later is ignored, and this way a fake client of ours is
+        // cleaned up too.
+        ChannelUser* member = theChan->removeUser(target);
+        if (NULL == member) {
+            elog << "xServer::commitKick> " << *target << " vanished from " << theChan->getName()
+                 << endl;
+            continue;
+        }
+        delete member;
+
+        if (!target->removeChannel(theChan)) {
+            elog << "xServer::commitKick> Unable to remove channel " << theChan->getName()
+                 << " from the iClient " << *target << endl;
+        }
+
+        // The last argument says the kicked client is one of ours
+        PostChannelKick(theChan, kicker, target, reason, target->getIntYY() == getIntYY());
+    }
+}
+
+bool xServer::Kick(Channel* theChan, iClient* target, const std::string& reason,
+                   const Source& from) {
+    assert(theChan != 0 && target != 0);
+    iClient* const targets[] = {target};
+    return Kick(theChan, std::vector<iClient*>(targets, targets + 1), reason, from);
+}
+
+bool xServer::Kick(Channel* theChan, const std::vector<iClient*>& targets,
+                   const std::string& reason, const Source& from) {
+    assert(theChan != 0);
+
+    const std::vector<iClient*> kicked = planKick(theChan, targets);
+    if (kicked.empty()) {
+        // With one target that is a refusal; with several, nothing to do
+        return targets.size() != 1;
+    }
+    if (!canChangeChannel(from, theChan)) {
+        return false;
+    }
+
+    // As with the inbound KICK, the kicker is null when a server did it
+    commitKick(numericOf(from), const_cast<iClient*>(from.client()), theChan, kicked, reason);
+
+    if (theChan->empty()) {
+        delete Network->removeChannel(theChan->getName());
+    }
+    return true;
+}
+
+bool xServer::Op(Channel* theChan, iClient* target, const Source& from) {
+    iClient* const targets[] = {target};
+    return changeMembers(theChan, 'o', true, targets, from);
+}
+
+bool xServer::Op(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+    return changeMembers(theChan, 'o', true, targets, from);
+}
+
+bool xServer::DeOp(Channel* theChan, iClient* target, const Source& from) {
+    iClient* const targets[] = {target};
+    return changeMembers(theChan, 'o', false, targets, from);
+}
+
+bool xServer::DeOp(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+    return changeMembers(theChan, 'o', false, targets, from);
+}
+
+bool xServer::Voice(Channel* theChan, iClient* target, const Source& from) {
+    iClient* const targets[] = {target};
+    return changeMembers(theChan, 'v', true, targets, from);
+}
+
+bool xServer::Voice(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+    return changeMembers(theChan, 'v', true, targets, from);
+}
+
+bool xServer::DeVoice(Channel* theChan, iClient* target, const Source& from) {
+    iClient* const targets[] = {target};
+    return changeMembers(theChan, 'v', false, targets, from);
+}
+
+bool xServer::DeVoice(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+    return changeMembers(theChan, 'v', false, targets, from);
+}
+
+bool xServer::Ban(Channel* theChan, iClient* target, const Source& from) {
+    assert(theChan != 0 && target != 0);
+    if (target->isModeK()) {
+        return false;
+    }
+    iClient* const targets[] = {target};
+    return changeBans(theChan, planBans(theChan, targets), from);
+}
+
+bool xServer::Ban(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+    assert(theChan != 0);
+    return changeBans(theChan, planBans(theChan, targets), from);
+}
+
+bool xServer::Ban(Channel* theChan, const banVectorType& bans, const Source& from) {
+    assert(theChan != 0);
+    return changeBans(theChan, planBans(theChan, bans), from);
+}
+
+bool xServer::UnBan(Channel* theChan, const std::string& banMask, const Source& from) {
+    assert(theChan != 0);
+    return changeBans(theChan, planBans(theChan, banVectorType{{false, banMask}}), from);
+}
+
+bool xServer::UnBan(Channel* theChan, const banVectorType& bans, const Source& from) {
+    assert(theChan != 0);
+    return changeBans(theChan, planBans(theChan, bans), from);
+}
+
 bool xServer::SendChannelModes(const std::string& source, Channel* theChan,
                                std::span<const chanmode::Change> changes) {
     assert(theChan != 0);
@@ -1866,6 +2263,12 @@ void xServer::applyModesSilently(Channel* theChan, std::span<const chanmode::Cha
 }
 
 bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, const string& args) {
+    // The form modules have always used: a null xClient means "as the server"
+    return (theClient != 0) ? Mode(theChan, modes, args, Source(theClient->getInstance()))
+                            : Mode(theChan, modes, args);
+}
+
+bool xServer::Mode(Channel* theChan, const string& modes, const string& args, const Source& from) {
     assert(theChan != 0);
 
     // The modes string must not be empty; the args string may be
@@ -1873,19 +2276,14 @@ bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, co
         return false;
     }
 
-    // theUser is passed to the OnChannelMode*() methods.  It is the member
-    // that changes the modes, or null when the server does.
-    ChannelUser* theUser = 0;
-    if (theClient != 0) {
-        iClient* theIClient = theClient->getInstance();
-        assert(theIClient != 0);
-
-        // To change modes as a client, it has to be on the channel, opped
-        theUser = theChan->findUser(theIClient);
-        if (NULL == theUser || !theUser->isModeO()) {
-            return false;
-        }
+    // A client has to be on the channel, opped, to change its modes
+    if (!canChangeChannel(from, theChan)) {
+        return false;
     }
+
+    // Passed to the OnChannelMode*() methods: the member that changes the
+    // modes, or null when a server does.
+    ChannelUser* theUser = from.isClient() ? theChan->findUser(from.client()) : 0;
 
     // Everything is validated before anything is sent or changed.  This
     // method used to update the channel as it went and could then fail on a
@@ -1925,7 +2323,7 @@ bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, co
     for (chanmode::Change& change : requested) {
         const chanmode::Mode& mode = change.mode;
 
-        if (mode.serverOnly && theClient != 0) {
+        if (mode.serverOnly && from.isClient()) {
             elog << "xServer::Mode> (" << theChan->getName() << "): only a server may change mode '"
                  << mode.letter << "'" << endl;
             return false;
@@ -1976,8 +2374,7 @@ bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, co
     // Tell the network first, then update our tables and the modules: a
     // module may answer an event with traffic of its own, which has to
     // follow the mode that caused it.
-    const std::string source = (theClient != 0) ? theClient->getCharYYXXX() : string(getCharYY());
-    SendChannelModes(source, theChan, wire);
+    SendChannelModes(numericOf(from), theChan, wire);
 
     const ModeApplyResult applied = applyChannelModes(*this, *theChan, theUser, wire);
     logModeProblems("xServer::Mode>", theChan->getName(), applied.problems);

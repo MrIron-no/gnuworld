@@ -151,7 +151,7 @@ EXTRA_DIST = bin/logging.properties \
 	include/Network.h \
 	include/NetworkTarget.h \
 	include/Numeric.h \
-	include/SendAs.h \
+	include/Source.h \
 	include/ServerCommandHandler.h \
 	include/ServerTimerHandlers.h \
 	include/Timer.h \

@@ -22,6 +22,7 @@
 #ifndef __GNUTEST_H
 #define __GNUTEST_H "$Id: gnutest.h,v 1.14 2005/01/17 23:09:54 dan_karrels Exp $"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -195,10 +196,12 @@ class gnutest : public xClient {
      * Report information about a channel.
      */
     /**
-     * Handle the commands that act on a channel's members, bans or topic.
+     * Handle the commands that change a channel.  `fake`, if set, is the
+     * fake client or spawned server of ours that makes the change.
      * Returns false if st[0] is not such a command.
      */
-    virtual bool channelCommand(iClient* requestingClient, const StringTokenizer& st);
+    virtual bool channelCommand(iClient* requestingClient, const StringTokenizer& st,
+                                const std::optional<Source>& fake);
 
     virtual void chanInfo(const Channel* theChan);
 

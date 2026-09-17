@@ -19,6 +19,7 @@
  * $Id: gnutest.cc,v 1.26 2005/01/17 23:09:53 dan_karrels Exp $
  */
 #include <map>
+#include <optional>
 #include <string>
 #include <iostream>
 #include <sstream>
@@ -83,8 +84,8 @@ gnutest::gnutest(const string& fileName) : xClient(fileName) {
     helpTable.insert(
         std::make_pair("banmask <chan> <banmask> [banmask ...]", "Set bans by mask in a channel"));
     helpTable.insert(std::make_pair("kick <chan> <nick> <reason>", "Kick a nick from a channel"));
-    helpTable.insert(
-        std::make_pair("servkick <chan> <nick> <reason>", "Kick a nick, as the server"));
+    helpTable.insert(std::make_pair("kickasserver <chan> <nick> <reason>",
+                                    "Kick a nick as the server, by xClient::Kick(..., true)"));
     helpTable.insert(std::make_pair("topic <chan> <text>", "Set a channel's topic"));
     helpTable.insert(std::make_pair("spawnclient <nick>", "Spawn a fake client"));
     helpTable.insert(
@@ -179,26 +180,42 @@ void gnutest::OnChannelMessage(iClient* theClient, Channel* theChan, const strin
 }
 
 /**
- * Commands that act on a channel's members, bans or topic.  Each one is a
- * thin wrapper around a single core API call, so that a test can trigger
- * that call and look at what is sent to the network.
+ * Commands that change a channel.  Each one is a thin wrapper around a
+ * single core API call, so that a test can trigger that call and look at
+ * what is sent to the network.
+ *
+ * Who makes the change follows the core API:
+ *   op #chan nick           this xClient:         Op(...)
+ *   servop #chan nick       the gnuworld server:  MyUplink->Op(...)
+ *   as fake op #chan nick   a fake client, or a   MyUplink->Op(..., fake)
+ *                           server we spawned:
+ *
  * Given one nick (or mask) the single-target overload is called; given
  * several, the vector overload.
  * Returns false if st[0] is not one of these commands.
  */
-bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
-    // "serv" in front of a command sends it as the server: servop, servban...
-    // "servkick" predates this and is kept as a command of its own.
-    const bool asServer = st[0].starts_with("serv") && st[0] != "servkick" && st[0] != "servmode";
-    const SendAs as = asServer ? SendAs::Server : SendAs::Client;
+bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st,
+                             const std::optional<Source>& fake) {
+    const bool asServer = !fake && st[0].starts_with("serv");
     const string cmd = asServer ? st[0].substr(4) : st[0];
 
-    const bool takesReason = (cmd == "kick" || cmd == "servkick" || cmd == "bankick");
+    // Anything but this xClient goes through the server's methods
+    const bool viaServer = asServer || fake.has_value();
+    const Source from = fake.value_or(Source());
+
+    // "kickasserver" is the older form, xClient::Kick(..., true): sent as the
+    // server, but reported to the modules as this xClient's doing
+    const bool takesReason = (cmd == "kick" || cmd == "kickasserver" || cmd == "bankick");
     const bool takesMasks = (cmd == "unban" || cmd == "banmask");
     const bool takesNicks =
         (cmd == "op" || cmd == "deop" || cmd == "voice" || cmd == "devoice" || cmd == "ban");
+    const bool takesText = (cmd == "topic" || cmd == "mode" || cmd == "clearmode");
 
-    if (!takesReason && !takesMasks && !takesNicks && cmd != "topic") {
+    if (!takesReason && !takesMasks && !takesNicks && !takesText) {
+        return false;
+    }
+    if (viaServer && (cmd == "bankick" || cmd == "kickasserver" || cmd == "topic")) {
+        // Not part of the server-side API
         return false;
     }
 
@@ -221,6 +238,15 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
         Topic(theChan, st.assemble(2));
         return true;
     }
+    if (cmd == "mode") {
+        viaServer ? MyUplink->Mode(theChan, st.assemble(2), string(), from)
+                  : Mode(theChan, st.assemble(2), string());
+        return true;
+    }
+    if (cmd == "clearmode") {
+        viaServer ? MyUplink->ClearMode(theChan, st[2], from) : ClearMode(theChan, st[2]);
+        return true;
+    }
 
     if (takesMasks) {
         const bool adding = (cmd == "banmask");
@@ -229,7 +255,7 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
                 Notice(requester, "Unable to find ban");
                 return true;
             }
-            UnBan(theChan, st[2], as);
+            viaServer ? MyUplink->UnBan(theChan, st[2], from) : UnBan(theChan, st[2]);
             return true;
         }
 
@@ -238,9 +264,9 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
             banVector.push_back(xServer::banVectorType::value_type(adding, st[i]));
         }
         if (adding) {
-            Ban(theChan, banVector, as);
+            viaServer ? MyUplink->Ban(theChan, banVector, from) : Ban(theChan, banVector);
         } else {
-            UnBan(theChan, banVector, as);
+            viaServer ? MyUplink->UnBan(theChan, banVector, from) : UnBan(theChan, banVector);
         }
         return true;
     }
@@ -261,24 +287,36 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
         targets.push_back(target);
     }
 
+    iClient* const one = targets[0];
     const bool single = (1 == targets.size());
 
     if (cmd == "kick") {
-        Kick(theChan, targets[0], st.assemble(3), false);
-    } else if (cmd == "servkick") {
-        Kick(theChan, targets[0], st.assemble(3), true);
+        viaServer ? MyUplink->Kick(theChan, one, st.assemble(3), from)
+                  : Kick(theChan, one, st.assemble(3), false);
+    } else if (cmd == "kickasserver") {
+        Kick(theChan, one, st.assemble(3), true);
     } else if (cmd == "bankick") {
-        BanKick(theChan, targets[0], st.assemble(3));
+        BanKick(theChan, one, st.assemble(3));
     } else if (cmd == "op") {
-        single ? Op(theChan, targets[0], as) : Op(theChan, targets, as);
+        viaServer
+            ? (single ? MyUplink->Op(theChan, one, from) : MyUplink->Op(theChan, targets, from))
+            : (single ? Op(theChan, one) : Op(theChan, targets));
     } else if (cmd == "deop") {
-        single ? DeOp(theChan, targets[0], as) : DeOp(theChan, targets, as);
+        viaServer
+            ? (single ? MyUplink->DeOp(theChan, one, from) : MyUplink->DeOp(theChan, targets, from))
+            : (single ? DeOp(theChan, one) : DeOp(theChan, targets));
     } else if (cmd == "voice") {
-        single ? Voice(theChan, targets[0], as) : Voice(theChan, targets, as);
+        viaServer ? (single ? MyUplink->Voice(theChan, one, from)
+                            : MyUplink->Voice(theChan, targets, from))
+                  : (single ? Voice(theChan, one) : Voice(theChan, targets));
     } else if (cmd == "devoice") {
-        single ? DeVoice(theChan, targets[0], as) : DeVoice(theChan, targets, as);
+        viaServer ? (single ? MyUplink->DeVoice(theChan, one, from)
+                            : MyUplink->DeVoice(theChan, targets, from))
+                  : (single ? DeVoice(theChan, one) : DeVoice(theChan, targets));
     } else if (cmd == "ban") {
-        single ? Ban(theChan, targets[0], as) : Ban(theChan, targets, as);
+        viaServer
+            ? (single ? MyUplink->Ban(theChan, one, from) : MyUplink->Ban(theChan, targets, from))
+            : (single ? Ban(theChan, one) : Ban(theChan, targets));
     }
 
     return true;
@@ -329,7 +367,32 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         return;
     }
 
-    if (channelCommand(theClient, st)) {
+    // "as <fake> <command ...>": have a fake client of ours, or a server we
+    // spawned, do it.  Neither has an object with methods to call, so they
+    // go through the server's methods with a Source.
+    if (st[0] == "as") {
+        std::optional<Source> from;
+        if (st.size() >= 3) {
+            iClient* fakeClient = Network->findNick(st[1]);
+            iServer* fakeServer = Network->findServerName(st[1]);
+            if (fakeClient != 0 && Network->findFakeClientOwner(fakeClient) == this) {
+                from = Source(fakeClient);
+            } else if (fakeServer != 0 && fakeServer != MyUplink->getMe()) {
+                from = Source(fakeServer);
+            }
+        }
+        if (!from) {
+            Notice(theClient, "Usage: as <fake client or spawned server> <command ...>");
+            return;
+        }
+        StringTokenizer rest(st.assemble(2));
+        if (!channelCommand(theClient, rest, from)) {
+            Notice(theClient, "That cannot be done through a Source");
+        }
+        return;
+    }
+
+    if (channelCommand(theClient, st, std::nullopt)) {
         return;
     }
 
@@ -359,19 +422,6 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         }
 
         Message(theChan, st.assemble(2));
-    } else if (st[0] == "clearmode") {
-        if (st.size() != 3) {
-            Notice(theClient, "Usage: clearmode <channel> <modes>");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        ClearMode(theChan, st[2], SendAs::Client);
     } else if (st[0] == "chaninfo") {
         Channel* theChan = Network->findChannel(st[1]);
         if (NULL == theChan) {
@@ -380,38 +430,6 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         }
 
         chanInfo(theChan);
-    } else if (st[0] == "servmode") {
-        // mode #chan <mode string>
-        if (st.size() < 3) {
-            Notice(theClient, "Usage: servmode <channel> <modes>");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        // Note that this only exercises the first argument of
-        // Mode()
-        Mode(theChan, st.assemble(2), string(), SendAs::Server);
-    } else if (st[0] == "mode") {
-        // mode #chan <mode string>
-        if (st.size() < 3) {
-            Notice(theClient, "Usage: mode <channel> <modes>");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        // Note that this only exercises the first argument of
-        // Mode()
-        Mode(theChan, st.assemble(2), string(), SendAs::Client);
     } else if (st[0] == "schedule") {
         Channel* theChan = Network->findChannel(st[1]);
         if (NULL == theChan) {

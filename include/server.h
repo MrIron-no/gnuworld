@@ -24,6 +24,7 @@
 #ifndef __SERVER_H
 #define __SERVER_H "$Id: server.h,v 1.107 2010/08/31 21:16:45 denspike Exp $"
 
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -37,6 +38,7 @@
 #include <cassert>
 
 #include "ChannelModes.h"
+#include "Source.h"
 #include "NetworkTarget.h"
 #include "iServer.h"
 #include "iClient.h"
@@ -532,6 +534,99 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     virtual bool Mode(xClient*, Channel*, const std::string& modes, const std::string& args);
 
+    /*
+     * Changing a channel, as a server.
+     *
+     * Who makes a change is the object the method is called on: these send
+     * as the gnuworld server, and the methods of the same name on xClient
+     * send as that client.  A fake client, or a server we spawned or juped,
+     * is only an iClient or iServer and cannot be called on, so it is named
+     * by the last argument instead; see Source.h.  A client source has to
+     * be on the channel, opped, or the call fails.
+     *
+     * Each of them works out what would really change, tells the network,
+     * then updates the channel and notifies the modules.  A call that would
+     * change nothing sends nothing and returns true.
+     */
+
+    virtual bool Mode(Channel*, const std::string& modes, const std::string& args,
+                      const Source& from = {});
+
+    /// Clear these modes: a flag or a setting itself, for 'o' and 'v' every
+    /// member holding it, for 'b' every ban.
+    virtual bool ClearMode(Channel*, const std::string& modes, const Source& from = {});
+
+    virtual bool Op(Channel*, iClient*, const Source& from = {});
+    virtual bool Op(Channel*, const std::vector<iClient*>&, const Source& from = {});
+    virtual bool DeOp(Channel*, iClient*, const Source& from = {});
+    virtual bool DeOp(Channel*, const std::vector<iClient*>&, const Source& from = {});
+    virtual bool Voice(Channel*, iClient*, const Source& from = {});
+    virtual bool Voice(Channel*, const std::vector<iClient*>&, const Source& from = {});
+    virtual bool DeVoice(Channel*, iClient*, const Source& from = {});
+    virtual bool DeVoice(Channel*, const std::vector<iClient*>&, const Source& from = {});
+
+    /// Ban these clients by the mask Channel::createBan() gives them.
+    virtual bool Ban(Channel*, iClient*, const Source& from = {});
+    virtual bool Ban(Channel*, const std::vector<iClient*>&, const Source& from = {});
+    /// Set, or remove, bans by mask.
+    virtual bool Ban(Channel*, const banVectorType&, const Source& from = {});
+    virtual bool UnBan(Channel*, const std::string& banMask, const Source& from = {});
+    virtual bool UnBan(Channel*, const banVectorType&, const Source& from = {});
+
+    /// Kick, and take the member off the channel.  Network services (+k)
+    /// are never kicked.
+    virtual bool Kick(Channel*, iClient*, const std::string& reason, const Source& from = {});
+    virtual bool Kick(Channel*, const std::vector<iClient*>&, const std::string& reason,
+                      const Source& from = {});
+
+    /*
+     * The pieces the methods above are made of.  xClient uses them too: it
+     * has to be on the channel with ops between the planning and the
+     * committing, which may mean joining first and parting after.
+     */
+
+    /// The numeric a change goes out under.
+    std::string numericOf(const Source& from) const;
+
+    /// True for a server; for a client, true if it is on the channel, opped.
+    bool canChangeChannel(const Source& from, const Channel* theChan) const;
+
+    /**
+     * What +/-o or +/-v on these targets would really change.  A target
+     * that is null, not on the channel, or a network service being deopped
+     * is skipped, or with a single target fails the call (nullopt).  An
+     * empty result means there is nothing to do.
+     */
+    std::optional<opVectorType> planMemberModes(Channel* theChan, char letter, bool set,
+                                                std::span<iClient* const> targets);
+
+    /// Send the planned member modes, then update the channel and the modules.
+    void commitMemberModes(const std::string& sourceNumeric, ChannelUser* eventSource,
+                           Channel* theChan, char letter, const opVectorType& members);
+
+    /// The ban changes that would really change something.
+    banVectorType planBans(const Channel* theChan, const banVectorType& bans) const;
+
+    /// Bans for these clients; services and those not on the channel are skipped.
+    banVectorType planBans(const Channel* theChan, std::span<iClient* const> targets) const;
+
+    /// Send the planned bans, then update the channel and the modules.
+    void commitBans(const std::string& sourceNumeric, ChannelUser* eventSource, Channel* theChan,
+                    banVectorType bans);
+
+    /// Those of the targets that can be kicked: on the channel, and not a
+    /// network service.
+    std::vector<iClient*> planKick(const Channel* theChan, std::span<iClient* const> targets) const;
+
+    /**
+     * Send the kicks, take the members off the channel and notify the
+     * modules.  `kicker` is reported to them and may be null, for a server.
+     * Does not remove a channel left empty: the caller may still have to
+     * part it.
+     */
+    void commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
+                    std::span<iClient* const> targets, const std::string& reason);
+
     /**
      * Send channel mode changes to the network, as `source` (a server or
      * client numeric).  This only writes: it does not check the changes
@@ -1016,6 +1111,10 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * own clients' joins, which have never raised mode events.
      */
     void applyModesSilently(Channel* theChan, std::span<const chanmode::Change> changes);
+
+    bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets,
+                       const Source& from);
+    bool changeBans(Channel* theChan, banVectorType bans, const Source& from);
 
     /**
      * Allow only subclasses to call the default
