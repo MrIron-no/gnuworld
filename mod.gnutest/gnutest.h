@@ -211,6 +211,10 @@ class gnutest : public xClient {
      */
     std::string operChan;
 
+    /// "<#channel> <timestamp> [<modes> [<args>]]" to BurstChannel() during
+    /// our burst; empty for none.
+    std::string burstChannel;
+
     /**
      * I have no idea what this is.
      */

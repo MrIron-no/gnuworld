@@ -2795,22 +2795,43 @@ void xServer::PartChannel(iClient* theClient, const string& chanName, const stri
 /// Have the server burst a channel
 bool xServer::BurstChannel(const string& chanName, const string& chanModes,
                            const time_t& burstTime) {
-    // Only send a B command during bursting
     if (!bursting) {
         return false;
     }
 
-    // chanModes cannot contain a '-' mode, but can contain
-    // a key that has '-' in it
-    StringTokenizer st(chanModes);
-    if (st[0].find('-') != string::npos) {
-        elog << "xServer::BurstChannel> Channel modes cannot "
-             << "contain a \'-\' polarity modifier" << endl;
-        return false;
+    // Validate the modes before anything is sent.  They used to be copied
+    // into the BURST as the module gave them, and then picked apart again
+    // by a switch of their own to update the channel.
+    std::vector<Channel::ModeChange> modes;
+    if (string::npos != chanModes.find_first_not_of(' ')) {
+        StringTokenizer st(chanModes);
+        std::vector<std::string_view> tokens;
+        for (StringTokenizer::size_type i = 0; i < st.size(); ++i) {
+            tokens.emplace_back(st[i]);
+        }
+
+        Channel::ParsedModes parsed = Channel::parseModes(tokens[0], std::span(tokens).subspan(1));
+        if (!parsed.ok()) {
+            logModeProblems("xServer::BurstChannel>", chanName, parsed.problems);
+            return false;
+        }
+        for (const Channel::ModeChange& change : parsed.changes) {
+            // A BURST can only set channel modes
+            if (!change.set) {
+                elog << "xServer::BurstChannel> Channel modes cannot "
+                     << "contain a \'-\' polarity modifier" << endl;
+                return false;
+            }
+            if (Channel::ModeKind::Member == change.mode.kind ||
+                Channel::ModeKind::Ban == change.mode.kind) {
+                elog << "xServer::BurstChannel> (" << chanName << "): mode '" << change.mode.letter
+                     << "' is not a channel mode to burst" << endl;
+                return false;
+            }
+        }
+        modes = std::move(parsed.changes);
     }
 
-    // Since we are not bursting a client, the channel must exist
-    // already for this to make any sense.
     Channel* theChan = Network->findChannel(chanName);
     if (0 == theChan) {
         elog << "xServer::BurstChannel> Channel does not exist: " << chanName << endl;
@@ -2823,112 +2844,17 @@ bool xServer::BurstChannel(const string& chanName, const string& chanModes,
         return false;
     }
 
+    // Our older timestamp wins: the network drops the channel's modes and
+    // bans, and takes ours.
     theChan->removeAllModes();
     theChan->removeAllBans();
 
-    // Need to burst the channel
-    stringstream s;
-    s << getCharYY() << " B " << theChan->getName() << ' ' << burstTime << ' ' << chanModes;
-
-    Write(s);
+    const std::string block = Channel::burstModeBlock(modes);
+    Write("{} B {} {}{}", getCharYY(), theChan->getName(), burstTime,
+          block.empty() ? string() : ' ' + block);
 
     theChan->setCreationTime(burstTime);
-
-    if (chanModes.empty() || (string::npos == chanModes.find_first_not_of(' '))) {
-        // No problem
-        return true;
-    }
-
-    StringTokenizer::size_type argPos = 1;
-
-    for (string::const_iterator ptr = st[0].begin(); ptr != st[0].end(); ++ptr) {
-        switch (*ptr) {
-        case 't':
-            theChan->setMode(Channel::MODE_T);
-            break;
-        case 'n':
-            theChan->setMode(Channel::MODE_N);
-            break;
-        case 's':
-            theChan->setMode(Channel::MODE_S);
-            break;
-        case 'p':
-            theChan->setMode(Channel::MODE_P);
-            break;
-        case 'm':
-            theChan->setMode(Channel::MODE_M);
-            break;
-        case 'i':
-            theChan->setMode(Channel::MODE_I);
-            break;
-        case 'r':
-            theChan->setMode(Channel::MODE_R);
-            break;
-        case 'R':
-            theChan->setMode(Channel::MODE_REG);
-            break;
-        case 'D':
-            theChan->setMode(Channel::MODE_D);
-            break;
-        case 'c':
-            theChan->setMode(Channel::MODE_C);
-            break;
-        case 'C':
-            theChan->setMode(Channel::MODE_CTCP);
-            break;
-        case 'u':
-            theChan->setMode(Channel::MODE_PART);
-            break;
-        case 'M':
-            theChan->setMode(Channel::MODE_MNOREG);
-            break;
-        case 'Z':
-            theChan->setMode(Channel::MODE_Z);
-            break;
-        case 'k': {
-            if (argPos >= st.size()) {
-                elog << "xServer::BurstChannel> Invalid"
-                     << " number of arguments to "
-                     << "chanModes" << endl;
-                break;
-            }
-            theChan->onModeK(true, st[argPos++]);
-            break;
-        }
-        case 'A': {
-            if (argPos >= st.size()) {
-                elog << "xServer::BurstChannel> Invalid"
-                     << " number of arguments to "
-                     << "chanModes" << endl;
-                break;
-            }
-            theChan->onModeA(true, st[argPos++]);
-            break;
-        }
-        case 'U': {
-            if (argPos >= st.size()) {
-                elog << "xServer::BurstChannel> Invalid"
-                     << " number of arguments to "
-                     << "chanModes" << endl;
-                break;
-            }
-            theChan->onModeU(true, st[argPos++]);
-            break;
-        }
-        case 'l': {
-            if (argPos >= st.size()) {
-                elog << "xServer::BurstChannel> Invalid"
-                     << " number of arguments to "
-                     << "chanModes" << endl;
-                break;
-            }
-            theChan->onModeL(true, atoi(st[argPos++].c_str()));
-            break;
-        }
-        default:
-            break;
-        } // switch()
-    } // for()
+    applyModesSilently(theChan, modes);
 
     return true;
 }

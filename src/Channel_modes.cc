@@ -90,7 +90,7 @@ std::optional<Channel::ModeError> validateModeArg(const Channel::ModeInfo& mode,
 } // namespace
 
 bool Channel::isValidKey(std::string_view key) noexcept {
-    return isSingleToken(key) && key.size() <= maxKeyLength &&
+    return isSingleToken(key) && key.size() <= MAX_KEY_LENGTH &&
            key.find(',') == std::string_view::npos;
 }
 

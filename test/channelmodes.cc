@@ -32,7 +32,7 @@ constexpr auto isValidKey = &Channel::isValidKey;
 constexpr auto isValidLimit = &Channel::isValidLimit;
 constexpr auto burstModeBlock = &Channel::burstModeBlock;
 constexpr auto isupportChanmodes = &Channel::isupportChanmodes;
-constexpr std::size_t maxKeyLength = Channel::maxKeyLength;
+constexpr std::size_t maxKeyLength = MAX_KEY_LENGTH;
 constexpr std::size_t maxLineLength = IRC_MAX_LINE - 2;
 
 Parsed parse(std::string_view modeString, std::span<const std::string_view> args,
@@ -135,7 +135,7 @@ void testTable() {
     // Usable at compile time
     static_assert(Channel::findMode('k')->kind == Kind::Key);
     static_assert(!Channel::findMode('q'));
-    static_assert(MAX_CHAN_MODES == 6 && Channel::maxKeyLength == 23);
+    static_assert(MAX_CHAN_MODES == 6 && MAX_KEY_LENGTH == 23);
 }
 
 /// "kAU" and "AkU" are the same group: the order inside one carries no meaning.

@@ -234,9 +234,14 @@ class GnuworldProc:
         path: Path,
         *,
         operchan: str = "#gnutest-opers",
+        burstchannel: str | None = None,
     ) -> Path:
-        text = GNUTEST_CONF_TEMPLATE.read_text(encoding="utf-8")
-        path.write_text(text.replace("@OPERCHAN@", operchan), encoding="utf-8")
+        """``burstchannel`` is "<#channel> <timestamp> [<modes> [<args>]]": gnutest
+        then calls xServer::BurstChannel() with it during gnuworld's own burst."""
+        text = GNUTEST_CONF_TEMPLATE.read_text(encoding="utf-8").replace("@OPERCHAN@", operchan)
+        if burstchannel:
+            text += f"burstchannel = {burstchannel}\n"
+        path.write_text(text, encoding="utf-8")
         return path
 
     async def start(self) -> None:

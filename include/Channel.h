@@ -256,9 +256,6 @@ class Channel {
         return modeTable.size();
     }
 
-    /// ircu's KEYLEN: the longest key, and the longest +A/+U password.
-    static constexpr std::size_t maxKeyLength = 23;
-
     /// One validated mode change.
     struct ModeChange {
         bool set; ///< true for '+', false for '-'
@@ -322,7 +319,7 @@ class Channel {
     static ParsedModes parseModes(std::string_view modeString,
                                   std::span<const std::string_view> args);
 
-    /// ircu's is_clean_key(): not empty, at most maxKeyLength, no leading
+    /// ircu's is_clean_key(): not empty, at most MAX_KEY_LENGTH, no leading
     /// ':', and no comma, space or control character.
     static bool isValidKey(std::string_view key) noexcept;
 
@@ -395,16 +392,6 @@ class Channel {
     inline bool getMode(const modeType& whichMode) const {
         return (whichMode == (modes & whichMode));
     }
-
-    /**
-     * Set the given channel mode.
-     */
-    inline void setMode(const modeType& whichMode) { modes |= whichMode; }
-
-    /**
-     * Remove the given channel mode.
-     */
-    inline void removeMode(const modeType& whichMode) { modes &= ~whichMode; }
 
     /**
      * Return true if the given mode is set for the the ChannelUser
@@ -713,6 +700,25 @@ class Channel {
      * Handle one or more "simple" mode changes.
      */
     virtual void onMode(const std::vector<std::pair<bool, modeType>>&);
+
+    /*
+     * Setting and clearing a mode changes what gnuworld believes about the
+     * channel, and nothing else: the network is not told and no module is
+     * notified.  They were public, and every use was a way for our state to
+     * drift from the network's.  A module changes modes with
+     * xServer::Mode() or xClient::Mode(); a handler applies what it has
+     * parsed with xServer::ApplyChannelModes().
+     */
+
+    /**
+     * Set the given channel mode.
+     */
+    inline void setMode(const modeType& whichMode) { modes |= whichMode; }
+
+    /**
+     * Remove the given channel mode.
+     */
+    inline void removeMode(const modeType& whichMode) { modes &= ~whichMode; }
 
     /**
      * This method is called when channel mode 'l' is set

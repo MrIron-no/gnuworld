@@ -49,6 +49,12 @@ gnutest::gnutest(const string& fileName) : xClient(fileName) {
     EConfig conf(fileName);
     operChan = conf.Require("operchan")->second;
 
+    // Optional: "burstchannel = <#channel> <timestamp> [<modes> [<args>]]".
+    // During our burst, claim that channel with xServer::BurstChannel().
+    if (conf.Find("burstchannel") != conf.end()) {
+        burstChannel = conf.Find("burstchannel")->second;
+    }
+
     helpTable.insert(std::make_pair("shutdown", "Shutdown the server"));
     helpTable.insert(std::make_pair("reload", "Reload the gnutest module"));
     helpTable.insert(std::make_pair("help", "Print this menu"));
@@ -129,6 +135,21 @@ void gnutest::OnDisconnect() {
 
 void gnutest::BurstChannels() {
     Join(operChan);
+
+    if (!burstChannel.empty()) {
+        StringTokenizer st(burstChannel);
+        const std::optional<time_t> ts =
+            (st.size() >= 2) ? parseNumber<time_t>(st[1]) : std::nullopt;
+        if (!ts) {
+            elog << "gnutest::BurstChannels> burstchannel wants \"<#channel> <timestamp> "
+                 << "[<modes> [<args>]]\", got: " << burstChannel << endl;
+        } else {
+            const bool done =
+                MyUplink->BurstChannel(st[0], (st.size() > 2) ? st.assemble(2) : string(), *ts);
+            elog << "gnutest::BurstChannels> BurstChannel(" << burstChannel
+                 << "): " << (done ? "done" : "refused") << endl;
+        }
+    }
     MyUplink->RegisterChannelEvent(operChan, this);
     return xClient::BurstChannels();
 }

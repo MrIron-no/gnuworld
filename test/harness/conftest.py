@@ -171,12 +171,14 @@ async def link_debug(
     burst: list[str] | None = None,
     *,
     gnutest: bool = False,
+    burstchannel: str | None = None,
 ):
     """Run a Dockerized gnuworld with stealth mod.debug linked to ``hub``.
 
     ``burst`` is what the hub sends as its net burst (see fake_hub.load_capture).
     ``gnutest`` also loads mod.gnutest, which calls the core API from chat
-    commands (see gnutest_client.py).
+    commands (see gnutest_client.py); ``burstchannel`` makes it claim a channel
+    with xServer::BurstChannel() during gnuworld's own burst.
     Needs the docker_stack fixture to be active. Yields (hub, proc).
     """
     require_module("debug")
@@ -186,7 +188,7 @@ async def link_debug(
     GnuworldProc.write_debug_config(conf_dir / "debug.conf")
     modules = [f"module = libdebug.la {CONTAINER_CONF_DIR}/debug.conf"]
     if gnutest:
-        GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
+        GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf", burstchannel=burstchannel)
         modules.append(f"module = libgnutest.la {CONTAINER_CONF_DIR}/gnutest.conf")
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",

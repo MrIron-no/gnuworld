@@ -26,6 +26,7 @@
 #include <map>
 #include <list>
 #include <string>
+#include <optional>
 #include <vector>
 #include <iostream>
 #include <algorithm>
@@ -1321,136 +1322,33 @@ list<const Channel*> xNetwork::getChannelsWithKey(const string& key) const {
 
 /* function to search channels for matching modes */
 list<const Channel*> xNetwork::getChannelsWithModes(const string& modes) const {
-    bool modeflag = false, foundMatch;
-    const char* c;
-    char ch;
     list<const Channel*> retMe;
 
-    for (const_channelIterator cptr = channels_begin(); (cptr != channels_end()); cptr++) {
-        /* parse the modes and check against the channel modes */
-        /* don't need to initialise modeflag, as we know 'modes' starts with + or - */
-        foundMatch = true;
-        c = modes.c_str();
-        while ((ch = *c++)) {
-            /* handle change of flags (+/-) */
-            if (ch == '+') {
-                modeflag = true;
+    for (const_channelIterator cptr = channels_begin(); cptr != channels_end(); ++cptr) {
+        // "+tn-k": a channel matches if it has every mode behind a '+' and
+        // none of those behind a '-'.  No leading sign means '+'.
+        bool wanted = true;
+        bool foundMatch = true;
+
+        for (const char ch : modes) {
+            if ('+' == ch || '-' == ch) {
+                wanted = ('+' == ch);
                 continue;
             }
-            if (ch == '-') {
-                modeflag = false;
-                continue;
-            }
-            /* check modes */
-            switch (ch) {
-            case 'k': /* keyed */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_K)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_K))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'l': /* limit */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_L)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_L))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'i': /* invite */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_I)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_I))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'm': /* moderated */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_M)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_M))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'n': /* no outside messages */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_N)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_N))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'p': /* private */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_P)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_P))) {
-                    foundMatch = false;
-                }
-                break;
-            case 's': /* secret */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_S)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_S))) {
-                    foundMatch = false;
-                }
-                break;
-            case 't': /* no outside topics */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_T)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_T))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'r': /* registered users only */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_R)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_R))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'R': /* registered channel */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_REG)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_REG))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'D': /* new .12 mode for large channels */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_D)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_D))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'c': /* new u2.10.12.15 mode to prevent chan colours */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_C)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_C))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'C': /* new u2.10.12.15 mode to prevent chan CTCPs (except ACTION) */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_CTCP)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_CTCP))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'u': /* mode to prevent part messages */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_PART)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_PART))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'M': /* mode to prevent part messages */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_MNOREG)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_MNOREG))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'A': /* Apass for oplevels */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_A)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_A))) {
-                    foundMatch = false;
-                }
-                break;
-            case 'U': /* Upass for oplevels */
-                if ((!modeflag && cptr->second->getMode(Channel::MODE_U)) ||
-                    (modeflag && !cptr->second->getMode(Channel::MODE_U))) {
-                    foundMatch = false;
-                }
-                break;
-            default: /* other - should never happen */
+
+            // Members and bans (o, v, b) are not modes of the channel, and an
+            // unknown letter matches nothing either way; both are skipped,
+            // as they always were.
+            const std::optional<Channel::ModeInfo> mode = Channel::findMode(ch);
+            if (mode && mode->flag != 0 && cptr->second->getMode(mode->flag) != wanted) {
+                foundMatch = false;
                 break;
             }
         }
-        if (foundMatch)
+
+        if (foundMatch) {
             retMe.push_back(cptr->second);
+        }
     }
     return retMe;
 }
