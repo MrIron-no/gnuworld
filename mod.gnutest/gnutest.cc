@@ -59,19 +59,29 @@ gnutest::gnutest(const string& fileName) : xClient(fileName) {
         std::make_pair("clearmode <chan> <modes>", "Clear the given list of modes from a channel"));
     helpTable.insert(
         std::make_pair("chaninfo <chan>", "Print some useless information about a channel"));
-    helpTable.insert(std::make_pair("ban <chan> <nickname>", "Ban a user from a channel"));
-    helpTable.insert(std::make_pair("unban <chan> <banmask>", "Remove a ban from a channel"));
+    helpTable.insert(std::make_pair("ban <chan> <nick> [nick ...]", "Ban users from a channel"));
+    helpTable.insert(
+        std::make_pair("unban <chan> <banmask> [banmask ...]", "Remove bans from a channel"));
     helpTable.insert(
         std::make_pair("bankick <chan> <nick> <reason>", "Bankick a user from a channel"));
     helpTable.insert(
         std::make_pair("servmode <chan> <modestring>", "Change modes in a channel as the server"));
     helpTable.insert(
         std::make_pair("mode <chan> <modestring>", "Change modes in a channel as the client"));
-    helpTable.insert(std::make_pair("op <chan> <nick>", "Op a nick in a channel"));
-    helpTable.insert(std::make_pair("deop <chan> <nick>", "Deop a nick in a channel"));
+    helpTable.insert(std::make_pair("op <chan> <nick> [nick ...]", "Op nicks in a channel"));
+    helpTable.insert(std::make_pair("deop <chan> <nick> [nick ...]", "Deop nicks in a channel"));
     helpTable.insert(
         std::make_pair("servop <chan> <nick>", "Op a nick in a channel as the server"));
     helpTable.insert(std::make_pair("schedule <chan>", "Schedule a visit to a channel!"));
+    helpTable.insert(std::make_pair("voice <chan> <nick> [nick ...]", "Voice nicks in a channel"));
+    helpTable.insert(
+        std::make_pair("devoice <chan> <nick> [nick ...]", "Devoice nicks in a channel"));
+    helpTable.insert(
+        std::make_pair("banmask <chan> <banmask> [banmask ...]", "Set bans by mask in a channel"));
+    helpTable.insert(std::make_pair("kick <chan> <nick> <reason>", "Kick a nick from a channel"));
+    helpTable.insert(
+        std::make_pair("servkick <chan> <nick> <reason>", "Kick a nick, as the server"));
+    helpTable.insert(std::make_pair("topic <chan> <text>", "Set a channel's topic"));
     helpTable.insert(std::make_pair("spawnclient <nick>", "Spawn a fake client"));
     helpTable.insert(
         std::make_pair("removeclient <nick>", "Remove a fake client from the network"));
@@ -164,6 +174,112 @@ void gnutest::OnChannelMessage(iClient* theClient, Channel* theChan, const strin
     //	<< endl ;
 }
 
+/**
+ * Commands that act on a channel's members, bans or topic.  Each one is a
+ * thin wrapper around a single core API call, so that a test can trigger
+ * that call and look at what is sent to the network.
+ * Given one nick (or mask) the single-target overload is called; given
+ * several, the vector overload.
+ * Returns false if st[0] is not one of these commands.
+ */
+bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st) {
+    const string& cmd = st[0];
+
+    const bool takesReason = (cmd == "kick" || cmd == "servkick" || cmd == "bankick");
+    const bool takesMasks = (cmd == "unban" || cmd == "banmask");
+    const bool takesNicks = (cmd == "op" || cmd == "deop" || cmd == "voice" || cmd == "devoice" ||
+                             cmd == "ban" || cmd == "servop");
+
+    if (!takesReason && !takesMasks && !takesNicks && cmd != "topic") {
+        return false;
+    }
+
+    if (st.size() < (takesReason ? 4U : 3U)) {
+        Notice(requester, "Usage: %s #channel %s", cmd.c_str(),
+               takesReason  ? "nick reason"
+               : takesMasks ? "banmask [banmask ...]"
+               : takesNicks ? "nick [nick ...]"
+                            : "text");
+        return true;
+    }
+
+    Channel* theChan = Network->findChannel(st[1]);
+    if (NULL == theChan) {
+        Notice(requester, "Unable to find channel");
+        return true;
+    }
+
+    if (cmd == "topic") {
+        Topic(theChan, st.assemble(2));
+        return true;
+    }
+
+    if (takesMasks) {
+        const bool adding = (cmd == "banmask");
+        if (!adding && 3 == st.size()) {
+            if (!theChan->findBan(st[2])) {
+                Notice(requester, "Unable to find ban");
+                return true;
+            }
+            UnBan(theChan, st[2]);
+            return true;
+        }
+
+        xServer::banVectorType banVector;
+        for (StringTokenizer::size_type i = 2; i < st.size(); ++i) {
+            banVector.push_back(xServer::banVectorType::value_type(adding, st[i]));
+        }
+        if (adding) {
+            Ban(theChan, banVector);
+        } else {
+            UnBan(theChan, banVector);
+        }
+        return true;
+    }
+
+    // Everything else targets members of the channel
+    std::vector<iClient*> targets;
+    const StringTokenizer::size_type lastNick = takesReason ? 3 : st.size();
+    for (StringTokenizer::size_type i = 2; i < lastNick; ++i) {
+        iClient* target = Network->findNick(st[i]);
+        if (NULL == target) {
+            Notice(requester, "Unable to find nickname: %s", st[i].c_str());
+            return true;
+        }
+        if (0 == theChan->findUser(target)) {
+            Notice(requester, "%s doesn't appear to be on that channel", st[i].c_str());
+            return true;
+        }
+        targets.push_back(target);
+    }
+
+    const bool single = (1 == targets.size());
+
+    if (cmd == "kick") {
+        Kick(theChan, targets[0], st.assemble(3), false);
+    } else if (cmd == "servkick") {
+        Kick(theChan, targets[0], st.assemble(3), true);
+    } else if (cmd == "bankick") {
+        BanKick(theChan, targets[0], st.assemble(3));
+    } else if (cmd == "servop") {
+        // xServer::Mode() takes nicks, not numerics, and a null source
+        // makes the server itself the source of the mode.
+        getUplink()->Mode(0, theChan, "+o", targets[0]->getNickName());
+    } else if (cmd == "op") {
+        single ? Op(theChan, targets[0]) : Op(theChan, targets);
+    } else if (cmd == "deop") {
+        single ? DeOp(theChan, targets[0]) : DeOp(theChan, targets);
+    } else if (cmd == "voice") {
+        single ? Voice(theChan, targets[0]) : Voice(theChan, targets);
+    } else if (cmd == "devoice") {
+        single ? DeVoice(theChan, targets[0]) : DeVoice(theChan, targets);
+    } else if (cmd == "ban") {
+        single ? Ban(theChan, targets[0]) : Ban(theChan, targets);
+    }
+
+    return true;
+}
+
 void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) {
     // if( !theClient->isOper() )
     //	{
@@ -206,6 +322,10 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
 
     if (st.size() < 2) {
         Notice(theClient, "Are you speaking to me?");
+        return;
+    }
+
+    if (channelCommand(theClient, st)) {
         return;
     }
 
@@ -252,72 +372,6 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         }
 
         chanInfo(theChan);
-    } else if (st[0] == "ban") {
-        if (st.size() != 3) {
-            Notice(theClient, "Usage: ban #channel nickname");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        iClient* theClient = Network->findNick(st[2]);
-        if (NULL == theClient) {
-            Notice(theClient, "Unable to find nickname");
-            return;
-        }
-
-        if (0 == theChan->findUser(theClient)) {
-            Notice(theClient, "The user doesn't appear to be on that channel");
-            return;
-        }
-
-        Ban(theChan, theClient);
-    } else if (st[0] == "unban") {
-        if (st.size() != 3) {
-            Notice(theClient, "Usage: unban #channel banmask");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        if (!theChan->findBan(st[2])) {
-            Notice(theClient, "Unable to find ban");
-            return;
-        }
-
-        UnBan(theChan, st[2]);
-    } else if (st[0] == "bankick") {
-        if (st.size() < 4) {
-            Notice(theClient, "Usage: bankick #channel nick reason");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        iClient* theClient = Network->findNick(st[2]);
-        if (NULL == theClient) {
-            Notice(theClient, "Unable to find nickname");
-            return;
-        }
-
-        if (0 == theChan->findUser(theClient)) {
-            Notice(theClient, "The user doesn't appear to be on that channel");
-            return;
-        }
-
-        BanKick(theChan, theClient, st.assemble(3));
     } else if (st[0] == "servmode") {
         // mode #chan <mode string>
         if (st.size() < 3) {
@@ -350,78 +404,6 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         // Note that this only exercises the first argument of
         // Mode()
         Mode(theChan, st.assemble(2), string(), false);
-    } else if (st[0] == "op") {
-        if (st.size() != 3) {
-            Notice(theClient, "Usage: op #channel nick");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        iClient* theClient = Network->findNick(st[2]);
-        if (NULL == theClient) {
-            Notice(theClient, "Unable to find nickname");
-            return;
-        }
-
-        if (0 == theChan->findUser(theClient)) {
-            Notice(theClient, "The user doesn't appear to be on that channel");
-            return;
-        }
-
-        Op(theChan, theClient);
-    } else if (st[0] == "servop") {
-        if (st.size() != 3) {
-            Notice(theClient, "Usage: op #channel nick");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        iClient* theClient = Network->findNick(st[2]);
-        if (NULL == theClient) {
-            Notice(theClient, "Unable to find nickname");
-            return;
-        }
-
-        if (0 == theChan->findUser(theClient)) {
-            Notice(theClient, "The user doesn't appear to be on that channel");
-            return;
-        }
-
-        getUplink()->Mode(this, theChan, "+o", theClient->getCharYYXXX());
-    } else if (st[0] == "deop") {
-        if (st.size() != 3) {
-            Notice(theClient, "Usage: deop #channel nick");
-            return;
-        }
-
-        Channel* theChan = Network->findChannel(st[1]);
-        if (NULL == theChan) {
-            Notice(theClient, "Unable to find channel");
-            return;
-        }
-
-        iClient* theClient = Network->findNick(st[2]);
-        if (NULL == theClient) {
-            Notice(theClient, "Unable to find nickname");
-            return;
-        }
-
-        if (0 == theChan->findUser(theClient)) {
-            Notice(theClient, "The user doesn't appear to be on that channel");
-            return;
-        }
-
-        DeOp(theChan, theClient);
     } else if (st[0] == "schedule") {
         Channel* theChan = Network->findChannel(st[1]);
         if (NULL == theChan) {

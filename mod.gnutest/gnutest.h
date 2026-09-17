@@ -194,6 +194,12 @@ class gnutest : public xClient {
     /**
      * Report information about a channel.
      */
+    /**
+     * Handle the commands that act on a channel's members, bans or topic.
+     * Returns false if st[0] is not such a command.
+     */
+    virtual bool channelCommand(iClient* requestingClient, const StringTokenizer& st);
+
     virtual void chanInfo(const Channel* theChan);
 
     /**
