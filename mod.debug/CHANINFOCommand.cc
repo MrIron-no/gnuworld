@@ -73,6 +73,7 @@ void CHANINFOCommand::Exec(const iClient* theClient, const std::string& Message)
 
     int totalOps = 0;
     int totalVoice = 0;
+    int totalHidden = 0;
 
     bot->Notice(theClient, "Users:");
     for (const auto& [id, theUser] : theChan->users()) {
@@ -81,8 +82,11 @@ void CHANINFOCommand::Exec(const iClient* theClient, const std::string& Message)
             ++totalOps;
         if (theUser->isModeV())
             ++totalVoice;
+        if (theUser->isHidden())
+            ++totalHidden;
 
-        const char* tmpMode = "none: ";
+        // A hidden (delayed join) member never holds op or voice
+        const char* tmpMode = theUser->isHidden() ? "hide: " : "none: ";
         if (theUser->isModeO() && theUser->isModeV())
             tmpMode = "+o+v: ";
         else if (theUser->isModeO())
@@ -94,8 +98,8 @@ void CHANINFOCommand::Exec(const iClient* theClient, const std::string& Message)
                     theUser->getUserName(), theUser->getHostName(), theUser->getCharYYXXX());
     }
 
-    bot->Notice(theClient, "Number of channel users: {} ({} ops, {} voice)", theChan->size(),
-                totalOps, totalVoice);
+    bot->Notice(theClient, "Number of channel users: {} ({} ops, {} voice, {} hidden)",
+                theChan->size(), totalOps, totalVoice, totalHidden);
 
     if (theChan->banList_size() == 0) {
         bot->Notice(theClient, "Ban list: (empty)");

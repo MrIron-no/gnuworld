@@ -38,6 +38,7 @@ libircu msg_Q Q
 libircu msg_R R
 libircu msg_RI RI
 libircu msg_RO RO
+libircu msg_RV RV
 libircu msg_S S
 libircu msg_Server SERVER
 libircu msg_SQ SQ

@@ -214,6 +214,17 @@ bool msg_J::Execute(const xParameters& Param) {
             // Now reset the channel creation time to the join ts
             theChan->setCreationTime(joinTs);
         }
+        // A join to a +D channel carries no status, so it is delayed
+        // (hidden) until the member gains op or voice, sets the topic,
+        // or is announced by a REVEAL.  A creator is opped and therefore
+        // never hidden.
+        // Only tracked on a P11 uplink: without REVEAL we would rarely
+        // learn that a member has spoken, and the flag would go stale.
+        if (EVT_JOIN == whichEvent && theChan->getMode(Channel::MODE_D) &&
+            theServer->getUplink()->getProtocol() >= 11) {
+            theUser->setHidden();
+        }
+
         // Add a new ChannelUser representing this client to this
         // channel's user structure.
         if (!theChan->addUser(theUser)) {

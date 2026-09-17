@@ -38,6 +38,17 @@ async def fake_hub():
         await hub.close()
 
 
+@pytest_asyncio.fixture
+async def fake_hub_p11():
+    """Like fake_hub, but announces P11 (J11) in its SERVER line."""
+    hub = FakeHub(host="127.0.0.1", protocol=11)
+    await hub.start()
+    try:
+        yield hub
+    finally:
+        await hub.close()
+
+
 def _prepare_conf_dir(tmp_path: Path) -> Path:
     """Host dir bind-mounted at /etc/gnuworld inside the container."""
     conf_dir = tmp_path / "etc-gnuworld"
@@ -103,6 +114,31 @@ async def ccontrol_linked(docker_stack, fake_hub, tmp_path):
 async def debug_linked(docker_stack, fake_hub, tmp_path):
     """Dockerized gnuworld with stealth mod.debug (no DB required)."""
     hub = fake_hub
+    conf_dir = _prepare_conf_dir(tmp_path)
+    GnuworldProc.write_debug_config(conf_dir / "debug.conf")
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        module_lines=f"module = libdebug.la {CONTAINER_CONF_DIR}/debug.conf",
+    )
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=90.0)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        await proc.wait_for_stdout("Loaded stealth client, nickname: debug", timeout=30.0)
+        yield hub, proc
+    finally:
+        await proc.terminate()
+
+
+@pytest_asyncio.fixture
+async def debug_linked_p11(docker_stack, fake_hub_p11, tmp_path):
+    """Dockerized gnuworld with stealth mod.debug, linked to a P11 hub."""
+    hub = fake_hub_p11
     conf_dir = _prepare_conf_dir(tmp_path)
     GnuworldProc.write_debug_config(conf_dir / "debug.conf")
     GnuworldProc.write_config(

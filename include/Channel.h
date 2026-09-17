@@ -226,6 +226,12 @@ class Channel {
     inline void setUpass(const std::string& newUpass) { Upass = newUpass; }
 
     /**
+     * Reveal a delayed-join (hidden) member, if the given client is on
+     * this channel and hidden.  Returns true if the member was hidden.
+     */
+    bool revealUser(const iClient* theClient);
+
+    /**
      * Add a ban to this Channel's ban list.
      */
     void setBan(const std::string& banMask);

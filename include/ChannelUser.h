@@ -93,7 +93,13 @@ class ChannelUser {
     /**
      * Set a given channel user mode.
      */
-    inline void setMode(const modeType& whichMode) { modes |= whichMode; }
+    inline void setMode(const modeType& whichMode) {
+        modes |= whichMode;
+        // Gaining op or voice reveals a delayed-join member
+        if (whichMode & (MODE_O | MODE_V)) {
+            hidden = false;
+        }
+    }
 
     /**
      * Set the user's mode +o state in this channel.
@@ -104,6 +110,29 @@ class ChannelUser {
      * Set the user's mode +v state in this channel.
      */
     inline void setModeV() { return setMode(MODE_V); }
+
+    /**
+     * Return true if this member is hidden (delayed join): it is on the
+     * channel, but its JOIN has not been shown to the channel yet.
+     * A member is revealed when it gains op or voice, sets the topic, or
+     * the network announces it with a P11 REVEAL (RV), which is what
+     * happens when it speaks.  Nick changes, parts and quits do not
+     * reveal it.
+     * Only ever true on a P11 uplink.  P10 has no REVEAL, so the state
+     * could not be kept correct there and is not tracked at all.
+     */
+    inline bool isHidden() const { return hidden; }
+
+    /**
+     * Mark this member as hidden (delayed join).  A member holding op
+     * or voice is never hidden.
+     */
+    inline void setHidden() { hidden = !(modes & (MODE_O | MODE_V)); }
+
+    /**
+     * Reveal this member: clear the hidden (delayed join) state.
+     */
+    inline void reveal() { hidden = false; }
 
     /**
      * Remove a given channel user mode.
@@ -215,6 +244,11 @@ class ChannelUser {
      * This channel user's modes in the current channel.
      */
     modeType modes;
+
+    /**
+     * True while this member is hidden by a delayed join.
+     */
+    bool hidden;
 };
 
 } // namespace gnuworld

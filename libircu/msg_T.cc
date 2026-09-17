@@ -55,6 +55,12 @@ bool msg_T::Execute(const xParameters& Param) {
 
     // srcClient may be NULL if a server is setting the topic
     iClient* srcClient = Network->findClient(Param[0]);
+
+    // Setting the topic reveals a delayed-join (hidden) member
+    if (srcClient != 0) {
+        theChan->revealUser(srcClient);
+    }
+
     std::string newTopic;
     bool hasWhoSet = false;
 

@@ -203,6 +203,15 @@ bool Channel::getUserMode(const ChannelUser::modeType& whichMode, iClient* theCl
     return theChanUser->getMode(whichMode);
 }
 
+bool Channel::revealUser(const iClient* theClient) {
+    ChannelUser* theUser = findUser(theClient);
+    if (0 == theUser || !theUser->isHidden()) {
+        return false;
+    }
+    theUser->reveal();
+    return true;
+}
+
 void Channel::setBan(const string& newBan) {
     // xServer will worry about removing conflicting bans
     banList.push_front(newBan);

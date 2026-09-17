@@ -32,6 +32,7 @@ libircu_la_SOURCES = \
 	libircu/msg_R.cc \
 	libircu/msg_RI.cc \
 	libircu/msg_RO.cc \
+	libircu/msg_RV.cc \
 	libircu/msg_S.cc \
 	libircu/msg_Server.cc \
 	libircu/msg_SQ.cc \

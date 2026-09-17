@@ -48,7 +48,12 @@ class FakeHub:
         tls: bool = False,
         tls_certfile: str | Path | None = None,
         tls_keyfile: str | Path | None = None,
+        protocol: int = 10,
     ):
+        # 10 or 11: the protocol announced in our SERVER line ("J10"/"J11").
+        # gnuworld selects the P11 BURST layout and accepts P11-only tokens
+        # based on it, so tests sending P11 traffic must set protocol=11.
+        self.protocol = protocol
         self.name = name
         self.numeric = numeric
         self.password = password
@@ -158,9 +163,12 @@ class FakeHub:
         await self._send(f"PASS :{self.password}")
         flag_field = f"+{self.server_flags}" if self.server_flags else "+"
         await self._send(
-            f"SERVER {self.name} 1 {now} {now} J10 {self._numnick_mask} "
+            f"SERVER {self.name} 1 {now} {now} J{self.protocol} {self._numnick_mask} "
             f"{flag_field} :{self.description}"
         )
+        if self.protocol >= 11:
+            # A real P11 hub follows SERVER with its link capabilities
+            await self._send("CAP :")
         # Empty network burst from the hub
         await self._send(f"{self._num} EB")
 

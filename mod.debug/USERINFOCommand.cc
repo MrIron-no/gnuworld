@@ -41,6 +41,10 @@ std::string formatChannelEntry(Channel* theChannel, const iClient* Target) {
     std::string tChannel = theChannel->getName();
     const ChannelUser* theChannelUser = theChannel->findUser(Target);
 
+    // Same marker ircu uses in WHOIS for a delayed-join (hidden) member.
+    // Such a member never holds op or voice.
+    if (theChannelUser->isHidden())
+        tChannel.insert(tChannel.begin(), '<');
     if (theChannelUser->getMode(ChannelUser::MODE_V))
         tChannel.insert(tChannel.begin(), '+');
     if (theChannelUser->getMode(ChannelUser::MODE_O))

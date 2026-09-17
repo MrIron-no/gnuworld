@@ -33,7 +33,7 @@ const ChannelUser::modeType ChannelUser::MODE_O = 0x01;
 const ChannelUser::modeType ChannelUser::MODE_V = 0x02;
 // const ChannelUser::modeType ChannelUser::ZOMBIE = 0x04 ;
 
-ChannelUser::ChannelUser(iClient* _theClient) : theClient(_theClient), modes(0) {
+ChannelUser::ChannelUser(iClient* _theClient) : theClient(_theClient), modes(0), hidden(false) {
     assert(theClient != 0);
 }
 

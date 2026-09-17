@@ -59,7 +59,7 @@ class msg_B : public ServerCommandHandler {
     virtual bool Execute(const xParameters&);
 
   protected:
-    void parseBurstUsers(Channel*, const string&);
+    void parseBurstUsers(Channel*, const string&, bool incomingIsNewer);
     void parseBurstBans(Channel*, const string&);
 };
 
@@ -114,6 +114,12 @@ bool msg_B::Execute(const xParameters& Param) {
 
     // Attempt to find the channel in the network channel table
     Channel* theChan = Network->findChannel(Param[1]);
+
+    // True if we already know this channel with an older timestamp, in
+    // which case the incoming channel lost and its members are fresh
+    // joins to ours.  Decides how hidden members are interpreted.
+    const bool incomingIsNewer =
+        (theChan != NULL) && (theChan->getCreationTime() < static_cast<time_t>(::atoi(Param[2])));
 
     // Was the channel found?
     if (NULL == theChan) {
@@ -268,7 +274,7 @@ bool msg_B::Execute(const xParameters& Param) {
             parseBurstBans(theChan, Param[whichToken] + 1);
         } else {
             // Userlist
-            parseBurstUsers(theChan, Param[whichToken]);
+            parseBurstUsers(theChan, Param[whichToken], incomingIsNewer);
         }
     }
     return true;
@@ -280,7 +286,7 @@ bool msg_B::Execute(const xParameters& Param) {
 // mode state.
 // Mode states will always be in the order ov, v, o if present
 // at all.
-void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
+void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incomingIsNewer) {
     // This is a protected method, so the method arguments are
     // guaranteed to be valid
     string chanName = theChan->getName(); // Added for fixing crash when Channel gets destroyed in
@@ -298,6 +304,11 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
     // rather than an increment on the previous one.  Absolute at the
     // start of every B line and again after each 'v'.
     bool oplevelAbsolute = true;
+
+    // True while the current bucket is the P11 hidden (":d") group.
+    bool bucketHidden = false;
+
+    const bool isP11 = theServer->getUplink()->getProtocol() >= 11;
 
     typedef xServer::opVectorType opVectorType;
     typedef xServer::voiceVectorType voiceVectorType;
@@ -330,6 +341,7 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
                         needsReset = false;
                     }
                     mode_state |= 1;
+                    bucketHidden = false;
                     // Pre-oplevel op: later digits are increments
                     oplevelAbsolute = false;
                 } else if ('v' == flag) {
@@ -338,19 +350,20 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
                         needsReset = false;
                     }
                     mode_state |= 2;
+                    bucketHidden = false;
                     // Digits after a 'v' are an absolute oplevel
                     oplevelAbsolute = true;
                 } else if ('d' == flag) {
-                    /* P11: delayed join.  The client is on the (+D)
-                     * channel but has not been revealed yet, and holds
-                     * neither op nor voice.  We cannot track the reveal
-                     * (we do not see channel messages where we have no
-                     * client), so it is kept as a plain member.
+                    /* P11: delayed join.  The client is on the channel
+                     * but its JOIN has not been shown yet.  A hidden
+                     * member never has status, so 'd' combined with
+                     * 'o', 'v' or an oplevel is just that status.
                      */
                     if (needsReset) {
                         mode_state = 0;
                         needsReset = false;
                     }
+                    bucketHidden = (0 == mode_state);
                 } else if (flag >= '0' && flag <= '9') {
                     /* An oplevel.  We do not track the level itself, but
                      * carrying one means the client is a chanop.
@@ -363,11 +376,29 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
                         oplevelAbsolute = false;
                     }
                     mode_state |= 1;
+                    bucketHidden = false;
                 } else {
                     elog << "msg_B::parseBurstUsers> "
                          << "Unknown mode: " << flag << endl;
                 }
             } // for()
+        }
+
+        // Is this member hidden (delayed join)?  Only a status-less
+        // member can be, and only on a P11 uplink.  See ircu doc/P11.md 8.1:
+        //  - our timestamp equal or older: hidden iff it carried 'd'.
+        //  - our timestamp newer: the incoming channel lost, so 'd' is
+        //    ignored and the member is hidden iff our channel is +D.
+        // On a P10 uplink nothing is ever flagged.  P10 has no REVEAL, so a
+        // member that speaks could only be revealed by seeing its message,
+        // and we see channel messages only where we have a client.  The
+        // flag would be stale on nearly every channel, which is worse than
+        // not having it.
+        // Decided now, because theChan may be destroyed by the event
+        // posted below.
+        bool memberHidden = false;
+        if (isP11 && 0 == mode_state) {
+            memberHidden = incomingIsNewer ? theChan->getMode(Channel::MODE_D) : bucketHidden;
         }
 
         // Find the client in the client table
@@ -402,6 +433,11 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers) {
         // in this channel
         ChannelUser* chanUser = new (std::nothrow) ChannelUser(theClient);
         assert(chanUser != 0);
+
+        // Flag it before the event below, so listeners see the state
+        if (memberHidden) {
+            chanUser->setHidden();
+        }
 
         // Add this user to the channel's database.
         if (!theChan->addUser(chanUser)) {
