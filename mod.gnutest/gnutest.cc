@@ -58,6 +58,8 @@ gnutest::gnutest(const string& fileName) : xClient(fileName) {
         std::make_pair("joinmodes <chan> [modes [args]]", "Join a channel, setting these modes"));
     helpTable.insert(std::make_pair("joinops <chan> [modes [args]]",
                                     "Join a channel with these modes, opped by the server"));
+    helpTable.insert(std::make_pair("fakesay|fakenotice <fakenick> <#chan|nick> <text>",
+                                    "A message or notice from one of my fake clients"));
     helpTable.insert(std::make_pair("part <chan>", "Part a channel"));
     helpTable.insert(std::make_pair("say <chan> <message>", "Send a message to a channel"));
     helpTable.insert(
@@ -400,6 +402,35 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
     }
 
     if (channelCommand(theClient, st, std::nullopt)) {
+        return;
+    }
+
+    if (st[0] == "fakesay" || st[0] == "fakenotice") {
+        // fakesay|fakenotice <fakenick> <#channel|nick> <text>
+        iClient* fake = (st.size() >= 4) ? Network->findNick(st[1]) : 0;
+        if (0 == fake || Network->findFakeClientOwner(fake) != this) {
+            Notice(theClient, "Usage: %s <one of my fake clients> <#channel|nick> <text>",
+                   st[0].c_str());
+            return;
+        }
+        const bool notice = (st[0] == "fakenotice");
+        if ('#' == st[2][0]) {
+            Channel* theChan = Network->findChannel(st[2]);
+            if (NULL == theChan) {
+                Notice(theClient, "Unable to find channel");
+                return;
+            }
+            notice ? FakeNotice(theChan, fake, st.assemble(3))
+                   : FakeMessage(theChan, fake, st.assemble(3));
+        } else {
+            iClient* target = Network->findNick(st[2]);
+            if (NULL == target) {
+                Notice(theClient, "Unable to find nickname: %s", st[2].c_str());
+                return;
+            }
+            notice ? FakeNotice(target, fake, st.assemble(3))
+                   : FakeMessage(target, fake, st.assemble(3));
+        }
         return;
     }
 

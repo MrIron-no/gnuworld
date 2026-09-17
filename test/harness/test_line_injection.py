@@ -26,7 +26,7 @@ PAYLOAD = "Az SQ hub.testnet 0 :injected"
 
 
 @pytest.mark.asyncio
-async def test_a_carriage_return_inside_a_message_does_not_start_a_new_line(gnutest_linked_p11):
+async def test_a_carriage_return_does_not_start_a_new_line(gnutest_linked_p11):
     hub, proc = gnutest_linked_p11
     asker = await hub.introduce_nick("asker", username="asker")
     alice = await hub.introduce_nick("alice", username="alice")
@@ -35,13 +35,18 @@ async def test_a_carriage_return_inside_a_message_does_not_start_a_new_line(gnut
     me = gt.numnick(hub)
     await gt.run(hub, asker, f"join {CHAN}")
 
-    # gnutest's "say" repeats the text to the channel
-    sent = await gt.run(hub, asker, f"say {CHAN} harmless\r{PAYLOAD}")
-
-    assert sent == [f"{me} P {CHAN} :harmless"]
-    assert all("\r" not in line and "injected" not in line for line in hub.received)
-    assert not any(p10_token(line) == "SQ" for line in hub.received)
-
-    # It said so in its log, and it is still linked and answering
+    # A TOPIC goes straight to Write(), which sends one line and drops the rest
+    sent = await gt.run(hub, asker, f"topic {CHAN} harmless\r{PAYLOAD}")
+    assert len(sent) == 1 and sent[0].startswith(f"{me} T {CHAN} ") and sent[0].endswith(" :harmless")
     await proc.wait_for_stdout("bytes behind a line break", timeout=5.0)
+
+    # A message is split at a line break instead, on purpose (see
+    # test_messages.py). What followed the CR is then the text of a second
+    # PRIVMSG: said to the channel, not executed by the uplink.
+    sent = await gt.run(hub, asker, f"say {CHAN} harmless\r{PAYLOAD}")
+    assert sent == [f"{me} P {CHAN} :harmless", f"{me} P {CHAN} :{PAYLOAD}"]
+
+    # Either way, no line ever starts with the payload
+    assert all("\r" not in line for line in hub.received)
+    assert not any(p10_token(line) == "SQ" for line in hub.received)
     assert await gt.run(hub, asker, f"say {CHAN} still here") == [f"{me} P {CHAN} :still here"]

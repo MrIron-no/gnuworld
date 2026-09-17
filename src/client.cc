@@ -270,23 +270,46 @@ bool xClient::Mode(Channel* theChan, const string& modes, const string& args, bo
     return retVal;
 }
 
+namespace {
+
+/// "\001<CTCP>[ <message>]\001", with no stray space when there is no message.
+string ctcpText(const string& CTCP, const string& Message) {
+    string text("\001");
+    text += CTCP;
+    if (!Message.empty()) {
+        text += ' ' + Message;
+    }
+    text += '\001';
+    return text;
+}
+
+/// A channel name given with or without its '#'.
+string channelName(const string& name) {
+    return (!name.empty() && '#' == name[0]) ? name : '#' + name;
+}
+
+} // namespace
+
+/// Expands a printf-style `Message` and its arguments into `buffer`.
+#define FORMAT_MESSAGE(buffer, Message)                                                            \
+    char buffer[1024] = {0};                                                                       \
+    do {                                                                                           \
+        va_list list;                                                                              \
+        va_start(list, Message);                                                                   \
+        vsnprintf(buffer, sizeof(buffer), Message, list);                                          \
+        va_end(list);                                                                              \
+    } while (0)
+
+/*
+ * Every message below is sent by xServer::SendMessage(), SendNotice() or
+ * SendWallchops().  A stealth client does not talk to users.
+ */
+
 bool xClient::DoCTCP(iClient* Target, const string& CTCP, const string& Message) {
     if (!isConnected() || IsStealth()) {
         return false;
     }
-
-    string ctcpReply("\001");
-    ctcpReply += CTCP;
-
-    // Be careful not to include an extra space inside of the CTCP reply
-    // if Message is empty
-    if (!Message.empty()) {
-        ctcpReply += string(" ") + Message;
-    }
-    ctcpReply += "\001";
-
-    return MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                           Target->getCharYYXXX().c_str(), ctcpReply.c_str());
+    return MyUplink->SendNotice(Source(me), Target->getCharYYXXX(), ctcpText(CTCP, Message));
 }
 
 bool xClient::DoFakeCTCP(const iClient* destClient, const iClient* srcClient, const string& CTCP,
@@ -297,273 +320,156 @@ bool xClient::DoFakeCTCP(const iClient* destClient, const iClient* srcClient, co
     if (!isConnected()) {
         return false;
     }
-
-    string ctcpReply("\001");
-    ctcpReply += CTCP;
-
-    // Be careful not to include an extra space inside of the CTCP reply
-    // if Message is empty
-    if (!Message.empty()) {
-        ctcpReply += string(" ") + Message;
-    }
-    ctcpReply += "\001";
-
-    return MyUplink->Write("%s O %s :%s\r\n", srcClient->getCharYYXXX().c_str(),
-                           destClient->getCharYYXXX().c_str(), ctcpReply.c_str());
+    return MyUplink->SendNotice(Source(srcClient), destClient->getCharYYXXX(),
+                                ctcpText(CTCP, Message));
 }
 
 bool xClient::FakeMessage(const iClient* destClient, const iClient* srcClient,
                           const string& Message) {
-    assert(destClient != 0);
-    assert(srcClient != 0);
-
     if (Message.empty() || !isConnected()) {
         return false;
     }
-
-    return getUplink()->Write("%s P %s :%s", srcClient->getCharYYXXX().c_str(),
-                              destClient->getCharYYXXX().c_str(), Message.c_str());
+    return MyUplink->SendMessage(Source(srcClient), destClient->getCharYYXXX(), Message);
 }
 
 bool xClient::FakeNotice(const iClient* destClient, const iClient* srcClient,
                          const string& Message) {
-    assert(destClient != 0);
-    assert(srcClient != 0);
-
     if (Message.empty() || !isConnected()) {
         return false;
     }
-
-    return getUplink()->Write("%s O %s :%s", srcClient->getCharYYXXX().c_str(),
-                              destClient->getCharYYXXX().c_str(), Message.c_str());
+    return MyUplink->SendNotice(Source(srcClient), destClient->getCharYYXXX(), Message);
 }
 
 bool xClient::FakeMessage(const Channel* theChan, const iClient* srcClient, const string& Message) {
-    assert(theChan != 0);
-    assert(srcClient != 0);
-
     if (Message.empty() || !isConnected()) {
         return false;
     }
-
-    return getUplink()->Write("%s P %s :%s", srcClient->getCharYYXXX().c_str(),
-                              theChan->getName().c_str(), Message.c_str());
+    return MyUplink->SendMessage(Source(srcClient), theChan->getName(), Message);
 }
 
 bool xClient::FakeNotice(const Channel* theChan, const iClient* srcClient, const string& Message) {
-    assert(theChan != 0);
-    assert(srcClient != 0);
-
     if (Message.empty() || !isConnected()) {
         return false;
     }
-
-    return getUplink()->Write("%s P %s :%s", srcClient->getCharYYXXX().c_str(),
-                              theChan->getName().c_str(), Message.c_str());
+    // This sent a PRIVMSG, having been copied from FakeMessage()
+    return MyUplink->SendNotice(Source(srcClient), theChan->getName(), Message);
 }
 
 bool xClient::Message(const iClient* Target, const string& Message) {
     if (!isConnected() || IsStealth()) {
         return false;
     }
-
-    return MyUplink->Write("%s P %s :%s\r\n", getCharYYXXX().c_str(),
-                           Target->getCharYYXXX().c_str(), Message.c_str());
+    return MyUplink->SendMessage(Source(me), Target->getCharYYXXX(), Message);
 }
 
 bool xClient::Message(const iClient* Target, const char* Message, ...) {
     if (!isConnected() || IsStealth() || !Message || Message[0] == 0) {
         return false;
     }
-
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    va_list list;
-
-    va_start(list, Message);
-    vsnprintf(buffer, 1024, Message, list);
-    va_end(list);
-
-    return MyUplink->Write("%s P %s :%s\r\n", getCharYYXXX().c_str(),
-                           Target->getCharYYXXX().c_str(), buffer);
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendMessage(Source(me), Target->getCharYYXXX(), buffer);
 }
 
 bool xClient::Message(const string& Channel, const char* Message, ...) {
-    if (isConnected() && Message && Message[0] != 0) {
-        char buffer[1024] = {0};
-        va_list list;
-
-        va_start(list, Message);
-        vsnprintf(buffer, 1024, Message, list);
-        va_end(list);
-
-        return MyUplink->Write("%s P #%s :%s\r\n", getCharYYXXX().c_str(),
-                               (Channel[0] == '#') ? (Channel.c_str() + 1) : Channel.c_str(),
-                               buffer);
+    if (!isConnected() || !Message || Message[0] == 0) {
+        return false;
     }
-    return false;
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendMessage(Source(me), channelName(Channel), buffer);
 }
 
 bool xClient::Message(const Channel* theChan, const string& Message) {
     assert(theChan != 0);
 
-    if (isConnected()) {
-        return MyUplink->Write("%s P %s :%s", getCharYYXXX().c_str(), theChan->getName().c_str(),
-                               Message.c_str());
+    if (!isConnected()) {
+        return false;
     }
-    return false;
+    return MyUplink->SendMessage(Source(me), theChan->getName(), Message);
 }
 
 bool xClient::Message(const string& chanName, const string& Message) {
     if (chanName.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-
-    return MyUplink->Write("%s P %s :%s", getCharYYXXX().c_str(), chanName.c_str(),
-                           Message.c_str());
-}
-
-bool xClient::Notice(const iClient* Target, const string& Message) {
-    // elog	<< "xClient::Notice( const iClient* )"
-    //	<< endl ;
-
-    if (!isConnected() || IsStealth()) {
-        return false;
-    }
-
-    return MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                           Target->getCharYYXXX().c_str(), Message.c_str());
-}
-
-bool xClient::Notice(const iClient* Target, const char* Message, ...) {
-    // elog	<< "xClient::Notice( const iClient* )"
-    //	<< endl ;
-
-    if (!isConnected() || IsStealth() || !Message || Message[0] == 0) {
-        return false;
-    }
-
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    va_list list;
-
-    va_start(list, Message);
-    vsnprintf(buffer, 1024, Message, list);
-    va_end(list);
-
-    // O is the token for NOTICE, *shrug*
-    return Notice(Target, string(buffer));
-}
-
-bool xClient::Notice(const string& Channel, const char* Message, ...) {
-    // elog	<< "xClient::Notice( const string& Channel )"
-    //	<< endl ;
-
-    if (isConnected() && Message && Message[0] != 0) {
-        char buffer[1024];
-        memset(buffer, 0, 1024);
-        va_list list;
-
-        va_start(list, Message);
-        vsnprintf(buffer, 1024, Message, list);
-        va_end(list);
-
-        return MyUplink->Write("%s O #%s :%s\r\n", getCharYYXXX().c_str(),
-                               ('#' == Channel[0]) ? (Channel.c_str() + 1) : Channel.c_str(),
-                               buffer);
-    }
-    return false;
-}
-
-bool xClient::Notice(const Channel* theChan, const string& Message) {
-    assert(theChan != 0);
-
-    // elog	<< "xClient::Notice( const Channel* )> name: "
-    //	<< theChan->getName()
-    //	<< endl ;
-
-    if (Message.empty() || !isConnected()) {
-        return false;
-    }
-
-    return MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(), theChan->getName().c_str(),
-                           Message.c_str());
-}
-
-bool xClient::Notice(const Channel* theChan, const char* Message, ...) {
-    assert(theChan != 0);
-
-    if (isConnected() && Message && Message[0] != 0) {
-        char buffer[1024];
-        memset(buffer, 0, 1024);
-        va_list list;
-
-        va_start(list, Message);
-        vsnprintf(buffer, 1024, Message, list);
-        va_end(list);
-
-        return Notice(theChan, string(buffer));
-    }
-    return false;
-}
-
-bool xClient::NoticeChannelOps(const Channel* theChan, const char* Message, ...) {
-    assert(theChan != 0);
-
-    if (isConnected() && Message && Message[0] != 0) {
-        char buffer[1024];
-        memset(buffer, 0, 1024);
-        va_list list;
-
-        va_start(list, Message);
-        vsnprintf(buffer, 1024, Message, list);
-        va_end(list);
-
-        if (!MyUplink->Write("%s WC %s :%s\r\n", getCharYYXXX().c_str(), theChan->getName().c_str(),
-                             buffer))
-            return false;
-    }
-    return true;
-}
-
-bool xClient::NoticeChannelOps(const string& chanName, const char* Message, ...) {
-    Channel* theChan = Network->findChannel(chanName);
-    if (0 == theChan) {
-        return false;
-    }
-    if (isConnected() && Message && Message[0] != 0) {
-        char buffer[1024];
-        memset(buffer, 0, 1024);
-        va_list list;
-
-        va_start(list, Message);
-        vsnprintf(buffer, 1024, Message, list);
-        va_end(list);
-
-        if (!MyUplink->Write("%s WC %s :%s\r\n", getCharYYXXX().c_str(), theChan->getName().c_str(),
-                             buffer))
-            return false;
-    }
-    return true;
+    return MyUplink->SendMessage(Source(me), chanName, Message);
 }
 
 bool xClient::Message(const Channel* theChan, const char* Message, ...) {
     assert(theChan != 0);
 
-    if (isConnected() && Message && Message[0] != 0) {
-        char buffer[1024];
-        memset(buffer, 0, 1024);
-        va_list list;
-
-        va_start(list, Message);
-        vsnprintf(buffer, 1024, Message, list);
-        va_end(list);
-
-        return MyUplink->Write("%s P %s :%s\r\n", getCharYYXXX().c_str(),
-                               theChan->getName().c_str(), buffer);
+    if (!isConnected() || !Message || Message[0] == 0) {
+        return false;
     }
-    return false;
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendMessage(Source(me), theChan->getName(), buffer);
 }
+
+bool xClient::Notice(const iClient* Target, const string& Message) {
+    if (!isConnected() || IsStealth()) {
+        return false;
+    }
+    return MyUplink->SendNotice(Source(me), Target->getCharYYXXX(), Message);
+}
+
+bool xClient::Notice(const iClient* Target, const char* Message, ...) {
+    if (!isConnected() || IsStealth() || !Message || Message[0] == 0) {
+        return false;
+    }
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendNotice(Source(me), Target->getCharYYXXX(), buffer);
+}
+
+bool xClient::Notice(const string& Channel, const char* Message, ...) {
+    if (!isConnected() || !Message || Message[0] == 0) {
+        return false;
+    }
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendNotice(Source(me), channelName(Channel), buffer);
+}
+
+bool xClient::Notice(const Channel* theChan, const string& Message) {
+    assert(theChan != 0);
+
+    if (Message.empty() || !isConnected()) {
+        return false;
+    }
+    return MyUplink->SendNotice(Source(me), theChan->getName(), Message);
+}
+
+bool xClient::Notice(const Channel* theChan, const char* Message, ...) {
+    assert(theChan != 0);
+
+    if (!isConnected() || !Message || Message[0] == 0) {
+        return false;
+    }
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendNotice(Source(me), theChan->getName(), buffer);
+}
+
+bool xClient::NoticeChannelOps(const Channel* theChan, const char* Message, ...) {
+    assert(theChan != 0);
+
+    // Nothing to say is not a failure, as it never was
+    if (!isConnected() || !Message || Message[0] == 0) {
+        return true;
+    }
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendWallchops(Source(me), theChan, buffer);
+}
+
+bool xClient::NoticeChannelOps(const string& chanName, const char* Message, ...) {
+    const Channel* theChan = Network->findChannel(chanName);
+    if (0 == theChan) {
+        return false;
+    }
+    if (!isConnected() || !Message || Message[0] == 0) {
+        return true;
+    }
+    FORMAT_MESSAGE(buffer, Message);
+    return MyUplink->SendWallchops(Source(me), theChan, buffer);
+}
+
+#undef FORMAT_MESSAGE
 
 void xClient::OnCTCP(iClient*, const string&, const string&, bool) {}
 

@@ -2066,6 +2066,60 @@ bool xServer::changeBans(Channel* theChan, banVectorType bans, const Source& fro
     return true;
 }
 
+bool xServer::sendText(const char* token, const Source& from, std::string_view target,
+                       std::string_view text) {
+    if (target.empty()) {
+        return false;
+    }
+
+    const std::string prefix = numericOf(from) + ' ' + token + ' ' + std::string(target) + " :";
+    if (prefix.size() + 1 >= chanmode::maxLineLength) {
+        return false;
+    }
+    const std::size_t room = chanmode::maxLineLength - prefix.size();
+
+    // A line break in the text means "and another message": every line goes
+    // out by itself, and one too long for a line is continued in the next.
+    // Write() would cut the text at a line break; this is what to do instead
+    // when the breaks are meant, as in a multi-line help text.
+    bool sent = false;
+    while (!text.empty()) {
+        const std::size_t lineEnd = std::min(text.find_first_of("\r\n"), text.size());
+        std::string_view line = text.substr(0, lineEnd);
+        text.remove_prefix(std::min(lineEnd + 1, text.size()));
+
+        while (!line.empty()) {
+            std::size_t take = std::min(line.size(), room);
+            if (take < line.size()) {
+                // Break at a space if there is one in the last part
+                const std::size_t space = line.substr(0, take).rfind(' ');
+                if (space != std::string_view::npos && space > take / 2) {
+                    take = space;
+                }
+            }
+            sent = Write(prefix + std::string(line.substr(0, take))) || sent;
+            line.remove_prefix(take);
+            while (!line.empty() && ' ' == line.front()) {
+                line.remove_prefix(1);
+            }
+        }
+    }
+    return sent;
+}
+
+bool xServer::SendMessage(const Source& from, std::string_view target, std::string_view text) {
+    return sendText("P", from, target, text);
+}
+
+bool xServer::SendNotice(const Source& from, std::string_view target, std::string_view text) {
+    return sendText("O", from, target, text);
+}
+
+bool xServer::SendWallchops(const Source& from, const Channel* theChan, std::string_view text) {
+    assert(theChan != 0);
+    return sendText("WC", from, theChan->getName(), text);
+}
+
 bool xServer::Topic(Channel* theChan, const std::string& newTopic, const Source& from) {
     assert(theChan != 0);
 
@@ -2966,9 +3020,7 @@ bool xServer::Notice(iClient* theClient, const string& message) {
         return false;
     }
 
-    stringstream s;
-    s << getCharYY() << " O " << theClient->getCharYYXXX() << " :" << message;
-    return Write(s.str());
+    return SendNotice(Source(), theClient->getCharYYXXX(), message);
 }
 
 bool xServer::Notice(iClient* theClient, const char* format, ...) {
@@ -2981,10 +3033,7 @@ bool xServer::Notice(iClient* theClient, const char* format, ...) {
     vsnprintf(buf, 1024, format, _list);
     va_end(_list);
 
-    stringstream s;
-    s << getCharYY() << " O " << theClient->getCharYYXXX() << " :" << buf;
-
-    return Write(s);
+    return SendNotice(Source(), theClient->getCharYYXXX(), buf);
 }
 
 bool xServer::serverNotice(Channel* theChan, const char* format, ...) {
@@ -2997,10 +3046,7 @@ bool xServer::serverNotice(Channel* theChan, const char* format, ...) {
     vsnprintf(buf, 1024, format, _list);
     va_end(_list);
 
-    stringstream s;
-    s << getCharYY() << " O " << theChan->getName() << " :" << buf;
-
-    return Write(s);
+    return SendNotice(Source(), theChan->getName(), buf);
 }
 
 bool xServer::serverNotice(Channel* theChan, const string& Message) {
@@ -3010,10 +3056,7 @@ bool xServer::serverNotice(Channel* theChan, const string& Message) {
         return false;
     }
 
-    stringstream s;
-    s << getCharYY() << " O " << theChan->getName() << " :" << Message;
-
-    return Write(s);
+    return SendNotice(Source(), theChan->getName(), Message);
 }
 
 bool xServer::XReply(iServer* theServer, const string& Routing, const string& Message) {

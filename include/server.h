@@ -589,6 +589,22 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool Invite(iClient* target, Channel*, const Source& from);
 
     /*
+     * Messages.  These only write, there being no state to keep.  `target`
+     * is a numnick or a channel name.  A line break in the text starts
+     * another message, and a line too long for one message is continued in
+     * the next.  The source comes first here: there is no obvious default.
+     */
+
+    /// PRIVMSG
+    virtual bool SendMessage(const Source& from, std::string_view target, std::string_view text);
+
+    /// NOTICE
+    virtual bool SendNotice(const Source& from, std::string_view target, std::string_view text);
+
+    /// WALLCHOPS: a notice to the ops of a channel
+    virtual bool SendWallchops(const Source& from, const Channel*, std::string_view text);
+
+    /*
      * The pieces the methods above are made of.  xClient uses them too: it
      * has to be on the channel with ops between the planning and the
      * committing, which may mean joining first and parting after.
@@ -1125,6 +1141,9 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * dropped, and logged, so that text cannot start a line of its own.
      */
     bool writeLine(std::string_view text, bool duringBurst);
+
+    bool sendText(const char* token, const Source& from, std::string_view target,
+                  std::string_view text);
 
     void applyModesSilently(Channel* theChan, std::span<const chanmode::Change> changes);
 
