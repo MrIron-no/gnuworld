@@ -1915,7 +1915,9 @@ bool xClient::Invite(iClient* theClient, Channel* theChan) {
             Join( theChan ) ;
             } */
 
-    Write("%s I %s %s", getCharYYXXX().c_str(), theClient->getNickName().c_str(),
+    Write("%s I %s %s", getCharYYXXX().c_str(),
+          getUplink()->getUplink()->getProtocol() < 11 ? theClient->getNickName().c_str()
+                                                       : theClient->getCharYYXXX(),
           theChan->getName().c_str());
 
     /* if( !OnChannel )
