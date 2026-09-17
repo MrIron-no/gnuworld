@@ -42,8 +42,6 @@ void SERVERSCommand::Exec(const iClient* theClient, const std::string&) {
             flags += 'H';
         if (theServer->isService())
             flags += 'S';
-        if (theServer->isIPv6())
-            flags += '6';
         if (theServer->isJupe())
             flags += 'J';
         if (theServer->isBursting())
@@ -53,9 +51,9 @@ void SERVERSCommand::Exec(const iClient* theClient, const std::string&) {
 
         const iServer* uplink = Network->findServer(theServer->getUplinkIntYY());
 
-        bot->Notice(theClient, "  {} numeric={} clients={} flags={} uplink={}",
+        bot->Notice(theClient, "  {} numeric={} clients={} flags={} uplink={} protocol=P{}",
                     theServer->getName(), theServer->getCharYY(), Network->countClients(theServer),
-                    flags, uplink ? uplink->getName() : "(none)");
+                    flags, uplink ? uplink->getName() : "(none)", theServer->getProtocol());
         ++totalServers;
     }
 

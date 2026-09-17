@@ -98,23 +98,6 @@
 #define TOPIC_TRACK
 
 /**
- * NEW_IRCU_FEATURES
- * Enable protocol features that require a matching ircu uplink, e.g.:
- * - TLS fingerprint burst (N ... +z)
- * - Outbound IRCv3 message-tags on P10
- * - CService: AC updates, SASL, network config, autohide (+x), etc.
- *
- * UPGRADE NOTE: TLS fingerprint burst used to be gated by its own flag,
- * NO_FINGERPRINT_BURST, which shipped undefined and therefore compiled
- * fingerprint burst in by default. It is now folded into this flag
- * instead, which ships undefined (disabled) by default. Deployments
- * that rely on TLS fingerprint burst and are rebuilding from a config
- * predating this change must explicitly define NEW_IRCU_FEATURES to
- * keep that behavior.
- */
-#undef NEW_IRCU_FEATURES
-
-/**
  * USE_THREAD
  * Set this to enable mutexes on shared objects. Relevant for running
  * modules with threading.

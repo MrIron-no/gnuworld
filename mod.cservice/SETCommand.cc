@@ -133,7 +133,7 @@ bool SETCommand::Exec(iClient* theClient, const string& Message) {
             return true;
         }
 
-#ifdef NEW_IRCU_FEATURES
+        /* AUTOHIDE needs a P11+ uplink; otherwise treat it as unknown */
         if (option == "AUTOHIDE") {
             if (value == "ON") {
                 theUser->setFlag(sqlUser::F_AUTOHIDE);
@@ -196,7 +196,6 @@ bool SETCommand::Exec(iClient* theClient, const string& Message) {
                         option.c_str());
             return true;
         }
-#endif
 #ifdef USE_NOTES
         if (option == "NONOTES") {
             if (value == "ON") {

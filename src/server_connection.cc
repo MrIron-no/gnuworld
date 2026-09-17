@@ -85,14 +85,14 @@ void xServer::OnConnect(Connection* theConn) {
     // Just connected to our uplink
     serverConnection = theConn;
 
-    // P10 version information, bogus.
-    Version = 10;
+    // P11 version information, bogus.
+    Version = 11;
 
     // Set ourselves as a service.
     me->setService();
 
-    // Set ourselves as IPv6.
-    me->setIPv6();
+    // Record the protocol version we announce in our SERVER line.
+    me->setProtocol(static_cast<unsigned int>(Version));
 
     // Initialize the connection time variable to current time.
     ConnectionTime = ::time(NULL);
@@ -109,6 +109,9 @@ void xServer::OnConnect(Connection* theConn) {
     WriteDuringBurst("SERVER %s %d %d %d J%02d %s +s6 :%s\n", ServerName.c_str(), 1, StartTime,
                      ConnectionTime, Version, (string(getCharYY()) + "]]]").c_str(),
                      ServerDescription.c_str());
+
+    // Send our capabilities (none!).
+    WriteDuringBurst("CAP");
 }
 
 void xServer::OnConnectFail(Connection* theConn) {
@@ -301,15 +304,10 @@ bool xServer::Write(const string& buf) {
 }
 
 bool xServer::Write(const xParameters::tagListType& tags, const string& line) {
-#ifdef NEW_IRCU_FEATURES
-    if (tags.empty()) {
+    if (tags.empty() || !(Uplink && Uplink->getProtocol() >= 11)) {
         return Write(line);
     }
     return Write(xParameters::formatTagPrefix(tags) + line);
-#else
-    (void)tags;
-    return Write(line);
-#endif
 }
 
 bool xServer::Write(const xParameters::tagListType& tags, const stringstream& line) {
@@ -326,12 +324,11 @@ bool xServer::Write(const xParameters::tagListType& tags, const char* format, ..
 }
 
 bool xServer::WriteWithTime(const string& line) {
-#ifdef NEW_IRCU_FEATURES
+    if (!(Uplink && Uplink->getProtocol() >= 11)) {
+        return Write(line);
+    }
     xParameters::tagListType tags{MessageTag{"time", formatServerTime()}};
     return Write(tags, line);
-#else
-    return Write(line);
-#endif
 }
 
 bool xServer::WriteWithTime(const stringstream& line) { return WriteWithTime(string(line.str())); }

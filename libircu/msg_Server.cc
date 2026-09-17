@@ -92,11 +92,10 @@ bool msg_Server::Execute(const xParameters& Param) {
                                                         atoi(Param[3])); // connect time
         assert(tmpUplink != 0);
 
-        // Check for P10 versus J10, J10 means the server is
-        // bursting.
-        if ('J' == Param[4][0]) {
-            tmpUplink->setBursting(true);
-        }
+        // Param[ 4 ] is "P10", "J10", "P11", "J11", ...  The J-token
+        // means the server is bursting; the digits are the protocol
+        // version our uplink speaks.
+        tmpUplink->setProtocolToken(Param[4]);
 
         // Set any appropriate server flags
         tmpUplink->setFlags(Param[6]);

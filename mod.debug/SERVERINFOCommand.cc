@@ -38,8 +38,9 @@ void dumpServerInfo(debug* bot, const iClient* theClient, iServer* theServer) {
     bot->Notice(theClient, "Server: {}", theServer->getName());
     bot->Notice(theClient, "Description: {}", theServer->getDescription());
     bot->Notice(theClient, "Numeric: {} (intYY={})", theServer->getCharYY(), theServer->getIntYY());
-    bot->Notice(theClient, "Uplink: {} (intYY={})", uplink ? uplink->getName() : "(none)",
-                theServer->getUplinkIntYY());
+    bot->Notice(theClient, "Protocol: P{}", theServer->getProtocol())
+        bot->Notice(theClient, "Uplink: {} (intYY={})", uplink ? uplink->getName() : "(none)",
+                    theServer->getUplinkIntYY());
     bot->Notice(theClient, "Clients: {}", Network->countClients(theServer));
     bot->Notice(theClient, "Connected: {} ({} ago)", theServer->getConnectTime(),
                 prettyDuration(theServer->getConnectTime()));
@@ -47,11 +48,10 @@ void dumpServerInfo(debug* bot, const iClient* theClient, iServer* theServer) {
                 prettyDuration(theServer->getStartTime()));
     bot->Notice(theClient, "Lag: {} seconds (last update: {})", theServer->getLag(),
                 theServer->getLastLagTS());
-    bot->Notice(theClient, "Flags: {:#x}  hub={} service={} ipv6={} tls={} jupe={} bursting={}",
+    bot->Notice(theClient, "Flags: {:#x}  hub={} service={} tls={} jupe={} bursting={}",
                 theServer->getFlags(), theServer->isHub() ? "yes" : "no",
-                theServer->isService() ? "yes" : "no", theServer->isIPv6() ? "yes" : "no",
-                theServer->isTLS() ? "yes" : "no", theServer->isJupe() ? "yes" : "no",
-                theServer->isBursting() ? "yes" : "no");
+                theServer->isService() ? "yes" : "no", theServer->isTLS() ? "yes" : "no",
+                theServer->isJupe() ? "yes" : "no", theServer->isBursting() ? "yes" : "no");
 }
 
 } // namespace

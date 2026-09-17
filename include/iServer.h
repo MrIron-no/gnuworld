@@ -66,8 +66,6 @@ class iServer : public NetworkTarget {
     static constexpr flagType FLAG_HUB = 0x02;
     /* Set if this iServer is a service (+s) */
     static constexpr flagType FLAG_SERVICE = 0x04;
-    /* Set if this iServer is IPv6-compatible (+6) */
-    static constexpr flagType FLAG_IPV6 = 0x08;
     /* Set if this iServer is connected over TLS (+z) */
     static constexpr flagType FLAG_TLS = 0x10;
 
@@ -89,6 +87,13 @@ class iServer : public NetworkTarget {
      * Return the iServer's flags.
      */
     inline const flagType& getFlags() const { return flags; }
+
+    /**
+     * Return the protocol version this server announced in its
+     * SERVER message (10 for P10/J10, 11 for P11/J11).  Defaults
+     * to 11 until a SERVER message says otherwise.
+     */
+    inline unsigned int getProtocol() const { return protocol; }
 
     /**
      * Return true if a particular flag is set, false otherwise.
@@ -134,16 +139,6 @@ class iServer : public NetworkTarget {
      * Set this iServer as a service.
      */
     inline void setService() { setFlag(FLAG_SERVICE); }
-
-    /**
-     * Return true if this server is IPv6-compatible
-     */
-    inline bool isIPv6() const { return getFlag(FLAG_IPV6); }
-
-    /**
-     * Set this iServer as IPv6-compatible
-     */
-    inline void setIPv6() { setFlag(FLAG_IPV6); }
 
     /**
      * Return true if this server is connected over TLS
@@ -235,7 +230,8 @@ class iServer : public NetworkTarget {
      */
     friend ELog& operator<<(ELog& out, const iServer& serv) {
         out << "Name: " << serv.getName() << ' ' << "intYY: " << serv.getIntYY() << ' '
-            << "uplinkIntYY: " << serv.getUplinkIntYY() << ' ' << "charYY: " << serv.getCharYY();
+            << "uplinkIntYY: " << serv.getUplinkIntYY() << ' ' << "charYY: " << serv.getCharYY()
+            << ' ' << "protocol: " << serv.getProtocol();
         return out;
     }
 
@@ -245,7 +241,8 @@ class iServer : public NetworkTarget {
      */
     friend std::ostream& operator<<(std::ostream& out, const iServer& serv) {
         out << "Name: " << serv.getName() << ' ' << "intYY: " << serv.getIntYY() << ' '
-            << "uplinkIntYY: " << serv.getUplinkIntYY() << ' ' << "charYY: " << serv.getCharYY();
+            << "uplinkIntYY: " << serv.getUplinkIntYY() << ' ' << "charYY: " << serv.getCharYY()
+            << ' ' << "protocol: " << serv.getProtocol();
         return out;
     }
 
@@ -255,6 +252,18 @@ class iServer : public NetworkTarget {
      * Interpret a server's flags.
      */
     void setFlags(const std::string&);
+
+    /**
+     * Set the protocol version this server speaks.
+     */
+    inline void setProtocol(unsigned int newProtocol) { protocol = newProtocol; }
+
+    /**
+     * Interpret the protocol token of a SERVER message ("P10", "J10",
+     * "P11", "J11", ...).  Stores the numeric version and marks the
+     * server as bursting if the token is a J-token.
+     */
+    void setProtocolToken(const std::string&);
 
   protected:
     /**
@@ -298,6 +307,13 @@ class iServer : public NetworkTarget {
      * This server's flags.
      */
     flagType flags;
+
+    /**
+     * Protocol version announced by this server (10 for P10, 11 for P11).
+     * Only the numeric part of the P10/J10/P11/J11 token is kept.
+     * Defaults to 11.
+     */
+    unsigned int protocol;
 
     /**
      * This server's lag time (in seconds), based on the last nick change

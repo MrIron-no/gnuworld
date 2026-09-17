@@ -638,11 +638,21 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
     }
 
     if (asServer) {
-        Write("%s D %s :%s (%s)", MyUplink->getCharYY().c_str(), theClient->getCharYYXXX().c_str(),
-              MyUplink->getName().c_str(), reason.c_str());
+        if (getUplink()->getUplink()->getProtocol() < 11) {
+            Write("%s D %s :%s (%s)", MyUplink->getCharYY().c_str(),
+                  theClient->getCharYYXXX().c_str(), MyUplink->getName().c_str(), reason.c_str());
+        } else {
+            Write("%s D %s %s :%s", MyUplink->getCharYY().c_str(),
+                  theClient->getCharYYXXX().c_str(), MyUplink->getName().c_str(), reason.c_str());
+        }
     } else {
-        Write("%s D %s :%s (%s)", getCharYYXXX().c_str(), theClient->getCharYYXXX().c_str(),
-              getNickName().c_str(), reason.c_str());
+        if (getUplink()->getUplink()->getProtocol() < 11) {
+            Write("%s D %s :%s (%s)", getCharYYXXX().c_str(), theClient->getCharYYXXX().c_str(),
+                  getNickName().c_str(), reason.c_str());
+        } else {
+            Write("%s D %s %s :%s", getCharYYXXX().c_str(), theClient->getCharYYXXX().c_str(),
+                  getNickName().c_str(), reason.c_str());
+        }
     }
 
     // Why was all this commented out? -- gk
@@ -865,7 +875,7 @@ bool xClient::Voice(Channel* theChan, const std::vector<iClient*>& clientVector)
         if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
             stringstream s;
             s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "+" << modeString << ' '
-              << args;
+              << args << ' ' << theChan->getCreationTime();
 
             Write(s);
 
@@ -926,8 +936,8 @@ bool xClient::Voice(Channel* theChan, iClient* theClient) {
         // The bot has ops
     }
 
-    Write("%s M %s +v %s", getCharYYXXX().c_str(), theChan->getName().c_str(),
-          theClient->getCharYYXXX().c_str());
+    Write("%s M %s +v %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(),
+          theClient->getCharYYXXX().c_str(), theChan->getCreationTime());
 
     if (!OnChannel) {
         Part(theChan);
@@ -1133,8 +1143,8 @@ bool xClient::DeVoice(Channel* theChan, iClient* theClient) {
         // The bot has ops
     }
 
-    Write("%s M %s -v %s", getCharYYXXX().c_str(), theChan->getName().c_str(),
-          theClient->getCharYYXXX().c_str());
+    Write("%s M %s -v %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(),
+          theClient->getCharYYXXX().c_str(), theChan->getCreationTime());
 
     xServer::voiceVectorType voiceVector;
     voiceVector.push_back(xServer::voiceVectorType::value_type(false, theUser));
@@ -1273,7 +1283,8 @@ bool xClient::Ban(Channel* theChan, iClient* theClient) {
 
     string banMask = Channel::createBan(theClient);
 
-    Write("%s M %s +b :%s", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str());
+    Write("%s M %s +b :%s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
+          theChan->getCreationTime());
 
     // No users are kicked by just setting a ban.
 
@@ -1323,7 +1334,8 @@ bool xClient::UnBan(Channel* theChan, const string& banMask) {
         // The bot has ops
     }
 
-    Write("%s M %s -b %s", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str());
+    Write("%s M %s -b %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
+          theChan->getCreationTime());
 
     xServer::banVectorType banVector;
     banVector.push_back(xServer::banVectorType::value_type(false, banMask));
@@ -1377,7 +1389,7 @@ bool xClient::UnBan(Channel* theChan, const xServer::banVectorType& banVector) {
         if ((MAX_CHAN_MODES == modeString.size()) || ((banPtr + 1) == end)) {
             stringstream s;
             s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "-" << modeString << ' '
-              << args;
+              << args << ' ' << theChan->getCreationTime();
 
             Write(s);
 
@@ -1469,7 +1481,7 @@ bool xClient::Ban(Channel* theChan, const xServer::banVectorType& banVector) {
         if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
             stringstream s;
             s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "+" << modeString << ' '
-              << args;
+              << args << ' ' << theChan->getCreationTime();
 
             Write(s);
 
@@ -1530,7 +1542,8 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
 
     string banMask = Channel::createBan(theClient);
 
-    Write("%s M %s +b :%s", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str());
+    Write("%s M %s +b :%s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
+          theChan->getCreationTime());
 
     Write("%s K %s %s :%s", getCharYYXXX().c_str(), theChan->getName().c_str(),
           theClient->getCharYYXXX().c_str(), reason.c_str());
@@ -1574,7 +1587,8 @@ bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
         theUser->setMode(ChannelUser::MODE_O);
 
         stringstream s;
-        s << getUplink()->getCharYY() << " M " << theChan->getName() << " +o " << getCharYYXXX();
+        s << getUplink()->getCharYY() << " M " << theChan->getName() << " +o " << getCharYYXXX()
+          << ' ' << theChan->getCreationTime();
         Write(s);
     }
 
@@ -2145,8 +2159,9 @@ bool xClient::ClearMode(Channel* theChan, const string& modes, bool modeAsServer
                          modes.c_str());
         } else {
             /* bot is not an oper, use M */
-            return Write("%s M %s -%s%s\r\n", getCharYYXXX().c_str(), theChan->getName().c_str(),
-                         modes.c_str(), chanKey.c_str());
+            return Write("%s M %s -%s%s %ld\r\n", getCharYYXXX().c_str(),
+                         theChan->getName().c_str(), modes.c_str(), chanKey.c_str(),
+                         theChan->getCreationTime());
         }
     }
 }

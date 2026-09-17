@@ -26,11 +26,13 @@
 
 namespace gnuworld {
 
-bool CERTCommand::Exec([[maybe_unused]] iClient* theClient,
-                       [[maybe_unused]] const string& Message) {
-#ifdef NEW_IRCU_FEATURES
-
+bool CERTCommand::Exec(iClient* theClient, const string& Message) {
     bot->incStat("COMMANDS.CERT");
+
+    if (bot->getUplink()->getUplink()->getProtocol() < 11) {
+        bot->Notice(theClient, "CERT is not available on this network.");
+        return true;
+    }
 
     sqlUser* theUser = bot->isAuthed(theClient, true);
     if (!theUser) {
@@ -227,7 +229,6 @@ bool CERTCommand::Exec([[maybe_unused]] iClient* theClient,
         return true;
     }
 
-#endif // NEW_IRCU_FEATURES
     return true;
 }
 

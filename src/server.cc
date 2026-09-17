@@ -1416,7 +1416,8 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
         if (!chanModes.empty()) {
             stringstream s;
-            s << theClient->getCharYYXXX() << " M " << chanName << ' ' << chanModes;
+            s << theClient->getCharYYXXX() << " M " << chanName << ' ' << chanModes << ' '
+              << postJoinTime;
             Write(s);
         }
 
@@ -1482,14 +1483,16 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         if (getOps) {
             // Op the bot
             stringstream s;
-            s << getCharYY() << " M " << chanName << " +o " << theClient->getCharYYXXX();
+            s << getCharYY() << " M " << chanName << " +o " << theClient->getCharYYXXX() << ' '
+              << postJoinTime;
             Write(s);
         }
 
         if (!chanModes.empty()) {
             // Set the channel modes
             stringstream s;
-            s << theClient->getCharYYXXX() << " M " << chanName << ' ' << chanModes;
+            s << theClient->getCharYYXXX() << " M " << chanName << ' ' << chanModes << ' '
+              << postJoinTime;
             Write(s);
         }
     }
@@ -1611,11 +1614,13 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
                 if (theChan->getMode(Channel::MODE_K)) {
                     /* only update it if it is different! */
                     if (strcmp(theChan->getKey().c_str(), st[argPos].c_str())) {
-                        Write("%s M %s -k %s\r\n", theClient->getCharYYXXX().c_str(),
-                              theChan->getName().c_str(), theChan->getKey().c_str());
+                        Write("%s M %s -k %s %ld\r\n", theClient->getCharYYXXX().c_str(),
+                              theChan->getName().c_str(), theChan->getKey().c_str(),
+                              theChan->getCreationTime());
 
-                        Write("%s M %s +k %s\r\n", theClient->getCharYYXXX().c_str(),
-                              theChan->getName().c_str(), st[argPos].c_str());
+                        Write("%s M %s +k %s %ld\r\n", theClient->getCharYYXXX().c_str(),
+                              theChan->getName().c_str(), st[argPos].c_str(),
+                              theChan->getCreationTime());
                     }
                 }
                 theChan->onModeK(true, st[argPos++]);
@@ -2395,7 +2400,7 @@ bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, co
         // loop, write the mode string.
         std::stringstream outputSS;
         outputSS << modeSource << " M " << theChan->getName() << " " << outputModes << " "
-                 << outputArgs << ends;
+                 << outputArgs << " " << theChan->getCreationTime() << endl;
         /*	elog	<< "xServer::Mode> output: "
                         << outputSS.str()
                         << endl ; */

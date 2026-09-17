@@ -211,9 +211,7 @@ cservice::cservice(const string& args)
         this, "NOTE", "send <username> <message>, read all, erase <all|message id>", 10));
     RegisterCommand(new NOTECommand(
         this, "NOTES", "send <username> <message>, read all, erase <all|message id>", 10));
-#ifdef NEW_IRCU_FEATURES
     RegisterCommand(new CERTCommand(this, "CERT", "<ADD|REM|LIST> [fingerprint] [note]", 10));
-#endif
 #ifdef THERETURN_ENABLED
     RegisterCommand(new WCommand(this, "W", "[join | part | purge] <#channel>", 10));
 #endif
@@ -497,25 +495,25 @@ void cservice::BurstChannels() {
 }
 
 void cservice::OnConnect() {
-#ifdef NEW_IRCU_FEATURES
-    auto saslServer = Network->findNetConf("sasl.server");
-    if (!saslServer || saslServer->first != MyUplink->getName()) {
-        MyUplink->Write("%s CF %d sasl.server :%s", getCharYY().c_str(), time(nullptr),
-                        MyUplink->getName().c_str());
-    }
+    if (MyUplink->getUplink()->getProtocol() >= 11) {
+        auto saslServer = Network->findNetConf("sasl.server");
+        if (!saslServer || saslServer->first != MyUplink->getName()) {
+            MyUplink->Write("%s CF %d sasl.server :%s", getCharYY().c_str(), time(nullptr),
+                            MyUplink->getName().c_str());
+        }
 
-    auto saslMechanisms = Network->findNetConf("sasl.mechanisms");
-    if (!saslMechanisms || saslMechanisms->first != saslMechsAdvertiseList()) {
-        MyUplink->Write("%s CF %d sasl.mechanisms :%s", getCharYY().c_str(), time(nullptr),
-                        saslMechsAdvertiseList().c_str());
-    }
+        auto saslMechanisms = Network->findNetConf("sasl.mechanisms");
+        if (!saslMechanisms || saslMechanisms->first != saslMechsAdvertiseList()) {
+            MyUplink->Write("%s CF %d sasl.mechanisms :%s", getCharYY().c_str(), time(nullptr),
+                            saslMechsAdvertiseList().c_str());
+        }
 
-    auto netSaslTimeout = Network->findNetConf("sasl.timeout");
-    if (!netSaslTimeout || std::stoul(netSaslTimeout->first) != saslTimeout) {
-        MyUplink->Write("%s CF %d sasl.timeout :%d", getCharYY().c_str(), time(nullptr),
-                        saslTimeout);
+        auto netSaslTimeout = Network->findNetConf("sasl.timeout");
+        if (!netSaslTimeout || std::stoul(netSaslTimeout->first) != saslTimeout) {
+            MyUplink->Write("%s CF %d sasl.timeout :%d", getCharYY().c_str(), time(nullptr),
+                            saslTimeout);
+        }
     }
-#endif // NEW_IRCU_FEATURES
 
     xClient::OnConnect();
 }
@@ -5227,8 +5225,8 @@ bool cservice::checkBansOnJoin(Channel* netChan, sqlChannel* theChan, iClient* t
     /* If we found a matching ban */
     if (theBan && (theBan->getLevel() >= 75)) {
         stringstream s;
-        s << getCharYYXXX() << " M " << theChan->getName() << " +b " << theBan->getBanMask()
-          << ends;
+        s << getCharYYXXX() << " M " << theChan->getName() << " +b " << theBan->getBanMask() << ' '
+          << netChan->getCreationTime() << ends;
 
         Write(s);
 
@@ -5627,7 +5625,8 @@ void cservice::doFloatingLimit(sqlChannel* reggedChan, Channel* theChan) {
     incStat("CORE.FLOATLIM.ALTER");
 
     stringstream s;
-    s << getCharYYXXX() << " M " << theChan->getName() << " +l " << newLimit << ends;
+    s << getCharYYXXX() << " M " << theChan->getName() << " +l " << newLimit << " "
+      << theChan->getCreationTime() << ends;
 
     Write(s);
 
@@ -5670,7 +5669,8 @@ bool cservice::doSingleBan(sqlChannel* theChan, const string& banMask, unsigned 
 
     if (netChan) {
         stringstream s;
-        s << getCharYYXXX() << " M " << netChan->getName() << " +b " << banMask << ends;
+        s << getCharYYXXX() << " M " << netChan->getName() << " +b " << banMask << " "
+          << netChan->getCreationTime() << ends;
 
         Write(s);
 
@@ -5737,7 +5737,8 @@ bool cservice::doSingleBanAndKick(sqlChannel* theChan, iClient* theClient, unsig
 
     if (netChan) {
         stringstream s;
-        s << getCharYYXXX() << " M " << netChan->getName() << " +b " << banTarget << ends;
+        s << getCharYYXXX() << " M " << netChan->getName() << " +b " << banTarget << " "
+          << netChan->getCreationTime() << ends;
 
         Write(s);
 
@@ -8901,11 +8902,10 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
         this->MyUplink->UserLogin(theClient, theUser->getUserName(), theUser->getID(),
                                   makeAccountFlags(theUser), this);
 
-#ifdef NEW_IRCU_FEATURES
-    /* Set remote +x if user has AUTOHIDE set */
-    if (theUser->getFlag(sqlUser::F_AUTOHIDE) && !theClient->isModeX())
+    /* Set remote +x if user has AUTOHIDE set (P11+ uplink only) */
+    if (MyUplink->getUplink()->getProtocol() >= 11 && theUser->getFlag(sqlUser::F_AUTOHIDE) &&
+        !theClient->isModeX())
         MyUplink->Write("%s OM %s :+x", getCharYY().c_str(), theClient->getCharYYXXX().c_str());
-#endif
     /*
      * If the user account has been suspended, make sure they don't get
      * auto-opped.
@@ -9476,10 +9476,9 @@ void cservice::sendAccountFlags(sqlUser* theUser, iClient* theClient) const {
     if (theClient->getAccountFlags() == newFlags)
         return;
 
-#ifdef NEW_IRCU_FEATURES
-    MyUplink->Write("%s AC %s %s %u %u", getCharYY().c_str(), theClient->getCharYYXXX().c_str(),
-                    theClient->getAccount().c_str(), theClient->getAccountID(), newFlags);
-#endif
+    if (MyUplink->getUplink()->getProtocol() >= 11)
+        MyUplink->Write("%s AC %s %s %u %u", getCharYY().c_str(), theClient->getCharYYXXX().c_str(),
+                        theClient->getAccount().c_str(), theClient->getAccountID(), newFlags);
 
     theClient->setAccountFlags(newFlags);
 

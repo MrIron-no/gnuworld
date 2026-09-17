@@ -58,7 +58,7 @@ CREATE_HANDLER(msg_S)
  * P10: Protocol
  * B: Server numeric
  * D]: Last used nick number for clients
- * +6/+h/+s: server/services flags
+ * +h/+s: server/services flags
  * EUWorld Undernet Server: description
  * As always, the second token, the command, is not
  * included in the xParameters passed here.
@@ -82,7 +82,7 @@ bool msg_S::Execute(const xParameters& params) {
     // Don't care about hop count
     // Don't care about start time
     time_t connectTime = static_cast<time_t>(atoi(params[4]));
-    // Don't care about version
+    // params[ 5 ] is the protocol token: P10/J10/P11/J11
 
     int serverIntYY = base64toint(params[6], 2);
 
@@ -100,11 +100,10 @@ bool msg_S::Execute(const xParameters& params) {
                                                     serverName, connectTime);
     assert(newServer != 0);
 
-    // params[ 5 ] is either "P10", or "J10".  The J10 means
-    // that the server is bursting
-    if ('J' == params[5][0]) {
-        newServer->setBursting(true);
-    }
+    // params[ 5 ] is "P10", "J10", "P11", "J11", ...  The J-token
+    // means that the server is bursting; the digits are the protocol
+    // version the server speaks.
+    newServer->setProtocolToken(params[5]);
 
     // Set any appropriate server flags
     newServer->setFlags(params[7]);

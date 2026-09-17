@@ -24,6 +24,7 @@
 #include <ctime>
 
 #include <cstring>
+#include <cstdlib>
 
 #include "iServer.h"
 #include "Numeric.h"
@@ -37,10 +38,33 @@ using std::string;
 iServer::iServer(const unsigned int& _uplink, const string& _yyxxx, const string& _name,
                  const time_t& _connectTime, const string& _description)
     : NetworkTarget(_yyxxx), uplinkIntYY(_uplink), name(_name), connectTime(_connectTime),
-      startTime(_connectTime), description(_description), bursting(false), flags(0), lag(0),
-      lastLagTS(0) {}
+      startTime(_connectTime), description(_description), bursting(false), flags(0), protocol(11),
+      lag(0), lastLagTS(0) {}
 
 iServer::~iServer() {}
+
+/**
+ * Interpret the protocol token of a SERVER message.
+ *
+ * @Param[in] token "P10"/"J10"/"P11"/"J11".  A leading 'J' means the
+ * server is still bursting.  The digits are the protocol version.
+ */
+void iServer::setProtocolToken(const string& token) {
+    if (token.size() < 2) {
+        elog << "iServer> Malformed protocol token: " << token << std::endl;
+        return;
+    }
+    if ('J' == token[0]) {
+        setBursting(true);
+    }
+    char* end = 0;
+    unsigned long version = strtoul(token.c_str() + 1, &end, 10);
+    if (end == token.c_str() + 1 || 0 == version) {
+        elog << "iServer> Unrecognised protocol version in token: " << token << std::endl;
+        return;
+    }
+    protocol = static_cast<unsigned int>(version);
+}
 
 /**
  * Interpret a server's flags.
@@ -55,9 +79,6 @@ void iServer::setFlags(const string& newFlags) {
             break;
         case 's':
             setService();
-            break;
-        case '6':
-            setIPv6();
             break;
         case 'z':
             setTLS();
