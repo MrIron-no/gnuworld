@@ -8,12 +8,12 @@ what is recorded here must be a deliberate one.
 On a P11 link a channel MODE without an all-digit final timestamp is dropped by
 the receiver (ircu doc/P11.md 8.7), so the timestamp is asserted everywhere.
 
-KNOWN DEFECTS recorded below as they are today, for the mode engine to fix:
-  [spaces]    a doubled or tripled space before the timestamp. Harmless on the
-              wire, but it shows each call site formats its own line.
-  [clearmode] clearing bans as a non-oper sends "-b <ts>" with no mask, which
-              cannot remove anything: the receiver reads the timestamp as the mask.
-  [split]     a combined "+ov"/"-lk" is sent as "+o+v"/"-l-k". Valid, just noisy.
+The mode engine (libgnuworld/ChannelModes, xServer::SendChannelModes) now
+formats every one of these lines. Compared with what was first recorded here:
+exactly one space between fields, where call sites used to leave two or three
+before the timestamp; "+ov" and "-lk" instead of "+o+v" and "-l-k"; and a
+non-oper ClearMode of bans names each mask, where it used to send "-b <ts>",
+which removed nothing.
 """
 
 from __future__ import annotations
@@ -43,33 +43,33 @@ STEPS: list[tuple[str, list[str]]] = [
 
     ("op {c} bob", ["{me} M {c} +o {bob} {ts}"]),
     ("deop {c} bob", ["{me} M {c} -o {bob} {ts}"]),
-    ("op {c} bob carol", ["{me} M {c} +oo {bob} {carol}  {ts}"]),  # [spaces]
+    ("op {c} bob carol", ["{me} M {c} +oo {bob} {carol} {ts}"]),
     ("deop {c} bob carol", ["{me} M {c} -oo {bob} {carol} {ts}"]),
     ("voice {c} bob", ["{me} M {c} +v {bob} {ts}"]),
     ("devoice {c} bob", ["{me} M {c} -v {bob} {ts}"]),
-    ("voice {c} bob carol", ["{me} M {c} +vv {bob} {carol}  {ts}"]),  # [spaces]
+    ("voice {c} bob carol", ["{me} M {c} +vv {bob} {carol} {ts}"]),
     ("devoice {c} bob carol", ["{me} M {c} -vv {bob} {carol} {ts}"]),
 
     ("ban {c} bob", ["{me} M {c} +b {bobmask} {ts}"]),
     ("unban {c} {bobmask}", ["{me} M {c} -b {bobmask} {ts}"]),
-    ("ban {c} bob carol", ["{me} M {c} +bb {bobmask} {carolmask}  {ts}"]),  # [spaces]
-    ("unban {c} {bobmask} {carolmask}", ["{me} M {c} -bb {bobmask} {carolmask}  {ts}"]),  # [spaces]
+    ("ban {c} bob carol", ["{me} M {c} +bb {bobmask} {carolmask} {ts}"]),
+    ("unban {c} {bobmask} {carolmask}", ["{me} M {c} -bb {bobmask} {carolmask} {ts}"]),
     ("banmask {c} *!*@one.example *!*@two.example",
-     ["{me} M {c} +bb *!*@one.example *!*@two.example  {ts}"]),  # [spaces]
+     ["{me} M {c} +bb *!*@one.example *!*@two.example {ts}"]),
     ("unban {c} *!*@one.example *!*@two.example",
-     ["{me} M {c} -bb *!*@one.example *!*@two.example  {ts}"]),  # [spaces]
+     ["{me} M {c} -bb *!*@one.example *!*@two.example {ts}"]),
 
-    ("mode {c} +m", ["{me} M {c} +m   {ts}"]),  # [spaces]
-    ("mode {c} -m", ["{me} M {c} -m   {ts}"]),  # [spaces]
-    ("mode {c} +l 10", ["{me} M {c} +l 10  {ts}"]),  # [spaces]
-    ("mode {c} +k sekrit", ["{me} M {c} +k sekrit  {ts}"]),  # [spaces]
-    ("mode {c} -lk sekrit", ["{me} M {c} -l-k  sekrit  {ts}"]),  # [spaces] [split]
-    ("mode {c} +ov bob carol", ["{me} M {c} +o+v {bob} {carol}  {ts}"]),  # [spaces] [split]
-    ("mode {c} -ov bob carol", ["{me} M {c} -o-v {bob} {carol}  {ts}"]),  # [spaces] [split]
-    ("mode {c} +b *!*@three.example", ["{me} M {c} +b *!*@three.example  {ts}"]),  # [spaces]
-    ("servmode {c} +i", ["{srv} M {c} +i   {ts}"]),  # [spaces]
-    ("servmode {c} -i", ["{srv} M {c} -i   {ts}"]),  # [spaces]
-    ("servop {c} bob", ["{srv} M {c} +o {bob}  {ts}"]),  # [spaces]
+    ("mode {c} +m", ["{me} M {c} +m {ts}"]),
+    ("mode {c} -m", ["{me} M {c} -m {ts}"]),
+    ("mode {c} +l 10", ["{me} M {c} +l 10 {ts}"]),
+    ("mode {c} +k sekrit", ["{me} M {c} +k sekrit {ts}"]),
+    ("mode {c} -lk sekrit", ["{me} M {c} -lk sekrit {ts}"]),
+    ("mode {c} +ov bob carol", ["{me} M {c} +ov {bob} {carol} {ts}"]),
+    ("mode {c} -ov bob carol", ["{me} M {c} -ov {bob} {carol} {ts}"]),
+    ("mode {c} +b *!*@three.example", ["{me} M {c} +b *!*@three.example {ts}"]),
+    ("servmode {c} +i", ["{srv} M {c} +i {ts}"]),
+    ("servmode {c} -i", ["{srv} M {c} -i {ts}"]),
+    ("servop {c} bob", ["{srv} M {c} +o {bob} {ts}"]),
     ("deop {c} bob", ["{me} M {c} -o {bob} {ts}"]),
 
     ("topic {c} hello there", ["{me} T {c} :hello there"]),
@@ -80,7 +80,8 @@ STEPS: list[tuple[str, list[str]]] = [
         "{me} M {c} +b {bobmask} {ts}",
         "{me} K {c} {bob} :bye now",
     ]),
-    ("clearmode {c} b", ["{me} M {c} -b {ts}"]),  # [clearmode]
+    # three.example was set above and never removed; bob's mask came with the bankick
+    ("clearmode {c} b", ["{me} M {c} -bb {bobmask} *!*@three.example {ts}"]),
     ("part {c}", ["{me} L {c} :"]),
 ]
 

@@ -53,6 +53,10 @@ gnutest::gnutest(const string& fileName) : xClient(fileName) {
     helpTable.insert(std::make_pair("help", "Print this menu"));
     helpTable.insert(std::make_pair("moo <args>", "Issue a raw command to the network"));
     helpTable.insert(std::make_pair("join <chan>", "Join a channel"));
+    helpTable.insert(
+        std::make_pair("joinmodes <chan> [modes [args]]", "Join a channel, setting these modes"));
+    helpTable.insert(std::make_pair("joinops <chan> [modes [args]]",
+                                    "Join a channel with these modes, opped by the server"));
     helpTable.insert(std::make_pair("part <chan>", "Part a channel"));
     helpTable.insert(std::make_pair("say <chan> <message>", "Send a message to a channel"));
     helpTable.insert(
@@ -336,6 +340,10 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         Write(raw);
     } else if (st[0] == "join") {
         Join(st[1]);
+    } else if (st[0] == "joinmodes" || st[0] == "joinops") {
+        // joinmodes <chan> [modes [args]]: join, setting these modes
+        // joinops   <chan> [modes [args]]: the same, and have the server op us
+        Join(st[1], st.size() > 2 ? st.assemble(2) : string(), 0, st[0] == "joinops");
     } else if (st[0] == "part") {
         Part(st[1]);
     } else if (st[0] == "say") {

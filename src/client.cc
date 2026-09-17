@@ -24,6 +24,8 @@
 #include <new>
 #include <map>
 #include <string>
+#include <span>
+#include <optional>
 #include <sstream>
 #include <vector>
 #include <iostream>
@@ -43,6 +45,8 @@
 #include "ip.h"
 #include "NetworkTarget.h"
 #include "client.h"
+#include "ChannelModeApply.h"
+#include "ChannelModes.h"
 #include "EConfig.h"
 #include "StringTokenizer.h"
 #include "ELog.h"
@@ -670,6 +674,27 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
     return true;
 }
 
+bool xClient::sendMemberModes(Channel* theChan, char letter, const xServer::opVectorType& members) {
+    const std::optional<chanmode::Mode> mode = chanmode::find(letter);
+    assert(mode && chanmode::Kind::Member == mode->kind);
+
+    std::vector<chanmode::Change> changes;
+    changes.reserve(members.size());
+    for (const auto& [set, member] : members) {
+        changes.push_back({set, *mode, member->getCharYYXXX()});
+    }
+    return MyUplink->SendChannelModes(getCharYYXXX(), theChan, changes);
+}
+
+bool xClient::sendBanModes(Channel* theChan, const xServer::banVectorType& bans) {
+    std::vector<chanmode::Change> changes;
+    changes.reserve(bans.size());
+    for (const auto& [set, mask] : bans) {
+        changes.push_back({set, *chanmode::find('b'), mask});
+    }
+    return MyUplink->SendChannelModes(getCharYYXXX(), theChan, changes);
+}
+
 bool xClient::Op(Channel* theChan, iClient* theClient) {
     assert(theChan != NULL);
     assert(theClient != NULL);
@@ -712,8 +737,7 @@ bool xClient::Op(Channel* theChan, iClient* theClient) {
     }
 
     // Op the user
-    Write("%s M %s +o %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(),
-          theClient->getCharYYXXX().c_str(), theChan->getCreationTime());
+    sendMemberModes(theChan, 'o', {{true, theUser}});
 
     // Was the bot on the channel previously?
     if (!OnChannel) {
@@ -780,27 +804,7 @@ bool xClient::Op(Channel* theChan, const std::vector<iClient*>& clientVector) {
         }
     }
 
-    string modeString;
-    string args;
-
-    for (xServer::opVectorType::const_iterator ptr = opVector.begin(), end = opVector.end();
-         ptr != end; ++ptr) {
-        modeString += 'o';
-        args += ptr->second->getCharYYXXX() + ' ';
-
-        if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
-            stringstream s;
-            s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "+" << modeString << ' '
-              << args << " " << theChan->getCreationTime();
-
-            Write(s);
-
-            modeString.erase(modeString.begin(), modeString.end());
-            args.erase(args.begin(), args.end());
-
-        } // if()
-
-    } // for()
+    sendMemberModes(theChan, 'o', opVector);
 
     MyUplink->OnChannelModeO(theChan, 0, opVector);
 
@@ -863,28 +867,7 @@ bool xClient::Voice(Channel* theChan, const std::vector<iClient*>& clientVector)
         }
     }
 
-    string modeString;
-    string args;
-
-    for (xServer::voiceVectorType::const_iterator ptr = voiceVector.begin(),
-                                                  end = voiceVector.end();
-         ptr != end; ++ptr) {
-        modeString += 'v';
-        args += ptr->second->getCharYYXXX() + ' ';
-
-        if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
-            stringstream s;
-            s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "+" << modeString << ' '
-              << args << ' ' << theChan->getCreationTime();
-
-            Write(s);
-
-            modeString.erase(modeString.begin(), modeString.end());
-            args.erase(args.begin(), args.end());
-
-        } // if()
-
-    } // for()
+    sendMemberModes(theChan, 'v', voiceVector);
 
     MyUplink->OnChannelModeV(theChan, 0, voiceVector);
 
@@ -936,8 +919,7 @@ bool xClient::Voice(Channel* theChan, iClient* theClient) {
         // The bot has ops
     }
 
-    Write("%s M %s +v %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(),
-          theClient->getCharYYXXX().c_str(), theChan->getCreationTime());
+    sendMemberModes(theChan, 'v', {{true, theUser}});
 
     if (!OnChannel) {
         Part(theChan);
@@ -996,8 +978,7 @@ bool xClient::DeOp(Channel* theChan, iClient* theClient) {
         // The bot has ops
     }
 
-    Write("%s M %s -o %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(),
-          theClient->getCharYYXXX().c_str(), theChan->getCreationTime());
+    sendMemberModes(theChan, 'o', {{false, theUser}});
 
     if (!OnChannel) {
         Part(theChan);
@@ -1071,27 +1052,7 @@ bool xClient::DeOp(Channel* theChan, const std::vector<iClient*>& clientVector) 
         }
     }
 
-    string modeString;
-    string args;
-
-    for (xServer::opVectorType::const_iterator ptr = opVector.begin(), end = opVector.end();
-         ptr != end; ++ptr) {
-        modeString += 'o';
-        args += ptr->second->getCharYYXXX() + ' ';
-
-        if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
-            stringstream s;
-            s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "-" << modeString << ' '
-              << args << theChan->getCreationTime();
-
-            Write(s);
-
-            modeString.erase(modeString.begin(), modeString.end());
-            args.erase(args.begin(), args.end());
-
-        } // if()
-
-    } // for()
+    sendMemberModes(theChan, 'o', opVector);
 
     MyUplink->OnChannelModeO(theChan, 0, opVector);
 
@@ -1143,8 +1104,7 @@ bool xClient::DeVoice(Channel* theChan, iClient* theClient) {
         // The bot has ops
     }
 
-    Write("%s M %s -v %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(),
-          theClient->getCharYYXXX().c_str(), theChan->getCreationTime());
+    sendMemberModes(theChan, 'v', {{false, theUser}});
 
     xServer::voiceVectorType voiceVector;
     voiceVector.push_back(xServer::voiceVectorType::value_type(false, theUser));
@@ -1210,29 +1170,7 @@ bool xClient::DeVoice(Channel* theChan, const std::vector<iClient*>& clientVecto
         }
     }
 
-    string modeString;
-    string args;
-
-    for (xServer::voiceVectorType::const_iterator ptr = voiceVector.begin(),
-                                                  end = voiceVector.end();
-         ptr != end; ++ptr) {
-        modeString += 'v';
-        args += ptr->second->getCharYYXXX() + ' ';
-
-        if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
-            stringstream s;
-            // args already ends in a space
-            s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "-" << modeString << ' '
-              << args << theChan->getCreationTime();
-
-            Write(s);
-
-            modeString.erase(modeString.begin(), modeString.end());
-            args.erase(args.begin(), args.end());
-
-        } // if()
-
-    } // for()
+    sendMemberModes(theChan, 'v', voiceVector);
 
     MyUplink->OnChannelModeV(theChan, 0, voiceVector);
 
@@ -1284,8 +1222,7 @@ bool xClient::Ban(Channel* theChan, iClient* theClient) {
 
     string banMask = Channel::createBan(theClient);
 
-    Write("%s M %s +b %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
-          theChan->getCreationTime());
+    sendBanModes(theChan, {{true, banMask}});
 
     // No users are kicked by just setting a ban.
 
@@ -1335,8 +1272,7 @@ bool xClient::UnBan(Channel* theChan, const string& banMask) {
         // The bot has ops
     }
 
-    Write("%s M %s -b %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
-          theChan->getCreationTime());
+    sendBanModes(theChan, {{false, banMask}});
 
     xServer::banVectorType banVector;
     banVector.push_back(xServer::banVectorType::value_type(false, banMask));
@@ -1379,25 +1315,7 @@ bool xClient::UnBan(Channel* theChan, const xServer::banVectorType& banVector) {
         // The bot has ops
     }
 
-    string modeString{};
-    string args{};
-
-    for (xServer::banVectorType::const_iterator banPtr = banVector.begin(), end = banVector.end();
-         banPtr != end; ++banPtr) {
-        modeString += 'b';
-        args += banPtr->second + ' ';
-
-        if ((MAX_CHAN_MODES == modeString.size()) || ((banPtr + 1) == end)) {
-            stringstream s;
-            s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "-" << modeString << ' '
-              << args << ' ' << theChan->getCreationTime();
-
-            Write(s);
-
-            modeString.erase(modeString.begin(), modeString.end());
-            args.erase(args.begin(), args.end());
-        }
-    } // for() banVector
+    sendBanModes(theChan, banVector);
 
     MyUplink->OnChannelModeB(theChan, 0, const_cast<xServer::banVectorType&>(banVector));
 
@@ -1471,27 +1389,7 @@ bool xClient::Ban(Channel* theChan, const xServer::banVectorType& banVector) {
         // The bot has ops
     }
 
-    string modeString{};
-    string args{};
-
-    for (xServer::banVectorType::const_iterator ptr = banVector.begin(), end = banVector.end();
-         ptr != end; ++ptr) {
-        modeString += 'b';
-        args += ptr->second + ' ';
-
-        if ((MAX_CHAN_MODES == modeString.size()) || ((ptr + 1) == end)) {
-            stringstream s;
-            s << getCharYYXXX() << " M " << theChan->getName() << ' ' << "+" << modeString << ' '
-              << args << ' ' << theChan->getCreationTime();
-
-            Write(s);
-
-            modeString.erase(modeString.begin(), modeString.end());
-            args.erase(args.begin(), args.end());
-
-        } // if()
-
-    } // for()
+    sendBanModes(theChan, banVector);
 
     MyUplink->OnChannelModeB(theChan, 0, const_cast<xServer::banVectorType&>(banVector));
 
@@ -1543,8 +1441,7 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
 
     string banMask = Channel::createBan(theClient);
 
-    Write("%s M %s +b %s %ld", getCharYYXXX().c_str(), theChan->getName().c_str(), banMask.c_str(),
-          theChan->getCreationTime());
+    sendBanModes(theChan, {{true, banMask}});
 
     Write("%s K %s %s :%s", getCharYYXXX().c_str(), theChan->getName().c_str(),
           theClient->getCharYYXXX().c_str(), reason.c_str());
@@ -1587,10 +1484,8 @@ bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
         // Op the bot
         theUser->setMode(ChannelUser::MODE_O);
 
-        stringstream s;
-        s << getUplink()->getCharYY() << " M " << theChan->getName() << " +o " << getCharYYXXX()
-          << ' ' << theChan->getCreationTime();
-        Write(s);
+        const chanmode::Change opMe{true, *chanmode::find('o'), getCharYYXXX()};
+        MyUplink->SendChannelModes(getUplink()->getCharYY(), theChan, std::span(&opMe, 1));
     }
 
     // Bot is on channel, and has privileges to change the topic
@@ -2012,161 +1907,81 @@ bool xClient::ClearMode(Channel* theChan, const string& modes, bool modeAsServer
         return false;
     }
 
-    xServer::opVectorType opVector;
-    xServer::voiceVectorType voiceVector;
-    xServer::banVectorType banVector;
-    xServer::modeVectorType modeVector;
+    // Work out what clearing these modes removes from the channel as it is
+    // now: for a flag or a setting the mode itself, for 'o' and 'v' every
+    // member that holds it, for 'b' every ban.
+    std::vector<chanmode::Change> changes;
+    string letters;
 
-    string chanKey = "";
+    for (const char letter : modes) {
+        const std::optional<chanmode::Mode> mode = chanmode::find(letter);
+        if (!mode) {
+            elog << "xClient::ClearMode> (" << theChan->getName() << "): "
+                 << (chanmode::isLocalOnly(letter) ? "mode is local to a server: "
+                                                   : "unknown mode: ")
+                 << letter << endl;
+            continue;
+        }
+        letters += letter;
 
-    for (string::size_type modePos = 0; modePos < modes.size(); ++modePos) {
-        switch (modes[modePos]) {
-        case 'b': // Ban ?
-        {
-            Channel::const_banIterator ptr = theChan->banList_begin();
-            while (ptr != theChan->banList_end()) {
-                banVector.push_back(make_pair(false, *ptr));
-                theChan->removeBan(*ptr);
-                ptr = theChan->banList_begin();
+        switch (mode->kind) {
+        case chanmode::Kind::Flag:
+        case chanmode::Kind::Limit:
+            if (theChan->getMode(mode->flag)) {
+                changes.push_back({false, *mode, string()});
             }
-        } break;
-        case 'o': // Chanops?
-        {
-            Channel::const_userIterator ptr = theChan->userList_begin();
-            for (; ptr != theChan->userList_end(); ++ptr) {
-                if (ptr->second->getMode(ChannelUser::MODE_O)) {
-                    opVector.push_back(make_pair(false, ptr->second));
-                    ptr->second->removeMode(ChannelUser::MODE_O);
+            break;
+        case chanmode::Kind::Key:
+            if (theChan->getMode(mode->flag)) {
+                changes.push_back({false, *mode, theChan->getKey()});
+            }
+            break;
+        case chanmode::Kind::Password:
+            if (theChan->getMode(mode->flag)) {
+                changes.push_back(
+                    {false, *mode, ('A' == letter) ? theChan->getApass() : theChan->getUpass()});
+            }
+            break;
+        case chanmode::Kind::Member:
+            for (const auto& [id, member] : theChan->users()) {
+                (void)id;
+                if (('o' == letter) ? member->isModeO() : member->isModeV()) {
+                    changes.push_back({false, *mode, member->getCharYYXXX()});
                 }
             }
-        } break;
-        case 'v': // Chanvoice?
-        {
-            Channel::const_userIterator ptr = theChan->userList_begin();
-            for (; ptr != theChan->userList_end(); ++ptr) {
-                if (ptr->second->getMode(ChannelUser::MODE_V)) {
-                    voiceVector.push_back(make_pair(false, ptr->second));
-                    ptr->second->removeMode(ChannelUser::MODE_V);
-                }
+            break;
+        case chanmode::Kind::Ban:
+            for (Channel::const_banIterator ban = theChan->banList_begin();
+                 ban != theChan->banList_end(); ++ban) {
+                changes.push_back({false, *mode, *ban});
             }
-        } break;
-        case 'k': // Key?
-            if (theChan->getMode(Channel::MODE_K)) {
-                chanKey = " ";
-                chanKey += theChan->getKey();
-                theChan->removeMode(Channel::MODE_K);
-                theChan->setKey("");
-                MyUplink->OnChannelModeK(theChan, false, 0, string());
-            }
-            break;
-        case 'i': // Invite?
-            theChan->removeMode(Channel::MODE_I);
-            modeVector.push_back(make_pair(false, Channel::MODE_I));
-            break;
-        case 'l': // Limit?
-            if (theChan->getMode(Channel::MODE_L)) {
-                theChan->removeMode(Channel::MODE_L);
-                theChan->setLimit(0);
-                MyUplink->OnChannelModeL(theChan, false, 0, 0);
-            }
-            break;
-        case 'p': // Private?
-            theChan->removeMode(Channel::MODE_P);
-            modeVector.push_back(make_pair(false, Channel::MODE_P));
-            break;
-        case 's': // Secret?
-            theChan->removeMode(Channel::MODE_S);
-            modeVector.push_back(make_pair(false, Channel::MODE_S));
-            break;
-        case 'm': // Moderated?
-            theChan->removeMode(Channel::MODE_M);
-            modeVector.push_back(make_pair(false, Channel::MODE_M));
-            break;
-        case 'n': // No External Messages?
-            theChan->removeMode(Channel::MODE_N);
-            modeVector.push_back(make_pair(false, Channel::MODE_N));
-            break;
-        case 't': // Topic?
-            theChan->removeMode(Channel::MODE_T);
-            modeVector.push_back(make_pair(false, Channel::MODE_T));
-            break;
-        case 'r': // Registered Only?
-            theChan->removeMode(Channel::MODE_R);
-            modeVector.push_back(make_pair(false, Channel::MODE_R));
-            break;
-        // Do not remove 'R' mode (Channel::MODE_REG)
-        case 'D': // new .12 mode for busy channels
-            theChan->removeMode(Channel::MODE_D);
-            modeVector.push_back(make_pair(false, Channel::MODE_D));
-            break;
-        case 'c': // new u2.10.12.15 mode to prevent chan colours
-            theChan->removeMode(Channel::MODE_C);
-            modeVector.push_back(make_pair(false, Channel::MODE_C));
-            break;
-        case 'C': // new u2.10.12.15 mode to prevent chan CTCPs (except ACTION)
-            theChan->removeMode(Channel::MODE_CTCP);
-            modeVector.push_back(make_pair(false, Channel::MODE_CTCP));
-            break;
-        case 'u': // mode to prevent part messages
-            theChan->removeMode(Channel::MODE_PART);
-            modeVector.push_back(make_pair(false, Channel::MODE_PART));
-            break;
-        case 'M': // mode to moderate for non-authed users
-            theChan->removeMode(Channel::MODE_MNOREG);
-            modeVector.push_back(make_pair(false, Channel::MODE_MNOREG));
-            break;
-        case 'Z': // TLS only?
-            theChan->removeMode(Channel::MODE_Z);
-            modeVector.push_back(make_pair(false, Channel::MODE_Z));
-            break;
-        case 'A': // Apass for oplevels
-            if (theChan->getMode(Channel::MODE_A)) {
-                theChan->removeMode(Channel::MODE_A);
-                theChan->setApass("");
-                MyUplink->OnChannelModeA(theChan, false, 0, string());
-            }
-            break;
-        case 'U': // Upass for oplevels
-            if (theChan->getMode(Channel::MODE_U)) {
-                theChan->removeMode(Channel::MODE_U);
-                theChan->setUpass("");
-                MyUplink->OnChannelModeU(theChan, false, 0, string());
-            }
-            break;
-        default:
             break;
         }
     }
 
-    if (!modeVector.empty()) {
-        MyUplink->OnChannelMode(theChan, 0, modeVector);
-    }
-    if (!opVector.empty()) {
-        MyUplink->OnChannelModeO(theChan, 0, opVector);
-    }
-    if (!voiceVector.empty()) {
-        MyUplink->OnChannelModeV(theChan, 0, voiceVector);
-    }
-    if (!banVector.empty()) {
-        MyUplink->OnChannelModeB(theChan, 0, banVector);
+    if (letters.empty()) {
+        return false;
     }
 
+    // A server, or an oper, can have it all done with one CLEARMODE.  Anyone
+    // else has to take the modes off one by one, with their arguments: this
+    // used to send the bare letters, "-b <timestamp>", which removes nothing.
+    bool sent = true;
     if (modeAsServer) {
-        return Write("%s CM %s :%s\r\n", MyUplink->getCharYY().c_str(), theChan->getName().c_str(),
-                     modes.c_str());
+        sent = Write("%s CM %s :%s\r\n", MyUplink->getCharYY().c_str(), theChan->getName().c_str(),
+                     letters.c_str());
+    } else if (me->isOper()) {
+        sent = Write("%s CM %s :%s\r\n", getCharYYXXX().c_str(), theChan->getName().c_str(),
+                     letters.c_str());
     } else {
-        /* perform the mode as the bot instead */
-        if (me->isOper()) {
-            /* bot is an oper, can use CM */
-            return Write("%s CM %s :%s\r\n", getCharYYXXX().c_str(), theChan->getName().c_str(),
-                         modes.c_str());
-        } else {
-            /* bot is not an oper, use M */
-            return Write("%s M %s -%s%s %ld\r\n", getCharYYXXX().c_str(),
-                         theChan->getName().c_str(), modes.c_str(), chanKey.c_str(),
-                         theChan->getCreationTime());
-        }
+        sent = MyUplink->SendChannelModes(getCharYYXXX(), theChan, changes);
     }
+
+    // The network first, then our tables and the modules
+    const ModeApplyResult applied = applyChannelModes(*MyUplink, *theChan, 0, changes);
+    logModeProblems("xClient::ClearMode>", theChan->getName(), applied.problems);
+
+    return sent;
 }
 
 bool xClient::checkMigrationsAfterDBConnect(const std::string& moduleName, dbHandle* db) {

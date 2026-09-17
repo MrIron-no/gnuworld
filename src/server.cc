@@ -31,6 +31,9 @@
 
 #include <new>
 #include <string>
+#include <charconv>
+#include <string_view>
+#include <span>
 #include <map>
 #include <list>
 #include <vector>
@@ -55,6 +58,8 @@
 #include "ip.h"
 
 #include "server.h"
+#include "ChannelModeApply.h"
+#include "ChannelModes.h"
 #include "Network.h"
 #include "iServer.h"
 #include "iClient.h"
@@ -1373,10 +1378,57 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         return false;
     }
 
+    // The modes are validated before anything is sent.  They used to be
+    // copied to the network as the module gave them, and then picked apart
+    // a second time, by a switch of their own, to update the channel.
+    std::vector<chanmode::Change> joinModes;
+    if (string::npos != chanModes.find_first_not_of(' ')) {
+        StringTokenizer st(chanModes);
+        std::vector<std::string_view> tokens;
+        for (StringTokenizer::size_type i = 0; i < st.size(); ++i) {
+            tokens.emplace_back(st[i]);
+        }
+
+        chanmode::Parsed parsed = chanmode::parse(tokens[0], std::span(tokens).subspan(1));
+        logModeProblems("xServer::JoinChannel>", chanName, parsed.problems);
+
+        for (chanmode::Change& change : parsed.changes) {
+            const chanmode::Kind kind = change.mode.kind;
+            if (chanmode::Kind::Member == kind || chanmode::Kind::Ban == kind) {
+                elog << "xServer::JoinChannel> (" << chanName << "): mode '" << change.mode.letter
+                     << "' is not a channel mode to join with" << endl;
+                continue;
+            }
+
+            // A key cannot be set over another: take the old one off first,
+            // in the same line.  Asking for the key already set is a no-op.
+            if (chanmode::Kind::Key == kind && change.set && theChan != 0 &&
+                theChan->getMode(Channel::MODE_K)) {
+                if (theChan->getKey() == change.arg) {
+                    continue;
+                }
+                joinModes.push_back({false, change.mode, theChan->getKey()});
+            }
+            joinModes.push_back(std::move(change));
+        }
+    }
+
+    // A BURST can only set modes.  Whatever clears one, and a key that
+    // replaces another, follows it as a MODE.
+    std::vector<chanmode::Change> burstModes;
+    std::vector<chanmode::Change> afterBurst;
+    for (std::size_t i = 0; i < joinModes.size(); ++i) {
+        const bool replacesKey = joinModes[i].set && i > 0 && !joinModes[i - 1].set &&
+                                 joinModes[i - 1].mode == joinModes[i].mode;
+        (joinModes[i].set && !replacesKey ? burstModes : afterBurst).push_back(joinModes[i]);
+    }
+    const std::string burstBlock = chanmode::burstModeBlock(burstModes);
+    const std::string burstFields = burstBlock.empty() ? string() : ' ' + burstBlock;
+
     if ((NULL == theChan) && bursting) {
         // Need to burst the channel
         stringstream s;
-        s << getCharYY() << " B " << chanName << ' ' << postJoinTime << ' ' << chanModes << ' '
+        s << getCharYY() << " B " << chanName << ' ' << postJoinTime << burstFields << ' '
           << theClient->getCharYYXXX();
 
         if (getOps) {
@@ -1384,6 +1436,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         }
 
         Write(s);
+        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
         whichEvent = EVT_BURST;
 
         // Instantiate the new channel
@@ -1421,12 +1474,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             whichEvent = EVT_CREATE;
         }
 
-        if (!chanModes.empty()) {
-            stringstream s;
-            s << theClient->getCharYYXXX() << " M " << chanName << ' ' << chanModes << ' '
-              << postJoinTime;
-            Write(s);
-        }
+        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, joinModes);
 
         // Instantiate the new channel
         theChan = new (std::nothrow) Channel(chanName, time(0));
@@ -1469,7 +1517,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         }
 
         stringstream s;
-        s << getCharYY() << " B " << chanName << ' ' << postJoinTime << ' ' << chanModes << ' '
+        s << getCharYY() << " B " << chanName << ' ' << postJoinTime << burstFields << ' '
           << theClient->getCharYYXXX();
 
         if (getOps) {
@@ -1477,6 +1525,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         }
 
         Write(s);
+        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
         whichEvent = EVT_BURST;
     } else {
         // After bursting, and the channel exists
@@ -1489,19 +1538,12 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
         if (getOps) {
             // Op the bot
-            stringstream s;
-            s << getCharYY() << " M " << chanName << " +o " << theClient->getCharYYXXX() << ' '
-              << postJoinTime;
-            Write(s);
+            const chanmode::Change opClient{true, *chanmode::find('o'), theClient->getCharYYXXX()};
+            SendChannelModes(getCharYY(), chanName, postJoinTime, std::span(&opClient, 1));
         }
 
-        if (!chanModes.empty()) {
-            // Set the channel modes
-            stringstream s;
-            s << theClient->getCharYYXXX() << " M " << chanName << ' ' << chanModes << ' '
-              << postJoinTime;
-            Write(s);
-        }
+        // Set the channel modes
+        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, joinModes);
     }
 
     if (postJoinTime < theChan->getCreationTime()) {
@@ -1509,164 +1551,9 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
     }
 
     // Is the string not empty, and not only consisting of spaces?
-    if (!chanModes.empty() && (string::npos != chanModes.find_first_not_of(' '))) {
-        StringTokenizer st(chanModes);
-        StringTokenizer::size_type argPos = 1;
-
-        bool plus = true;
-
-        for (string::const_iterator ptr = st[0].begin(); ptr != st[0].end(); ++ptr) {
-            switch (*ptr) {
-            case '+':
-                plus = true;
-                break;
-            case '-':
-                plus = false;
-                break;
-            case 't':
-                if (plus)
-                    theChan->setMode(Channel::MODE_T);
-                else
-                    theChan->removeMode(Channel::MODE_T);
-                break;
-            case 'n':
-                if (plus)
-                    theChan->setMode(Channel::MODE_N);
-                else
-                    theChan->removeMode(Channel::MODE_N);
-                break;
-            case 's':
-                if (plus)
-                    theChan->setMode(Channel::MODE_S);
-                else
-                    theChan->removeMode(Channel::MODE_S);
-                break;
-            case 'p':
-                if (plus)
-                    theChan->setMode(Channel::MODE_P);
-                else
-                    theChan->removeMode(Channel::MODE_P);
-                break;
-            case 'm':
-                if (plus)
-                    theChan->setMode(Channel::MODE_M);
-                else
-                    theChan->removeMode(Channel::MODE_M);
-                break;
-            case 'i':
-                if (plus)
-                    theChan->setMode(Channel::MODE_I);
-                else
-                    theChan->removeMode(Channel::MODE_I);
-                break;
-            case 'r':
-                if (plus)
-                    theChan->setMode(Channel::MODE_R);
-                else
-                    theChan->removeMode(Channel::MODE_R);
-                break;
-            case 'R':
-                if (plus)
-                    theChan->setMode(Channel::MODE_REG);
-                else
-                    theChan->removeMode(Channel::MODE_REG);
-                break;
-            case 'D':
-                if (plus)
-                    theChan->setMode(Channel::MODE_D);
-                else
-                    theChan->removeMode(Channel::MODE_D);
-                break;
-            case 'c':
-                if (plus)
-                    theChan->setMode(Channel::MODE_C);
-                else
-                    theChan->removeMode(Channel::MODE_C);
-                break;
-            case 'C':
-                if (plus)
-                    theChan->setMode(Channel::MODE_CTCP);
-                else
-                    theChan->removeMode(Channel::MODE_CTCP);
-                break;
-            case 'u':
-                if (plus)
-                    theChan->setMode(Channel::MODE_PART);
-                else
-                    theChan->removeMode(Channel::MODE_PART);
-                break;
-            case 'M':
-                if (plus)
-                    theChan->setMode(Channel::MODE_MNOREG);
-                else
-                    theChan->removeMode(Channel::MODE_MNOREG);
-                break;
-            case 'Z':
-                if (plus)
-                    theChan->setMode(Channel::MODE_Z);
-                else
-                    theChan->removeMode(Channel::MODE_Z);
-                break;
-
-            // TODO: Finish with polarity
-            // TODO: Add in support for modes b,v,o
-            case 'k': {
-                if (argPos >= st.size()) {
-                    elog << "xServer::JoinChannel> Invalid"
-                         << " number of arguments to chanModes "
-                         << " in 'k' (" << chanModes.c_str() << ")" << endl;
-                    break;
-                }
-                /* if there is already a key, update it */
-                if (theChan->getMode(Channel::MODE_K)) {
-                    /* only update it if it is different! */
-                    if (strcmp(theChan->getKey().c_str(), st[argPos].c_str())) {
-                        Write("%s M %s -k %s %ld\r\n", theClient->getCharYYXXX().c_str(),
-                              theChan->getName().c_str(), theChan->getKey().c_str(),
-                              theChan->getCreationTime());
-
-                        Write("%s M %s +k %s %ld\r\n", theClient->getCharYYXXX().c_str(),
-                              theChan->getName().c_str(), st[argPos].c_str(),
-                              theChan->getCreationTime());
-                    }
-                }
-                theChan->onModeK(true, st[argPos++]);
-                break;
-            }
-            case 'A': {
-                if (argPos >= st.size()) {
-                    elog << "xServer::JoinChannel> Invalid"
-                         << " number of arguments to chanModes "
-                         << " in 'A' (" << chanModes << ")" << endl;
-                    break;
-                }
-                theChan->onModeA(true, st[argPos++]);
-                break;
-            }
-            case 'U': {
-                if (argPos >= st.size()) {
-                    elog << "xServer::JoinChannel> Invalid"
-                         << " number of arguments to chanModes "
-                         << " in 'U' (" << chanModes << ")" << endl;
-                    break;
-                }
-                theChan->onModeU(true, st[argPos++]);
-                break;
-            }
-            case 'l': {
-                if (argPos >= st.size()) {
-                    elog << "xServer::JoinChannel> Invalid"
-                         << " number of arguments to chanModes "
-                         << " in 'l' (" << chanModes << ") for " << theClient->getNickName()
-                         << " in " << chanName << endl;
-                    break;
-                }
-                theChan->onModeL(true, atoi(st[argPos++].c_str()));
-                break;
-            }
-            } // switch()
-        } // for()
-    } // if( !chanModes.empty() )
+    // Our own join does not raise mode events, so the channel is updated
+    // directly rather than through applyChannelModes().
+    applyModesSilently(theChan, joinModes);
 
     // An xClient has joined a channel, update its iClient instance
     iClient* theIClient = theClient->getInstance();
@@ -1926,516 +1813,174 @@ int xServer::Wallops(const string& msg) {
     return Write(s);
 }
 
+bool xServer::SendChannelModes(const std::string& source, Channel* theChan,
+                               std::span<const chanmode::Change> changes) {
+    assert(theChan != 0);
+    return SendChannelModes(source, theChan->getName(), theChan->getCreationTime(), changes);
+}
+
+bool xServer::SendChannelModes(const std::string& source, const std::string& chanName,
+                               time_t timestamp, std::span<const chanmode::Change> changes) {
+    // The one place a channel MODE line is put together.  formatLines()
+    // splits at six arguments or at the line limit, and ends every line in
+    // the channel timestamp, which a P11 peer requires.
+    bool sent = true;
+    for (const std::string& line : chanmode::formatLines(source + " M " + chanName, changes,
+                                                         static_cast<std::uint64_t>(timestamp))) {
+        sent = Write(line) && sent;
+    }
+    return sent;
+}
+
+void xServer::applyModesSilently(Channel* theChan, std::span<const chanmode::Change> changes) {
+    for (const chanmode::Change& change : changes) {
+        switch (change.mode.kind) {
+        case chanmode::Kind::Flag:
+            if (change.set) {
+                theChan->setMode(change.mode.flag);
+            } else {
+                theChan->removeMode(change.mode.flag);
+            }
+            break;
+        case chanmode::Kind::Limit: {
+            unsigned int limit = 0;
+            std::from_chars(change.arg.data(), change.arg.data() + change.arg.size(), limit);
+            theChan->onModeL(change.set, limit);
+            break;
+        }
+        case chanmode::Kind::Key:
+            theChan->onModeK(change.set, change.set ? change.arg : string());
+            break;
+        case chanmode::Kind::Password:
+            if ('A' == change.mode.letter) {
+                theChan->onModeA(change.set, change.set ? change.arg : string());
+            } else {
+                theChan->onModeU(change.set, change.set ? change.arg : string());
+            }
+            break;
+        case chanmode::Kind::Member:
+        case chanmode::Kind::Ban:
+            break;
+        }
+    }
+}
+
 bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, const string& args) {
     assert(theChan != 0);
 
-    /*
-    elog	<< "xServer::Mode> theChan: "
-            << *theChan
-            << ", modes: "
-            << modes
-            << ", args: "
-            << args
-            << ", MAX_CHAN_MODES: "
-            << MAX_CHAN_MODES
-            << endl ;
-    */
-
-    // Make sure that the modes string is not empty, it's ok for
-    // the args string to be empty
+    // The modes string must not be empty; the args string may be
     if (modes.empty()) {
         return false;
     }
 
-    // theUser is passed to the OnChannelMode*() methods below.
-    // This represents the user that is changing modes.
-    // If NULL, it represents that the server is changing modes.
-    // If non-NULL, it means that a client is changing modes.
-    // This if() will determine if the client or the server is changing
-    // modes, and set theUser appropriately.
-    // Assume the server is changing modes, and initialize to 0.
+    // theUser is passed to the OnChannelMode*() methods.  It is the member
+    // that changes the modes, or null when the server does.
     ChannelUser* theUser = 0;
     if (theClient != 0) {
-        // The mode is being set as client, make sure the
-        // client is in the channel, and is opped.
-
-        // Return the iClient instance for the requesting xClient
         iClient* theIClient = theClient->getInstance();
-
-        // Make sure the pointer is not NULL
         assert(theIClient != 0);
 
-        // Attempt to find the ChannelUser for the requesting xClient
-        // on the given channel.
+        // To change modes as a client, it has to be on the channel, opped
         theUser = theChan->findUser(theIClient);
+        if (NULL == theUser || !theUser->isModeO()) {
+            return false;
+        }
+    }
 
-        // Is the xClient in the channel?
-        if (NULL == theUser) {
-            // Nope, the xClient is not in the channel...silly xClient
+    // Everything is validated before anything is sent or changed.  This
+    // method used to update the channel as it went and could then fail on a
+    // later mode, leaving our state changed and the network not told.
+
+    // The input is one or more groups of "<modes> [<args>...]", as in
+    // "+ov nick1 nick2" or "+o nick1 -v nick2".
+    StringTokenizer st(modes + ' ' + args);
+    std::vector<std::string_view> tokens;
+    for (StringTokenizer::size_type i = 0; i < st.size(); ++i) {
+        tokens.emplace_back(st[i]);
+    }
+
+    std::vector<chanmode::Change> requested;
+    for (std::size_t index = 0; index < tokens.size();) {
+        // cservice passes the channel timestamp as an argument to "+R", from
+        // when this method did not add one.  It is ours to add now.
+        if (std::ranges::all_of(tokens[index], [](char c) { return c >= '0' && c <= '9'; })) {
+            ++index;
+            continue;
+        }
+
+        const chanmode::Parsed parsed = chanmode::parse(
+            tokens[index], std::span(tokens).subspan(index + 1), {.allowLeftover = true});
+        if (!parsed.ok()) {
+            logModeProblems("xServer::Mode>", theChan->getName(), parsed.problems);
+            return false;
+        }
+        requested.insert(requested.end(), parsed.changes.begin(), parsed.changes.end());
+        index += 1 + parsed.argsUsed;
+    }
+
+    // Check the changes against the channel, and turn them into what goes
+    // on the wire: a nick becomes a numeric, and a change that would change
+    // nothing is dropped.
+    std::vector<chanmode::Change> wire;
+    for (chanmode::Change& change : requested) {
+        const chanmode::Mode& mode = change.mode;
+
+        if (mode.serverOnly && theClient != 0) {
+            elog << "xServer::Mode> (" << theChan->getName() << "): only a server may change mode '"
+                 << mode.letter << "'" << endl;
             return false;
         }
 
-        // Is the xClient opped?
-        if (!theUser->isModeO()) {
-            // Nope, need to be opped to change modes.
-            return false;
-        }
-    } // if( theClient != 0 )
-
-    string modesAndArgsString(modes + ' ' + args);
-
-    // elog	<< "xServer::Mode> modesAndArgsString: "
-    //	<< modesAndArgsString
-    //	<< endl ;
-
-    std::map<char, Channel::modeType> chanModes;
-    chanModes['i'] = Channel::MODE_I;
-    chanModes['m'] = Channel::MODE_M;
-    chanModes['n'] = Channel::MODE_N;
-    chanModes['p'] = Channel::MODE_P;
-    chanModes['r'] = Channel::MODE_R;
-    chanModes['R'] = Channel::MODE_REG;
-    chanModes['s'] = Channel::MODE_S;
-    chanModes['t'] = Channel::MODE_T;
-    chanModes['D'] = Channel::MODE_D;
-    chanModes['c'] = Channel::MODE_C;
-    chanModes['C'] = Channel::MODE_CTCP;
-    chanModes['u'] = Channel::MODE_PART;
-    chanModes['M'] = Channel::MODE_MNOREG;
-    chanModes['Z'] = Channel::MODE_Z;
-
-    // This vector is used for argument-less types that can be passed
-    // to OnChannelMode()
-    modeVectorType modeVector;
-
-    opVectorType opVector;
-    voiceVectorType voiceVector;
-    banVectorType banVector;
-
-    // This vector stores the actual output string for the modes
-    typedef std::vector<std::pair<std::string, std::string>> rawModeVectorType;
-    rawModeVectorType rawModeVector;
-
-    // generalModeVector and modeVector are used to ease the invocation
-    // of the various OnChannelMode*() methods, and rawModeVector is used
-    // to facilitate outputting the actual data to the network.
-
-    StringTokenizer st(modesAndArgsString);
-    StringTokenizer::size_type tokenIndex = 0;
-
-    for (; tokenIndex < st.size();) {
-        bool polarityBool = true;
-        string polarityString("+");
-
-        // nextArgIndex is the index to the next mode argument.
-        // This will be used to determine arguments for each mode,
-        // as well as mark tokenIndex for the next loop.
-        StringTokenizer::size_type nextArgIndex = tokenIndex + 1;
-
-        //	elog	<< "xServer::Mode> Evaluating tokenIndex "
-        //		<< tokenIndex
-        //		<< ", token: "
-        //		<< st[ tokenIndex ]
-        //		<< endl ;
-
-        // Iterate this token, it may contain multiple modes
-        for (size_t charIndex = 0; charIndex < st[tokenIndex].size(); ++charIndex) {
-            char theChar = st[tokenIndex][charIndex];
-            //		elog	<< "xServer::Mode> Evaluating charIndex "
-            //			<< charIndex
-            //			<< ", theChar: "
-            //			<< theChar
-            //			<< endl ;
-
-            switch (theChar) {
-            case '+':
-                //				elog	<< "xServer::Mode> polarity = "
-                //					<< "true"
-                //					<< endl ;
-                polarityBool = true;
-                polarityString = "+";
-                break;
-            case '-':
-                //				elog	<< "xServer::Mode> polarity = "
-                //					<< "true"
-                //					<< endl ;
-                polarityBool = false;
-                polarityString = "-";
-                break;
-            case 'i':
-            case 'm':
-            case 'n':
-            case 'p':
-            case 'r':
-            case 's':
-            case 't':
-            case 'c':
-            case 'C':
-            case 'u':
-            case 'M':
-            case 'D':
-            case 'Z':
-                //				elog	<< "xServer::Mode> General mode: "
-                //					<< theChar
-                //					<< ", polarity: "
-                //					<< polarityString
-                //					<< endl ;
-                modeVector.push_back(make_pair(polarityBool, chanModes[theChar]));
-                rawModeVector.push_back(make_pair(polarityString + theChar, string()));
-                break;
-            case 'R':
-                /* mod.cservice setting +R with a TS */
-                if (nextArgIndex < st.size() && polarityBool) {
-                    std::string TS = st[nextArgIndex];
-                    ++nextArgIndex;
-                    modeVector.push_back(make_pair(polarityBool, chanModes[theChar]));
-                    rawModeVector.push_back(make_pair(polarityString + theChar, TS));
-                } else {
-                    modeVector.push_back(make_pair(polarityBool, chanModes[theChar]));
-                    rawModeVector.push_back(make_pair(polarityString + theChar, string()));
-                }
-                break;
-            case 'k': {
-                //				elog	<< "xServer::Mode> Mode 'k'"
-                //					<< ", polarity: "
-                //					<< polarityString
-                //					<< endl ;
-
-                // Mode -k expects an argument, but it
-                // doesn't matter what it is.
-
-                // Must lookup the key argument
-                if (nextArgIndex >= st.size()) {
-                    // No argument supplied
-                    return false;
-                }
-                std::string chanKey = st[nextArgIndex];
-                ++nextArgIndex;
-
-                if (theChan->getMode(Channel::MODE_K)) {
-                    // +k already set
-                    if (polarityBool) {
-                        // Must unset key first
-                        return false;
-                    }
-                    // chanKey already handled
-                }
-                // If the mode is not set, just ignore
-                // a polarity of "-k" (not add it to
-                // to the modeVector)
-                else {
-                    if (!polarityBool) {
-                        break;
-                    }
-                }
-
-                //				elog	<< "xServer::Mode> key: "
-                //					<< chanKey
-                //					<< endl ;
-
-                OnChannelModeK(theChan, polarityBool, theUser, chanKey);
-                rawModeVector.push_back(make_pair(polarityString + theChar, chanKey));
-            } break;
-            case 'A': {
-                //				elog	<< "xServer::Mode> Mode 'A'"
-                //					<< ", polarity: "
-                //					<< polarityString
-                //					<< end1 ;
-
-                // Mode -A expects an argument, and it
-                // matters what it is.
-                // FIXFIX - TODO - XXX
-
-                // Must lookup the Apass argument
-                if (nextArgIndex >= st.size()) {
-                    // No argument supplied
-                    return false;
-                }
-                std::string Apass = st[nextArgIndex];
-                ++nextArgIndex;
-
-                if (theChan->getMode(Channel::MODE_A)) {
-                    // +A already set
-                    if (polarityBool) {
-                        // Must unset Apass first
-                        return false;
-                    }
-                    // Apass already handled
-                }
-                // If the mode is not set, just ignore
-                // a polarity of "-A" (not add it to
-                // the modeVector)
-                else {
-                    if (!polarityBool) {
-                        break;
-                    }
-                }
-
-                //				elog	<< "xServer::Mode> Apass: "
-                //					<< Apass
-                //					<< endl ;
-
-                OnChannelModeA(theChan, polarityBool, theUser, Apass);
-                rawModeVector.push_back(make_pair(polarityString + theChar, Apass));
-            } break;
-            case 'U': {
-                //				elog	<< "xServer::Mode> Mode 'U'"
-                //					<< ", polarity: "
-                //					<< polarityString
-                //					<< endl ;
-
-                // Mode -U expects an argument, and it
-                // matters what it is.
-                // FIXFIX - TODO - XXX
-
-                // Must lookup the Upass argument
-                if (nextArgIndex >= st.size()) {
-                    // No argument supplied
-                    return false;
-                }
-                std::string Upass = st[nextArgIndex];
-                ++nextArgIndex;
-
-                if (theChan->getMode(Channel::MODE_U)) {
-                    // +U already set
-                    if (polarityBool) {
-                        // Must unset Upass first
-                        return false;
-                    }
-                    // Upass already handled
-                }
-                // If the mode is not set, just ignore
-                // a polarity of "-U" (not add it to
-                // the modeVector)
-                else {
-                    if (!polarityBool) {
-                        break;
-                    }
-                }
-
-                //				elog	<< "xServer::Mode> Upass: "
-                //					<< Upass
-                //					<< endl ;
-
-                OnChannelModeU(theChan, polarityBool, theUser, Upass);
-                rawModeVector.push_back(make_pair(polarityString + theChar, Upass));
-            } break;
-            case 'l': {
-                //				elog	<< "xServer::Mode> Mode 'l'"
-                //					<< ", polarity: "
-                //					<< polarityString
-                //					<< endl ;
-
-                unsigned int chanLimit = 0;
-                if (polarityBool) {
-                    // Must lookup the argument
-                    if (nextArgIndex >= st.size()) {
-                        // No argument supplied
-                        return false;
-                    }
-                    chanLimit = ::atoi(st[nextArgIndex].c_str());
-                    ++nextArgIndex;
-                }
-                // No argument needed for -l
-
-                OnChannelModeL(theChan, polarityBool, theUser, chanLimit);
-
-                // Not via a stringstream and std::ends: that put a NUL byte
-                // into the argument, and so into the middle of the line sent.
-                std::string chanLimitString;
-                if (chanLimit != 0) {
-                    chanLimitString = std::to_string(chanLimit);
-                }
-
-                //				elog	<< "xServer::Mode> limit: "
-                //					<< chanLimit
-                //					<< ", chanLimitString: "
-                //					<< chanLimitString
-                //					<< endl ;
-
-                rawModeVector.push_back(make_pair(polarityString + theChar, chanLimitString));
-            } break;
-            case 'b':
-                //				elog	<< "xServer::Mode> Mode 'b'"
-                //					<< ", polarity: "
-                //					<< polarityString
-                //					<< endl ;
-
-                // Must lookup the ban argument
-                if (nextArgIndex >= st.size()) {
-                    // No argument supplied
-                    return false;
-                }
-                //				elog	<< "xServer::Mode> ban: "
-                //					<< st[ nextArgIndex ]
-                //					<< endl ;
-
-                banVector.push_back(make_pair(polarityBool, st[nextArgIndex]));
-                rawModeVector.push_back(make_pair(polarityString + theChar, st[nextArgIndex]));
-                ++nextArgIndex;
-                break;
-            case 'o':
-            case 'v': {
-                //				elog	<< "xServer::Mode> Mode 'v'/'o'"
-                //					<< ", polarity: "
-                //					<< polarityString
-                //					<< endl ;
-
-                // Must lookup the op/voice argument
-                if (nextArgIndex >= st.size()) {
-                    // No argument supplied
-                    return false;
-                }
-
-                iClient* targetClient = Network->findNick(st[nextArgIndex]);
-                if (0 == targetClient) {
-                    return false;
-                }
-                ++nextArgIndex;
-
-                // Is the client on the channel?
-                ChannelUser* targetUser = theChan->findUser(targetClient);
-                if (0 == targetUser) {
-                    return false;
-                }
-
-                // Make a few sanity checks.
-                // The argument index has already been
-                // updated, so no arguments will be
-                // confused.
-                if ('o' == theChar) {
-                    if (targetUser->isModeO() && polarityBool) {
-                        // Trying to op already opped
-                        // user.
-                        break;
-                    }
-                    if (!targetUser->isModeO() && !polarityBool) {
-                        // Trying to deop user that is
-                        // not opped.
-                        break;
-                    }
-                } // if( 'o' )
-
-                if ('v' == theChar) {
-                    if (targetUser->isModeV() && polarityBool) {
-                        // Trying to voice already
-                        // voiced user.
-                        break;
-                    }
-                    if (!targetUser->isModeV() && !polarityBool) {
-                        // Trying to devoice user
-                        // that is not voiced.
-                        break;
-                    }
-                } // if( 'v' )
-
-                opVectorType::value_type thePair(polarityBool, targetUser);
-                if ('v' == theChar) {
-                    voiceVector.push_back(thePair);
-                } else {
-                    opVector.push_back(thePair);
-                }
-
-                //				elog	<< "xServer::Mode> targetUser: "
-                //					<< *targetUser
-                //					<< endl ;
-
-                rawModeVector.push_back(
-                    make_pair(polarityString + theChar, targetClient->getCharYYXXX()));
-            } break; // 'o', 'v'
-            } // switch()
-        } // for( char )
-
-        tokenIndex = nextArgIndex;
-    } // for( token )
-
-    size_t modeOutputCount = 0;
-    string outputModes;
-    string outputArgs;
-
-    // So now modeVector contains all of the modes, with arguments where
-    // appropriate, that need to be set.
-    for (rawModeVectorType::size_type modeIndex = 0; modeIndex < rawModeVector.size();) {
-        //	elog	<< "xServer::Mode> Iterating rawModeVector, modeIndex: "
-        //		<< modeIndex
-        //		<< ", outputModes: "
-        //		<< outputModes
-        //		<< ", outputArgs: "
-        //		<< outputArgs
-        //		<< endl ;
-
-        // Each element in the rawModeVector is a <mode,arg> pair.
-        // The for loop (directly) below is responsible for incrementing
-        // modeIndex.
-        for (; (modeOutputCount < MAX_CHAN_MODES) && (modeIndex < rawModeVector.size());
-             ++modeOutputCount, ++modeIndex) {
-            std::string polarityAndMode(rawModeVector[modeIndex].first);
-            std::string args = rawModeVector[modeIndex].second;
-
-            /*
-                            elog	<< "xServer::Mode> modeOutputCount: "
-                                    << modeOutputCount
-                                    << ", modeIndex: "
-                                    << modeIndex
-                                    << ", polarityAndMode: "
-                                    << polarityAndMode
-                                    << ", args: "
-                                    << args
-                                    << endl ;
-            */
-
-            outputModes += polarityAndMode;
-            outputArgs += args + " ";
-
-            //		elog	<< "xServer::Mode> outputModes: "
-            //			<< outputModes
-            //			<< ", outputArgs: "
-            //			<< outputArgs
-            //			<< endl ;
-        } // modeOutputCount
-
-        // Determine which part of the system is changing modes,
-        // server or client.
-        // Assume server.
-        std::string modeSource(getCharYY());
-        if (theClient != 0) {
-            // Change modes as the client
-            modeSource = theClient->getCharYYXXX();
+        switch (mode.kind) {
+        case chanmode::Kind::Key:
+        case chanmode::Kind::Password: {
+            // A key or password cannot be replaced, only removed and set
+            // again; removing one that is not there is a no-op.
+            const bool isSet = theChan->getMode(mode.flag);
+            if (change.set && isSet) {
+                return false;
+            }
+            if (!change.set && !isSet) {
+                continue;
+            }
+            break;
         }
 
-        // In either of the cases which breaks out of the above for
-        // loop, write the mode string.
-        std::stringstream outputSS;
-        outputSS << modeSource << " M " << theChan->getName() << " " << outputModes << " "
-                 << outputArgs << " " << theChan->getCreationTime() << endl;
-        /*	elog	<< "xServer::Mode> output: "
-                        << outputSS.str()
-                        << endl ; */
-        Write(outputSS);
+        case chanmode::Kind::Member: {
+            iClient* targetClient = Network->findNick(change.arg);
+            ChannelUser* targetUser = (targetClient != 0) ? theChan->findUser(targetClient) : 0;
+            if (0 == targetUser) {
+                return false;
+            }
+            const bool has = ('o' == mode.letter) ? targetUser->isModeO() : targetUser->isModeV();
+            if (has == change.set) {
+                continue;
+            }
+            change.arg = targetClient->getCharYYXXX();
+            break;
+        }
 
-        modeOutputCount = 0;
-#if __GNUC__ == 2
-        outputModes = "";
-        outputArgs = "";
-#else
-        outputModes.clear();
-        outputArgs.clear();
-#endif
-    } // for( modeItr )
+        case chanmode::Kind::Flag:
+        case chanmode::Kind::Limit:
+        case chanmode::Kind::Ban:
+            break;
+        }
 
-    // Distribute events for the argument-less modes
-    if (!modeVector.empty()) {
-        OnChannelMode(theChan, theUser, modeVector);
+        wire.push_back(std::move(change));
     }
-    if (!opVector.empty()) {
-        OnChannelModeO(theChan, theUser, opVector);
+
+    if (wire.empty()) {
+        return true;
     }
-    if (!voiceVector.empty()) {
-        OnChannelModeV(theChan, theUser, voiceVector);
-    }
-    if (!banVector.empty()) {
-        OnChannelModeB(theChan, theUser, banVector);
-    }
+
+    // Tell the network first, then update our tables and the modules: a
+    // module may answer an event with traffic of its own, which has to
+    // follow the mode that caused it.
+    const std::string source = (theClient != 0) ? theClient->getCharYYXXX() : string(getCharYY());
+    SendChannelModes(source, theChan, wire);
+
+    const ModeApplyResult applied = applyChannelModes(*this, *theChan, theUser, wire);
+    logModeProblems("xServer::Mode>", theChan->getName(), applied.problems);
 
     return true;
 }

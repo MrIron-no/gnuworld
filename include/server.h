@@ -24,6 +24,7 @@
 #ifndef __SERVER_H
 #define __SERVER_H "$Id: server.h,v 1.107 2010/08/31 21:16:45 denspike Exp $"
 
+#include <span>
 #include <string>
 #include <vector>
 #include <list>
@@ -35,6 +36,7 @@
 #include <ctime>
 #include <cassert>
 
+#include "ChannelModes.h"
 #include "NetworkTarget.h"
 #include "iServer.h"
 #include "iClient.h"
@@ -530,6 +532,24 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     virtual bool Mode(xClient*, Channel*, const std::string& modes, const std::string& args);
 
+    /**
+     * Send channel mode changes to the network, as `source` (a server or
+     * client numeric).  This only writes: it does not check the changes
+     * against the channel and does not update our tables, which is what
+     * Mode() is for.  Every channel MODE line gnuworld sends is formatted
+     * here, by chanmode::formatLines().
+     */
+    virtual bool SendChannelModes(const std::string& source, Channel* theChan,
+                                  std::span<const chanmode::Change> changes);
+
+    /**
+     * The same, for a channel named by hand.  Needed while joining: the
+     * modes of a channel we create go out before its Channel exists, and
+     * carry the timestamp it was created with.
+     */
+    virtual bool SendChannelModes(const std::string& source, const std::string& chanName,
+                                  time_t timestamp, std::span<const chanmode::Change> changes);
+
     /* Event registration stuff */
 
     /**
@@ -991,6 +1011,12 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual void OnTimeout(Connection*) override;
 
   protected:
+    /**
+     * Update a channel for these modes without raising any event.  For our
+     * own clients' joins, which have never raised mode events.
+     */
+    void applyModesSilently(Channel* theChan, std::span<const chanmode::Change> changes);
+
     /**
      * Allow only subclasses to call the default
      * constructor.

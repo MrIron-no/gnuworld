@@ -834,6 +834,17 @@ class xClient : public TimerHandler, public NetworkTarget {
 
   protected:
     /**
+     * Send +/-o or +/-v for these members, as this client.  Writes only:
+     * the caller updates the channel through MyUplink->OnChannelMode*().
+     */
+    bool sendMemberModes(Channel* theChan, char letter, const xServer::opVectorType& members);
+
+    /**
+     * Send these ban changes, as this client.  Writes only.
+     */
+    bool sendBanModes(Channel* theChan, const xServer::banVectorType& bans);
+
+    /**
      * Allow sub classes to call default constructor
      * This method is defined in the source file.
      */
