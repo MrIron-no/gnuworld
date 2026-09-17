@@ -222,6 +222,13 @@ async def gnutest_linked_p11(docker_stack, fake_hub_p11, tmp_path):
 
 
 @pytest_asyncio.fixture
+async def gnutest_linked_p10(docker_stack, fake_hub, tmp_path):
+    """Dockerized gnuworld with mod.debug and mod.gnutest, linked to a P10 hub."""
+    async with link_debug(fake_hub, tmp_path, gnutest=True) as linked:
+        yield linked
+
+
+@pytest_asyncio.fixture
 async def debug_linked_tls(docker_stack, tmp_path):
     """Stealth mod.debug over a TLS uplink (hub SERVER flags omit +z)."""
     conf_dir = _prepare_conf_dir(tmp_path)

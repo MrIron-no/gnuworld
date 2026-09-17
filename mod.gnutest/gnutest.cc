@@ -210,16 +210,18 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st,
     const bool takesNicks =
         (cmd == "op" || cmd == "deop" || cmd == "voice" || cmd == "devoice" || cmd == "ban");
     const bool takesText = (cmd == "topic" || cmd == "mode" || cmd == "clearmode");
+    // "invite #channel" invites whoever asks
+    const bool isInvite = (cmd == "invite");
 
-    if (!takesReason && !takesMasks && !takesNicks && !takesText) {
+    if (!takesReason && !takesMasks && !takesNicks && !takesText && !isInvite) {
         return false;
     }
-    if (viaServer && (cmd == "bankick" || cmd == "kickasserver" || cmd == "topic")) {
+    if (viaServer && (cmd == "bankick" || cmd == "kickasserver")) {
         // Not part of the server-side API
         return false;
     }
 
-    if (st.size() < (takesReason ? 4U : 3U)) {
+    if (st.size() < (takesReason ? 4U : isInvite ? 2U : 3U)) {
         Notice(requester, "Usage: %s #channel %s", st[0].c_str(),
                takesReason  ? "nick reason"
                : takesMasks ? "banmask [banmask ...]"
@@ -235,7 +237,12 @@ bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st,
     }
 
     if (cmd == "topic") {
-        Topic(theChan, st.assemble(2));
+        viaServer ? MyUplink->Topic(theChan, st.assemble(2), from) : Topic(theChan, st.assemble(2));
+        return true;
+    }
+    if (isInvite) {
+        // As the server this is refused: only a client can invite
+        viaServer ? MyUplink->Invite(requester, theChan, from) : Invite(requester, theChan);
         return true;
     }
     if (cmd == "mode") {
@@ -396,9 +403,7 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         return;
     }
 
-    if (st[0] == "invite") {
-        Invite(theClient, st[1]);
-    } else if (st[0] == "moo") {
+    if (st[0] == "moo") {
         string raw = st.assemble(1);
         Write(raw);
     } else if (st[0] == "join") {

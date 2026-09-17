@@ -579,6 +579,14 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool Kick(Channel*, const std::vector<iClient*>&, const std::string& reason,
                       const Source& from = {});
 
+    /// Set the topic.  A client source has to be on the channel, and opped
+    /// if the channel is +t.
+    virtual bool Topic(Channel*, const std::string& newTopic, const Source& from = {});
+
+    /// Invite a client.  Only a client can invite: from a server it is a
+    /// protocol violation, so `from` has no default here and must be one.
+    virtual bool Invite(iClient* target, Channel*, const Source& from);
+
     /*
      * The pieces the methods above are made of.  xClient uses them too: it
      * has to be on the channel with ops between the planning and the

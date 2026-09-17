@@ -172,3 +172,56 @@ async def test_a_network_service_is_not_kicked(gnutest_linked_p11):
     assert await gt.run(hub, v["asker"], f"as fake.testnet kick {CHAN} service no") == []
     assert await gt.run(hub, v["asker"], f"servkick {CHAN} service no") == []
     assert "service" in (await chaninfo(hub, v["asker"], CHAN)).members
+
+
+@pytest.mark.asyncio
+async def test_topic_through_each_kind_of_source(gnutest_linked_p11):
+    hub, _proc = gnutest_linked_p11
+    v = await _setup(hub)
+
+    async def run(command: str) -> list[str]:
+        return await gt.run(hub, v["asker"], command.format(**v))
+
+    def topic_line(source: str, text: str, sent: list[str]) -> bool:
+        # "<source> T <#chan> <chan-ts> <topic-ts> :<text>"
+        assert len(sent) == 1, sent
+        fields, trailing = sent[0].split(" :", 1)
+        parts = fields.split(" ")
+        return (parts[:4] == [source, "T", CHAN, str(v["ts"])]
+                and abs(int(parts[4]) - time.time()) < 300 and trailing == text)
+
+    v["fake"] = _introduced(await run("spawnclient fakey"), "N")
+    v["fakesrv"] = _introduced(await run("spawnserver fake.testnet A spawned server"), "S")
+    await run("spawnjoin fakey {c}")
+
+    # The channel is +t and the fake client is not opped
+    assert await run("as fakey topic {c} not allowed") == []
+    assert (await chaninfo(hub, v["asker"], CHAN)).topic == ""
+
+    # A server is not asked
+    assert topic_line(v["srv"], "from the server", await run("servtopic {c} from the server"))
+    assert topic_line(v["fakesrv"], "from a spawned one",
+                      await run("as fake.testnet topic {c} from a spawned one"))
+
+    await hub.send_raw(f"{hub.server_numnick} M {CHAN} +o {v['fake']} {v['ts']}")
+    assert topic_line(v["fake"], "from a fake client", await run("as fakey topic {c} from a fake client"))
+    assert (await chaninfo(hub, v["asker"], CHAN)).topic == "from a fake client"
+
+
+@pytest.mark.asyncio
+async def test_only_a_client_can_invite(gnutest_linked_p11):
+    hub, _proc = gnutest_linked_p11
+    v = await _setup(hub)
+
+    async def run(command: str) -> list[str]:
+        return await gt.run(hub, v["asker"], command.format(**v))
+
+    v["fake"] = _introduced(await run("spawnclient fakey"), "N")
+    await run("spawnserver fake.testnet A spawned server")
+
+    # From a server an INVITE is a protocol violation, so none is sent
+    assert await run("servinvite {c}") == []
+    assert await run("as fake.testnet invite {c}") == []
+
+    # The invitee by numnick and the channel's creation time, as P11 has it
+    assert await run("as fakey invite {c}") == [f"{v['fake']} I {v['asker']} {CHAN} {v['ts']}"]

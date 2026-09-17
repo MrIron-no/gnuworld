@@ -882,50 +882,28 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
 
 bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
     assert(theChan != 0);
-    // Empty newTopic is ok
+    // An empty topic is fine
 
     if (!isConnected()) {
         return false;
     }
 
-    bool OnChannel = isOnChannel(theChan);
-    if (!OnChannel) {
-        // Join, giving ourselves ops
+    // We have to be on the channel, and opped if it is +t.  Joining has
+    // the server op us; if we are already there without ops, it does so now.
+    bool joined = false;
+    if (!isOnChannel(theChan)) {
         Join(theChan, string(), 0, true);
+        joined = true;
+    } else if (theChan->getMode(Channel::MODE_T)) {
+        MyUplink->Op(theChan, me);
     }
 
-    // Now joined the channel
-    // If the channel is mode +t, and the bot -o, op the bot before
-    // trying to set the topic.
-    ChannelUser* theUser = theChan->findUser(getInstance());
+    const bool sent = MyUplink->Topic(theChan, newTopic, Source(me));
 
-    // By definition (of the above Join()), this client is on the
-    // channel, but check to be sure.
-    assert(theUser != 0);
-
-    if (theChan->getMode(Channel::MODE_T) && !theUser->isModeO()) {
-        // Mode +t, and bot is mode -o
-        // Op the bot
-        theUser->setMode(ChannelUser::MODE_O);
-
-        const chanmode::Change opMe{true, *chanmode::find('o'), getCharYYXXX()};
-        MyUplink->SendChannelModes(getUplink()->getCharYY(), theChan, std::span(&opMe, 1));
-    }
-
-    // Bot is on channel, and has privileges to change the topic
-    stringstream s;
-    s << getCharYYXXX() << " T " << theChan->getName() << " :" << newTopic;
-    Write(s);
-
-#ifdef TOPIC_TRACK
-    theChan->setTopic(newTopic);
-#endif
-
-    if (!OnChannel) {
+    if (joined) {
         Part(theChan);
     }
-
-    return true;
+    return sent;
 }
 
 bool xClient::Kick(Channel* theChan, iClient* theClient, const string& reason, bool modeAsServer) {
@@ -1083,24 +1061,8 @@ bool xClient::Invite(iClient* theClient, Channel* theChan) {
     if (!isConnected()) {
         return false;
     }
-
-    /* bool OnChannel = isOnChannel( theChan ) ;
-    if( !OnChannel )
-            {
-            Join( theChan ) ;
-            } */
-
-    Write("%s I %s %s", getCharYYXXX().c_str(),
-          getUplink()->getUplink()->getProtocol() < 11 ? theClient->getNickName().c_str()
-                                                       : theClient->getCharYYXXX().c_str(),
-          theChan->getName().c_str());
-
-    /* if( !OnChannel )
-            {
-            Part( theChan ) ;
-            } */
-
-    return true;
+    // A service may invite to a channel it is not on, so nothing is joined
+    return MyUplink->Invite(theClient, theChan, Source(me));
 }
 
 bool xClient::isOnChannel(const string& chanName) const {

@@ -2066,6 +2066,65 @@ bool xServer::changeBans(Channel* theChan, banVectorType bans, const Source& fro
     return true;
 }
 
+bool xServer::Topic(Channel* theChan, const std::string& newTopic, const Source& from) {
+    assert(theChan != 0);
+
+    // A client has to be on the channel, and opped if it is +t.  A server
+    // is not asked.
+    if (from.isClient()) {
+        const ChannelUser* member = theChan->findUser(from.client());
+        if (0 == member || (theChan->getMode(Channel::MODE_T) && !member->isModeO())) {
+            return false;
+        }
+    }
+
+    const time_t now = ::time(0);
+    bool sent = false;
+    if (Uplink != 0 && Uplink->getProtocol() >= 11) {
+        // With the channel's creation time, so that the topic is not applied
+        // to a younger channel of the same name, and the topic's own time
+        sent = Write("%s T %s %ld %ld :%s", numericOf(from).c_str(), theChan->getName().c_str(),
+                     static_cast<long>(theChan->getCreationTime()), static_cast<long>(now),
+                     newTopic.c_str());
+    } else {
+        sent = Write("%s T %s :%s", numericOf(from).c_str(), theChan->getName().c_str(),
+                     newTopic.c_str());
+    }
+
+#ifdef TOPIC_TRACK
+    theChan->setTopic(newTopic);
+    theChan->setTopicTS(now);
+    theChan->setTopicWhoSet(from.isClient()        ? from.client()->getNickName()
+                            : (from.server() != 0) ? from.server()->getName()
+                                                   : getName());
+#endif
+
+    // Setting the topic reveals a delayed-join member
+    if (from.isClient()) {
+        theChan->revealUser(from.client());
+    }
+    return sent;
+}
+
+bool xServer::Invite(iClient* target, Channel* theChan, const Source& from) {
+    assert(target != 0 && theChan != 0);
+
+    // An INVITE from a server is a protocol violation (ircu doc/P11.md 8.11)
+    if (!from.isClient()) {
+        elog << "xServer::Invite> (" << theChan->getName() << "): only a client can invite" << endl;
+        return false;
+    }
+
+    // A P11 link names the invitee by numnick and takes the channel's
+    // creation time; a P10 link wants the nick.
+    if (Uplink != 0 && Uplink->getProtocol() >= 11) {
+        return Write("%s I %s %s %ld", numericOf(from).c_str(), target->getCharYYXXX().c_str(),
+                     theChan->getName().c_str(), static_cast<long>(theChan->getCreationTime()));
+    }
+    return Write("%s I %s %s", numericOf(from).c_str(), target->getNickName().c_str(),
+                 theChan->getName().c_str());
+}
+
 std::vector<iClient*> xServer::planKick(const Channel* theChan,
                                         std::span<iClient* const> targets) const {
     std::vector<iClient*> kicked;

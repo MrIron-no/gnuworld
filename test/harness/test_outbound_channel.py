@@ -13,11 +13,13 @@ formats every one of these lines. Compared with what was first recorded here:
 exactly one space between fields, where call sites used to leave two or three
 before the timestamp; "+ov" and "-lk" instead of "+o+v" and "-l-k"; and a
 non-oper ClearMode of bans names each mask, where it used to send "-b <ts>",
-which removed nothing.
+which removed nothing. TOPIC and INVITE carry the channel's creation time, as
+P11 has it, and TOPIC the topic's own time as well.
 """
 
 from __future__ import annotations
 
+import re
 import time
 
 import pytest
@@ -72,8 +74,10 @@ STEPS: list[tuple[str, list[str]]] = [
     ("servop {c} bob", ["{srv} M {c} +o {bob} {ts}"]),
     ("deop {c} bob", ["{me} M {c} -o {bob} {ts}"]),
 
-    ("topic {c} hello there", ["{me} T {c} :hello there"]),
-    ("invite {c}", ["{me} I {asker} {c}"]),
+    # On a P11 link: the channel's creation time, then the topic's own
+    ("topic {c} hello there", ["{me} T {c} {ts} <NOW> :hello there"]),
+    # On a P11 link: the invitee by numnick, and the channel's creation time
+    ("invite {c}", ["{me} I {asker} {c} {ts}"]),
     ("kick {c} dave go away", ["{me} K {c} {dave} :go away"]),
     # xClient::Kick(..., true): the bool form, still there for the modules
     ("kickasserver {c} carol and you", ["{srv} K {c} {carol} :and you"]),
@@ -85,6 +89,17 @@ STEPS: list[tuple[str, list[str]]] = [
     ("clearmode {c} b", ["{me} M {c} -bb {bobmask} *!*@three.example {ts}"]),
     ("part {c}", ["{me} L {c} :"]),
 ]
+
+
+def _mark_now(line: str, channel_ts: int) -> str:
+    """Replace a timestamp taken from the clock, which no test can predict, by
+    "<NOW>". The channel's own timestamp is an hour old and is left alone."""
+
+    def mark(match: re.Match) -> str:
+        value = int(match.group(0))
+        return "<NOW>" if value != channel_ts and abs(value - time.time()) < 300 else match.group(0)
+
+    return re.sub(r"\b\d{9,11}\b", mark, line)
 
 
 @pytest.mark.asyncio
@@ -121,7 +136,9 @@ async def test_lines_sent_for_each_channel_operation(gnutest_linked_p11):
             await hub.send_raw(f"{hub_yy} M {CHAN} +o {names['me']} {ts}")
             continue
         sent = await gt.run(hub, asker, command.format(**names))
-        assert sent == [line.format(**names) for line in expected], f"after: {command}"
+        assert [_mark_now(line, ts) for line in sent] == [
+            line.format(**names) for line in expected
+        ], f"after: {command}"
 
 
 @pytest.mark.asyncio
