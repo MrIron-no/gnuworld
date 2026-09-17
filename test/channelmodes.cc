@@ -1,6 +1,6 @@
 /**
  * channelmodes.cc
- * Unit test for libgnuworld/ChannelModes.
+ * Unit test for the channel mode table, parser and formatter of Channel.
  * Exits non-zero if any check fails, so it can run under "make check".
  */
 
@@ -11,9 +11,39 @@
 #include <string_view>
 #include <vector>
 
-#include "ChannelModes.h"
+#include "Channel.h"
+#include "gnuworld_config.h"
 
-using namespace gnuworld::chanmode;
+using namespace gnuworld;
+
+// The mode types and functions are Channel's; these keep the checks readable
+using Parsed = Channel::ParsedModes;
+using Change = Channel::ModeChange;
+using Mode = Channel::ModeInfo;
+using Kind = Channel::ModeKind;
+using Group = Channel::ModeGroup;
+using Error = Channel::ModeError;
+using Problem = Channel::ModeProblem;
+constexpr auto& modes = Channel::modeTable;
+constexpr auto find = &Channel::findMode;
+constexpr auto isLocalOnly = &Channel::isLocalOnlyMode;
+constexpr auto burstOrder = &Channel::burstOrder;
+constexpr auto isValidKey = &Channel::isValidKey;
+constexpr auto isValidLimit = &Channel::isValidLimit;
+constexpr auto burstModeBlock = &Channel::burstModeBlock;
+constexpr auto isupportChanmodes = &Channel::isupportChanmodes;
+constexpr std::size_t maxKeyLength = Channel::maxKeyLength;
+constexpr std::size_t maxLineLength = IRC_MAX_LINE - 2;
+
+Parsed parse(std::string_view modeString, std::span<const std::string_view> args,
+             Channel::ModeParseOptions options = {}) {
+    return Channel::parseModes(modeString, args, options);
+}
+
+std::vector<std::string> formatLines(std::string_view prefix, std::span<const Change> changes,
+                                     std::uint64_t timestamp) {
+    return Channel::formatModeLines(prefix, changes, timestamp);
+}
 using std::string_view;
 
 namespace {
@@ -103,9 +133,9 @@ void testTable() {
     }
 
     // Usable at compile time
-    static_assert(find('k')->kind == Kind::Key);
-    static_assert(!find('q'));
-    static_assert(maxParamsPerLine == 6 && maxKeyLength == 23);
+    static_assert(Channel::findMode('k')->kind == Kind::Key);
+    static_assert(!Channel::findMode('q'));
+    static_assert(MAX_CHAN_MODES == 6 && Channel::maxKeyLength == 23);
 }
 
 /// "kAU" and "AkU" are the same group: the order inside one carries no meaning.
@@ -116,12 +146,12 @@ std::string sorted(std::string_view s) {
 }
 
 void testIsupportGroups() {
-    CHECK(find('b')->type() == Type::A);
-    CHECK(find('k')->type() == Type::B && find('A')->type() == Type::B &&
-          find('U')->type() == Type::B);
-    CHECK(find('l')->type() == Type::C);
-    CHECK(find('m')->type() == Type::D && find('D')->type() == Type::D);
-    CHECK(find('o')->type() == Type::Prefix && find('v')->type() == Type::Prefix);
+    CHECK(find('b')->group() == Group::A);
+    CHECK(find('k')->group() == Group::B && find('A')->group() == Group::B &&
+          find('U')->group() == Group::B);
+    CHECK(find('l')->group() == Group::C);
+    CHECK(find('m')->group() == Group::D && find('D')->group() == Group::D);
+    CHECK(find('o')->group() == Group::Prefix && find('v')->group() == Group::Prefix);
 
     // What ircu advertises in RPL_ISUPPORT with OPLEVELS on (include/supported.h):
     //   CHANMODES=b,AkU,l,imnpstrDdRcCuMZ   PREFIX=(ov)@+
@@ -333,11 +363,16 @@ void testFormatLines() {
     CHECK(formatLines(prefix, changesFor("-k+k", {"old", "new"}), 1) ==
           Lines{"AzAAB M #modes -k+k old new 1"});
 
-    // At most six modes with an argument on a line; flags do not count
+    // At most MAX_CHAN_MODES modes on a line, flags included: gnuworld's
+    // reading of the limit, stricter than ircu's, which counts the arguments
     auto lines = formatLines(
         prefix, changesFor("+tnooooooo", {"A1", "A2", "A3", "A4", "A5", "A6", "A7"}), 5);
     CHECK(lines ==
-          (Lines{"AzAAB M #modes +tnoooooo A1 A2 A3 A4 A5 A6 5", "AzAAB M #modes +o A7 5"}));
+          (Lines{"AzAAB M #modes +tnoooo A1 A2 A3 A4 5", "AzAAB M #modes +ooo A5 A6 A7 5"}));
+    lines = formatLines(prefix, changesFor("+mtinsc", {}), 5);
+    CHECK(lines == Lines{"AzAAB M #modes +mtinsc 5"});
+    lines = formatLines(prefix, changesFor("+mtinscC", {}), 5);
+    CHECK(lines == (Lines{"AzAAB M #modes +mtinsc 5", "AzAAB M #modes +C 5"}));
 
     // The polarity is restated on the next line
     lines =

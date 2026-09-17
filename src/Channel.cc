@@ -23,6 +23,11 @@
 #include <new>
 #include <map>
 #include <string>
+#include <vector>
+#include <string_view>
+#include <span>
+#include <optional>
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include "Channel.h"
@@ -33,6 +38,7 @@
 #include "StringTokenizer.h"
 #include "ELog.h"
 #include "match.h"
+#include "misc.h"
 #include "server.h"
 
 namespace gnuworld {
@@ -40,25 +46,6 @@ using std::endl;
 using std::string;
 using std::stringstream;
 using std::vector;
-
-const Channel::modeType Channel::MODE_T = 0x00001;
-const Channel::modeType Channel::MODE_N = 0x00002;
-const Channel::modeType Channel::MODE_S = 0x00004;
-const Channel::modeType Channel::MODE_P = 0x00008;
-const Channel::modeType Channel::MODE_K = 0x00010;
-const Channel::modeType Channel::MODE_L = 0x00020;
-const Channel::modeType Channel::MODE_M = 0x00040;
-const Channel::modeType Channel::MODE_I = 0x00080;
-const Channel::modeType Channel::MODE_R = 0x00100;
-const Channel::modeType Channel::MODE_D = 0x00200;
-const Channel::modeType Channel::MODE_A = 0x00400;
-const Channel::modeType Channel::MODE_U = 0x00800;
-const Channel::modeType Channel::MODE_REG = 0x01000;
-const Channel::modeType Channel::MODE_C = 0x02000;
-const Channel::modeType Channel::MODE_CTCP = 0x04000;
-const Channel::modeType Channel::MODE_PART = 0x08000;
-const Channel::modeType Channel::MODE_MNOREG = 0x10000;
-const Channel::modeType Channel::MODE_Z = 0x20000;
 
 Channel::Channel(const string& _name, const time_t& _creationTime)
     : name(_name), creationTime(_creationTime), modes(0), limit(0)

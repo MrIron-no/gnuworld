@@ -26,6 +26,14 @@
 #define __MISC_H "$Id: misc.h,v 1.9 2007/12/27 20:45:15 kewlio Exp $"
 
 #include <string>
+#include <charconv>
+#include <concepts>
+#include <cstddef>
+#include <format>
+#include <optional>
+#include <string_view>
+#include <system_error>
+#include <type_traits>
 #include <iostream>
 #include <chrono>
 
@@ -164,7 +172,7 @@ bool IsTimeSpec(const string&);
  * Examine a given C++ string and return true if it contains
  * all numeric characters, return false otherwise.
  */
-bool IsNumeric(const string&);
+bool IsNumeric(std::string_view);
 
 /**
  * Returns the time which is given as #<d/h/m/s> as seconds
@@ -305,6 +313,112 @@ std::string generateGlineId(char prefix);
  * IRCv3 server-time / @time tag value: YYYY-MM-DDThh:mm:ss.sssZ (UTC).
  */
 std::string formatServerTime();
+
+/**
+ * The number that `text` is, or nothing.
+ *
+ * atoi() answers 0 for text that is not a number, stops quietly at the first
+ * character it does not like, and is undefined on overflow.  For what arrives
+ * from the network that is the wrong answer: 0 is a timestamp, the oldest one
+ * there is, and the oldest timestamp wins every conflict.  A stray word in a
+ * MODE line once reset a channel's creation time that way.
+ *
+ * This accepts the whole of `text` or none of it: decimal digits, with a
+ * leading '-' for a signed type, and nothing else.  No whitespace, no '+',
+ * no "12abc", nothing that does not fit the type.
+ *
+ * Not constexpr: std::from_chars only becomes that in C++23.
+ */
+template <std::integral T> std::optional<T> parseNumber(std::string_view text) noexcept {
+    if (text.empty()) {
+        return std::nullopt;
+    }
+    T value{};
+    const char* const end = text.data() + text.size();
+    const auto [parsedTo, error] = std::from_chars(text.data(), end, value);
+    if (error != std::errc{} || parsedTo != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+namespace detail {
+
+/**
+ * The number of arguments a std::format string consumes: the highest
+ * explicit index plus one if it numbers its fields ("{0} {1}"), and
+ * otherwise the number of fields, counting one nested in another for a
+ * dynamic width or precision ("{:{}}").  "{{" and "}}" are literal braces.
+ */
+constexpr std::size_t formatArgumentCount(std::string_view fmt) noexcept {
+    std::size_t automatic = 0;
+    std::size_t highestExplicit = 0;
+    bool anyExplicit = false;
+
+    for (std::size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] != '{') {
+            continue;
+        }
+        if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
+            ++i;
+            continue;
+        }
+
+        std::size_t index = 0;
+        bool hasIndex = false;
+        std::size_t j = i + 1;
+        for (; j < fmt.size() && fmt[j] >= '0' && fmt[j] <= '9'; ++j) {
+            index = index * 10 + static_cast<std::size_t>(fmt[j] - '0');
+            hasIndex = true;
+        }
+        if (hasIndex) {
+            anyExplicit = true;
+            if (index + 1 > highestExplicit) {
+                highestExplicit = index + 1;
+            }
+        } else {
+            ++automatic;
+        }
+        // A nested '{' is met by the loop as a field of its own
+    }
+    return anyExplicit ? highestExplicit : automatic;
+}
+
+} // namespace detail
+
+/**
+ * What the network functions take in place of "const char*, ...".
+ *
+ * std::format_string checks at compile time that the fields fit the types
+ * of the arguments, but it accepts arguments that no field uses.  This code
+ * base is being moved off printf, where that matters: a call left behind,
+ *
+ *     Notice(theClient, "%s is not on %s", nick, channel);
+ *
+ * is a valid std::format string with no fields and two unused arguments, and
+ * would send "%s is not on %s" to the user.  Requiring the counts to match
+ * makes it a compile error instead.
+ */
+template <typename... Args> struct BasicCheckedFormat {
+    template <typename T>
+        requires std::convertible_to<const T&, std::string_view>
+    consteval BasicCheckedFormat(const T& text) : format(text) {
+        if (detail::formatArgumentCount(std::string_view(text)) != sizeof...(Args)) {
+            // Not a constant expression, so this is a compile error, and the
+            // name shows up in it.
+            formatStringDoesNotUseExactlyTheArgumentsGiven_isItStillPrintfStyle();
+        }
+    }
+
+    std::format_string<Args...> format;
+
+  private:
+    static void formatStringDoesNotUseExactlyTheArgumentsGiven_isItStillPrintfStyle();
+};
+
+/// As std::format_string does, keep the parameter out of template argument
+/// deduction: Args come from the arguments alone.
+template <typename... Args> using CheckedFormat = BasicCheckedFormat<std::type_identity_t<Args>...>;
 
 } // namespace gnuworld
 

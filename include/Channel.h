@@ -24,6 +24,12 @@
 #ifndef __CHANNEL_H
 #define __CHANNEL_H "$Id: Channel.h,v 1.37 2008/04/16 20:29:36 danielaustin Exp $"
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string_view>
 #include <string>
 #include <map>
 #include <vector>
@@ -75,58 +81,275 @@ class Channel {
     typedef unsigned int modeType;
 
     /// Bit representing channel mode +t
-    static const modeType MODE_T;
+    static constexpr modeType MODE_T = 0x00001;
 
     /// Bit representing channel mode +n
-    static const modeType MODE_N;
+    static constexpr modeType MODE_N = 0x00002;
 
     /// Bit representing channel mode +s
-    static const modeType MODE_S;
+    static constexpr modeType MODE_S = 0x00004;
 
     /// Bit representing channel mode +p
-    static const modeType MODE_P;
+    static constexpr modeType MODE_P = 0x00008;
 
     /// Bit representing channel mode +k
-    static const modeType MODE_K;
+    static constexpr modeType MODE_K = 0x00010;
 
     /// Bit representing channel mode +l
-    static const modeType MODE_L;
+    static constexpr modeType MODE_L = 0x00020;
 
     /// Bit representing channel mode +m
-    static const modeType MODE_M;
+    static constexpr modeType MODE_M = 0x00040;
 
     /// Bit representing channel mode +i
-    static const modeType MODE_I;
+    static constexpr modeType MODE_I = 0x00080;
 
     /// Bit representing channel mode +r
-    static const modeType MODE_R;
+    static constexpr modeType MODE_R = 0x00100;
 
     /// Bit representing channel mode +R
-    static const modeType MODE_REG;
+    static constexpr modeType MODE_REG = 0x01000;
 
     /// Bit representing channel mode +D
-    static const modeType MODE_D;
+    static constexpr modeType MODE_D = 0x00200;
 
     /// Bit representing channel mode +c
-    static const modeType MODE_C;
+    static constexpr modeType MODE_C = 0x02000;
 
     /// Bit representing channel mode +C
-    static const modeType MODE_CTCP;
+    static constexpr modeType MODE_CTCP = 0x04000;
 
     /// Bit representing channel mode +P
-    static const modeType MODE_PART;
+    static constexpr modeType MODE_PART = 0x08000;
 
     /// Bit representing channel mode +M
-    static const modeType MODE_MNOREG;
+    static constexpr modeType MODE_MNOREG = 0x10000;
 
     /// Bit representing channel mode +A
-    static const modeType MODE_A;
+    static constexpr modeType MODE_A = 0x00400;
 
     /// Bit representing channel mode +U
-    static const modeType MODE_U;
+    static constexpr modeType MODE_U = 0x00800;
 
     /// Bit representing channel mode +Z
-    static const modeType MODE_Z;
+    static constexpr modeType MODE_Z = 0x20000;
+
+    /*
+     * The channel modes: which letters exist, what argument each takes and
+     * when, and how a mode string is read and written.  This is the single
+     * description of them; the handlers in libircu read modes through
+     * parseModes(), and every MODE line gnuworld sends is put together by
+     * formatModeLines().  The reference is ircu's doc/P11.md, section 15.1.
+     */
+
+    /// What a mode is, which decides how its argument is validated.
+    enum class ModeKind : unsigned char {
+        Flag,     ///< +m: no argument
+        Key,      ///< +k <key>, -k <key>
+        Limit,    ///< +l <n>, -l
+        Password, ///< +A/+U <pass>, -A/-U <pass> (OPLEVELS)
+        Member,   ///< +o/+v <member>
+        Ban       ///< +b <mask>
+    };
+
+    /**
+     * The group a mode belongs to, which says when it carries an argument.
+     * A to D are the four groups of the CHANMODES token that a server
+     * advertises in RPL_ISUPPORT (005), "CHANMODES=A,B,C,D".  That is the
+     * ISUPPORT draft's classification, not RFC 1459's.  ircu sends
+     * "CHANMODES=b,AkU,l,imnpstrDdRcCuMZ" and "PREFIX=(ov)@+".
+     */
+    enum class ModeGroup : unsigned char {
+        A,     ///< a list: always an argument (b)
+        B,     ///< a setting: always an argument, set or unset (k, A, U)
+        C,     ///< a setting: an argument only when set (l)
+        D,     ///< a flag: never an argument (m, t, n, ...)
+        Prefix ///< a member's status: always an argument.  Not part of
+               ///< CHANMODES, but of the PREFIX token (o, v)
+    };
+
+    struct ModeInfo {
+        char letter;
+        ModeKind kind;
+        /// The MODE_* bit; 0 for Member and Ban, which are not channel flags.
+        modeType flag;
+        /// Only a server may set or clear it (+R, registered with services).
+        bool serverOnly;
+
+        constexpr ModeGroup group() const noexcept {
+            switch (kind) {
+            case ModeKind::Ban:
+                return ModeGroup::A;
+            case ModeKind::Key:
+            case ModeKind::Password:
+                return ModeGroup::B;
+            case ModeKind::Limit:
+                return ModeGroup::C;
+            case ModeKind::Flag:
+                return ModeGroup::D;
+            case ModeKind::Member:
+                return ModeGroup::Prefix;
+            }
+            return ModeGroup::D;
+        }
+
+        constexpr bool takesArg(bool set) const noexcept {
+            return group() != ModeGroup::D && (group() != ModeGroup::C || set);
+        }
+
+        friend constexpr bool operator==(const ModeInfo&, const ModeInfo&) = default;
+    };
+
+    /**
+     * Every channel mode that travels between servers.  The flags and
+     * settings are in the order a BURST sends them: s|p m t i n r D R c C u
+     * M Z, then l k A U.
+     */
+    static constexpr std::array<ModeInfo, 21> modeTable{{
+        {'s', ModeKind::Flag, MODE_S, false},
+        {'p', ModeKind::Flag, MODE_P, false},
+        {'m', ModeKind::Flag, MODE_M, false},
+        {'t', ModeKind::Flag, MODE_T, false},
+        {'i', ModeKind::Flag, MODE_I, false},
+        {'n', ModeKind::Flag, MODE_N, false},
+        {'r', ModeKind::Flag, MODE_R, false},
+        {'D', ModeKind::Flag, MODE_D, false},
+        {'R', ModeKind::Flag, MODE_REG, true},
+        {'c', ModeKind::Flag, MODE_C, false},
+        {'C', ModeKind::Flag, MODE_CTCP, false},
+        {'u', ModeKind::Flag, MODE_PART, false},
+        {'M', ModeKind::Flag, MODE_MNOREG, false},
+        {'Z', ModeKind::Flag, MODE_Z, false},
+        {'l', ModeKind::Limit, MODE_L, false},
+        {'k', ModeKind::Key, MODE_K, false},
+        {'A', ModeKind::Password, MODE_A, false},
+        {'U', ModeKind::Password, MODE_U, false},
+        {'o', ModeKind::Member, 0, false},
+        {'v', ModeKind::Member, 0, false},
+        {'b', ModeKind::Ban, 0, false},
+    }};
+
+    /// Look a mode up by its letter.
+    static constexpr std::optional<ModeInfo> findMode(char letter) noexcept {
+        for (const ModeInfo& mode : modeTable) {
+            if (mode.letter == letter) {
+                return mode;
+            }
+        }
+        return std::nullopt;
+    }
+
+    /// 'd' (hidden members remain after -D) and 'z' (a member is not on
+    /// TLS) are valid in ircu but local to a server: never sent to, or
+    /// accepted from, another one.
+    static constexpr bool isLocalOnlyMode(char letter) noexcept {
+        return letter == 'd' || letter == 'z';
+    }
+
+    /// The position of a mode in a BURST mode block; lower goes first.
+    static constexpr std::size_t burstOrder(const ModeInfo& mode) noexcept {
+        for (std::size_t i = 0; i < modeTable.size(); ++i) {
+            if (modeTable[i].letter == mode.letter) {
+                return i;
+            }
+        }
+        return modeTable.size();
+    }
+
+    /// ircu's KEYLEN: the longest key, and the longest +A/+U password.
+    static constexpr std::size_t maxKeyLength = 23;
+
+    /// One validated mode change.
+    struct ModeChange {
+        bool set; ///< true for '+', false for '-'
+        ModeInfo mode;
+        std::string arg; ///< empty when the mode takes none in this direction
+
+        friend bool operator==(const ModeChange&, const ModeChange&) = default;
+    };
+
+    enum class ModeError : unsigned char {
+        UnknownMode,
+        LocalOnlyMode, ///< 'd' or 'z'
+        MissingArgument,
+        InvalidKey, ///< also a +A/+U password; they share the key rules
+        InvalidLimit,
+        InvalidTarget, ///< the member of a +o/+v
+        InvalidMask,
+        UnusedArgument ///< an argument no mode asked for
+    };
+
+    struct ModeProblem {
+        ModeError error;
+        char letter;        ///< the mode concerned; 0 for UnusedArgument
+        std::string detail; ///< the offending argument, if there was one
+
+        friend bool operator==(const ModeProblem&, const ModeProblem&) = default;
+    };
+
+    struct ParsedModes {
+        /// The changes that were valid, in the order given.
+        std::vector<ModeChange> changes;
+        /// What was wrong with the rest; such a mode is left out of changes.
+        std::vector<ModeProblem> problems;
+        /// The channel timestamp, if one was asked for and found.
+        std::optional<std::uint64_t> timestamp;
+        /// How many of the arguments were consumed, the timestamp included.
+        std::size_t argsUsed = 0;
+
+        bool ok() const noexcept { return problems.empty(); }
+    };
+
+    struct ModeParseOptions {
+        /// One all-digit argument left over after every mode has taken its
+        /// own is the channel timestamp that ends a MODE line.  Counting
+        /// from the modes is what tells "+l 10" from "+m 1700000000".
+        bool trailingTimestamp = false;
+        /// Arguments nobody asked for are not a problem: a BURST has its
+        /// member list right behind the mode block's arguments.
+        bool allowLeftover = false;
+    };
+
+    /**
+     * Parse a mode string, such as "+tnk-l", and its arguments.  No leading
+     * sign means '+'.  A mode with a problem is reported and skipped and the
+     * parse carries on, so the caller decides what a problem means: a line
+     * from the network is applied as far as it is valid, while a change we
+     * are about to send should not go out unless ok().
+     */
+    static ParsedModes parseModes(std::string_view modeString,
+                                  std::span<const std::string_view> args, ModeParseOptions options);
+    static ParsedModes parseModes(std::string_view modeString,
+                                  std::span<const std::string_view> args);
+
+    /// ircu's is_clean_key(): not empty, at most maxKeyLength, no leading
+    /// ':', and no comma, space or control character.
+    static bool isValidKey(std::string_view key) noexcept;
+
+    /// A channel limit: decimal digits only, from 1 to INT_MAX.
+    static bool isValidLimit(std::string_view limit) noexcept;
+
+    /**
+     * Format changes as complete MODE lines,
+     * "<prefix> <modes> [<args>] <timestamp>", where prefix is
+     * "<source> M <#channel>".  One sign per run of a polarity; at most
+     * MAX_CHAN_MODES modes on a line, flags included, and never past the
+     * line limit; the channel timestamp last, which a P11 peer requires;
+     * one space between fields.
+     */
+    static std::vector<std::string> formatModeLines(std::string_view prefix,
+                                                    std::span<const ModeChange> changes,
+                                                    std::uint64_t timestamp);
+
+    /// The mode block of a BURST, "+tnlk 25 sekrit": what is being set, in
+    /// burst order.  Empty if nothing remains.
+    static std::string burstModeBlock(std::span<const ModeChange> changes);
+
+    /// The modes of each CHANMODES group as one string, "A,B,C,D".
+    static std::string isupportChanmodes();
+
+    /// A short name for a ModeError, for logs.
+    static std::string_view describe(ModeError error) noexcept;
 
     /// Type used to store number of clients in channel
     typedef userListType::size_type size_type;

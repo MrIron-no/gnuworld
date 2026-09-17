@@ -16,7 +16,8 @@ noinst_PROGRAMS = test_burst \
 	test_xparameters_tags \
 	test_stringtokenizer_trailing \
 	test_channelmodes \
-	test_checkedformat
+	test_checkedformat \
+	test_numbers
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
@@ -98,14 +99,21 @@ EXTRA_DIST += \
 	test/README.testBot \
 	test/README.test_kick_transaction
 
-test_channelmodes_SOURCES = test/channelmodes.cc
-test_channelmodes_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+# The mode functions are Channel's, in src/Channel_modes.cc, which needs
+# nothing but libgnuworld and so is built straight into the test.
+test_channelmodes_SOURCES = test/channelmodes.cc src/Channel_modes.cc
+test_channelmodes_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier -I${top_srcdir}/db
 test_channelmodes_LDADD = libgnuworld.la
 
 test_checkedformat_SOURCES = test/checkedformat.cc
 test_checkedformat_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_checkedformat_LDADD = libgnuworld.la
 
+test_numbers_SOURCES = test/numbers.cc
+test_numbers_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_numbers_LDADD = libgnuworld.la
+
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
-TESTS = test_channelmodes test_checkedformat
+TESTS = test_channelmodes test_checkedformat test_numbers

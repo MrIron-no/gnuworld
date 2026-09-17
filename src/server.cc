@@ -59,9 +59,6 @@
 #include "ip.h"
 
 #include "server.h"
-#include "ChannelModeApply.h"
-#include "ChannelModes.h"
-#include "Source.h"
 #include "Network.h"
 #include "iServer.h"
 #include "iClient.h"
@@ -1382,7 +1379,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
     // The modes are validated before anything is sent.  They used to be
     // copied to the network as the module gave them, and then picked apart
     // a second time, by a switch of their own, to update the channel.
-    std::vector<chanmode::Change> joinModes;
+    std::vector<Channel::ModeChange> joinModes;
     if (string::npos != chanModes.find_first_not_of(' ')) {
         StringTokenizer st(chanModes);
         std::vector<std::string_view> tokens;
@@ -1390,12 +1387,12 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             tokens.emplace_back(st[i]);
         }
 
-        chanmode::Parsed parsed = chanmode::parse(tokens[0], std::span(tokens).subspan(1));
+        Channel::ParsedModes parsed = Channel::parseModes(tokens[0], std::span(tokens).subspan(1));
         logModeProblems("xServer::JoinChannel>", chanName, parsed.problems);
 
-        for (chanmode::Change& change : parsed.changes) {
-            const chanmode::Kind kind = change.mode.kind;
-            if (chanmode::Kind::Member == kind || chanmode::Kind::Ban == kind) {
+        for (Channel::ModeChange& change : parsed.changes) {
+            const Channel::ModeKind kind = change.mode.kind;
+            if (Channel::ModeKind::Member == kind || Channel::ModeKind::Ban == kind) {
                 elog << "xServer::JoinChannel> (" << chanName << "): mode '" << change.mode.letter
                      << "' is not a channel mode to join with" << endl;
                 continue;
@@ -1403,7 +1400,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
             // A key cannot be set over another: take the old one off first,
             // in the same line.  Asking for the key already set is a no-op.
-            if (chanmode::Kind::Key == kind && change.set && theChan != 0 &&
+            if (Channel::ModeKind::Key == kind && change.set && theChan != 0 &&
                 theChan->getMode(Channel::MODE_K)) {
                 if (theChan->getKey() == change.arg) {
                     continue;
@@ -1416,14 +1413,14 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
     // A BURST can only set modes.  Whatever clears one, and a key that
     // replaces another, follows it as a MODE.
-    std::vector<chanmode::Change> burstModes;
-    std::vector<chanmode::Change> afterBurst;
+    std::vector<Channel::ModeChange> burstModes;
+    std::vector<Channel::ModeChange> afterBurst;
     for (std::size_t i = 0; i < joinModes.size(); ++i) {
         const bool replacesKey = joinModes[i].set && i > 0 && !joinModes[i - 1].set &&
                                  joinModes[i - 1].mode == joinModes[i].mode;
         (joinModes[i].set && !replacesKey ? burstModes : afterBurst).push_back(joinModes[i]);
     }
-    const std::string burstBlock = chanmode::burstModeBlock(burstModes);
+    const std::string burstBlock = Channel::burstModeBlock(burstModes);
     const std::string burstFields = burstBlock.empty() ? string() : ' ' + burstBlock;
 
     if ((NULL == theChan) && bursting) {
@@ -1539,7 +1536,8 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
         if (getOps) {
             // Op the bot
-            const chanmode::Change opClient{true, *chanmode::find('o'), theClient->getCharYYXXX()};
+            const Channel::ModeChange opClient{true, *Channel::findMode('o'),
+                                               theClient->getCharYYXXX()};
             SendChannelModes(getCharYY(), chanName, postJoinTime, std::span(&opClient, 1));
         }
 
@@ -1553,7 +1551,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
     // Is the string not empty, and not only consisting of spaces?
     // Our own join does not raise mode events, so the channel is updated
-    // directly rather than through applyChannelModes().
+    // directly rather than through ApplyChannelModes().
     applyModesSilently(theChan, joinModes);
 
     // An xClient has joined a channel, update its iClient instance
@@ -1824,39 +1822,39 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source
     // Work out what clearing these modes removes from the channel as it is
     // now: for a flag or a setting the mode itself, for 'o' and 'v' every
     // member that holds it, for 'b' every ban.
-    std::vector<chanmode::Change> changes;
+    std::vector<Channel::ModeChange> changes;
     string letters;
 
     for (const char letter : modes) {
-        const std::optional<chanmode::Mode> mode = chanmode::find(letter);
+        const std::optional<Channel::ModeInfo> mode = Channel::findMode(letter);
         if (!mode) {
             elog << "xServer::ClearMode> (" << theChan->getName() << "): "
-                 << (chanmode::isLocalOnly(letter) ? "mode is local to a server: "
-                                                   : "unknown mode: ")
+                 << (Channel::isLocalOnlyMode(letter) ? "mode is local to a server: "
+                                                      : "unknown mode: ")
                  << letter << endl;
             continue;
         }
         letters += letter;
 
         switch (mode->kind) {
-        case chanmode::Kind::Flag:
-        case chanmode::Kind::Limit:
+        case Channel::ModeKind::Flag:
+        case Channel::ModeKind::Limit:
             if (theChan->getMode(mode->flag)) {
                 changes.push_back({false, *mode, string()});
             }
             break;
-        case chanmode::Kind::Key:
+        case Channel::ModeKind::Key:
             if (theChan->getMode(mode->flag)) {
                 changes.push_back({false, *mode, theChan->getKey()});
             }
             break;
-        case chanmode::Kind::Password:
+        case Channel::ModeKind::Password:
             if (theChan->getMode(mode->flag)) {
                 changes.push_back(
                     {false, *mode, ('A' == letter) ? theChan->getApass() : theChan->getUpass()});
             }
             break;
-        case chanmode::Kind::Member:
+        case Channel::ModeKind::Member:
             for (const auto& [id, member] : theChan->users()) {
                 (void)id;
                 if (('o' == letter) ? member->isModeO() : member->isModeV()) {
@@ -1864,7 +1862,7 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source
                 }
             }
             break;
-        case chanmode::Kind::Ban:
+        case Channel::ModeKind::Ban:
             for (Channel::const_banIterator ban = theChan->banList_begin();
                  ban != theChan->banList_end(); ++ban) {
                 changes.push_back({false, *mode, *ban});
@@ -1891,8 +1889,7 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source
     }
 
     // The network first, then our tables and the modules
-    const ModeApplyResult applied = applyChannelModes(*this, *theChan, 0, changes);
-    logModeProblems("xServer::ClearMode>", theChan->getName(), applied.problems);
+    ApplyChannelModes(theChan, 0, changes, "xServer::ClearMode>");
 
     return sent;
 }
@@ -1966,10 +1963,10 @@ void xServer::commitMemberModes(const std::string& sourceNumeric, ChannelUser* e
         return;
     }
 
-    const std::optional<chanmode::Mode> mode = chanmode::find(letter);
-    assert(mode && chanmode::Kind::Member == mode->kind);
+    const std::optional<Channel::ModeInfo> mode = Channel::findMode(letter);
+    assert(mode && Channel::ModeKind::Member == mode->kind);
 
-    std::vector<chanmode::Change> changes;
+    std::vector<Channel::ModeChange> changes;
     changes.reserve(members.size());
     for (const auto& [set, member] : members) {
         changes.push_back({set, *mode, member->getCharYYXXX()});
@@ -2022,10 +2019,10 @@ void xServer::commitBans(const std::string& sourceNumeric, ChannelUser* eventSou
         return;
     }
 
-    std::vector<chanmode::Change> changes;
+    std::vector<Channel::ModeChange> changes;
     changes.reserve(bans.size());
     for (const auto& [set, mask] : bans) {
-        changes.push_back({set, *chanmode::find('b'), mask});
+        changes.push_back({set, *Channel::findMode('b'), mask});
     }
 
     SendChannelModes(sourceNumeric, theChan, changes);
@@ -2071,10 +2068,10 @@ bool xServer::sendText(const char* token, const Source& from, std::string_view t
     }
 
     const std::string prefix = numericOf(from) + ' ' + token + ' ' + std::string(target) + " :";
-    if (prefix.size() + 1 >= chanmode::maxLineLength) {
+    if (prefix.size() + 1 >= (IRC_MAX_LINE - 2)) {
         return false;
     }
-    const std::size_t room = chanmode::maxLineLength - prefix.size();
+    const std::size_t room = (IRC_MAX_LINE - 2) - prefix.size();
 
     // A line break in the text means "and another message": every line goes
     // out by itself, and one too long for a line is continued in the next.
@@ -2319,52 +2316,52 @@ bool xServer::UnBan(Channel* theChan, const banVectorType& bans, const Source& f
 }
 
 bool xServer::SendChannelModes(const std::string& source, Channel* theChan,
-                               std::span<const chanmode::Change> changes) {
+                               std::span<const Channel::ModeChange> changes) {
     assert(theChan != 0);
     return SendChannelModes(source, theChan->getName(), theChan->getCreationTime(), changes);
 }
 
 bool xServer::SendChannelModes(const std::string& source, const std::string& chanName,
-                               time_t timestamp, std::span<const chanmode::Change> changes) {
+                               time_t timestamp, std::span<const Channel::ModeChange> changes) {
     // The one place a channel MODE line is put together.  formatLines()
     // splits at six arguments or at the line limit, and ends every line in
     // the channel timestamp, which a P11 peer requires.
     bool sent = true;
-    for (const std::string& line : chanmode::formatLines(source + " M " + chanName, changes,
-                                                         static_cast<std::uint64_t>(timestamp))) {
+    for (const std::string& line : Channel::formatModeLines(
+             source + " M " + chanName, changes, static_cast<std::uint64_t>(timestamp))) {
         sent = Write(line) && sent;
     }
     return sent;
 }
 
-void xServer::applyModesSilently(Channel* theChan, std::span<const chanmode::Change> changes) {
-    for (const chanmode::Change& change : changes) {
+void xServer::applyModesSilently(Channel* theChan, std::span<const Channel::ModeChange> changes) {
+    for (const Channel::ModeChange& change : changes) {
         switch (change.mode.kind) {
-        case chanmode::Kind::Flag:
+        case Channel::ModeKind::Flag:
             if (change.set) {
                 theChan->setMode(change.mode.flag);
             } else {
                 theChan->removeMode(change.mode.flag);
             }
             break;
-        case chanmode::Kind::Limit: {
+        case Channel::ModeKind::Limit: {
             unsigned int limit = 0;
             std::from_chars(change.arg.data(), change.arg.data() + change.arg.size(), limit);
             theChan->onModeL(change.set, limit);
             break;
         }
-        case chanmode::Kind::Key:
+        case Channel::ModeKind::Key:
             theChan->onModeK(change.set, change.set ? change.arg : string());
             break;
-        case chanmode::Kind::Password:
+        case Channel::ModeKind::Password:
             if ('A' == change.mode.letter) {
                 theChan->onModeA(change.set, change.set ? change.arg : string());
             } else {
                 theChan->onModeU(change.set, change.set ? change.arg : string());
             }
             break;
-        case chanmode::Kind::Member:
-        case chanmode::Kind::Ban:
+        case Channel::ModeKind::Member:
+        case Channel::ModeKind::Ban:
             break;
         }
     }
@@ -2405,7 +2402,7 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
         tokens.emplace_back(st[i]);
     }
 
-    std::vector<chanmode::Change> requested;
+    std::vector<Channel::ModeChange> requested;
     for (std::size_t index = 0; index < tokens.size();) {
         // cservice passes the channel timestamp as an argument to "+R", from
         // when this method did not add one.  It is ours to add now.
@@ -2414,7 +2411,7 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
             continue;
         }
 
-        const chanmode::Parsed parsed = chanmode::parse(
+        const Channel::ParsedModes parsed = Channel::parseModes(
             tokens[index], std::span(tokens).subspan(index + 1), {.allowLeftover = true});
         if (!parsed.ok()) {
             logModeProblems("xServer::Mode>", theChan->getName(), parsed.problems);
@@ -2427,9 +2424,9 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
     // Check the changes against the channel, and turn them into what goes
     // on the wire: a nick becomes a numeric, and a change that would change
     // nothing is dropped.
-    std::vector<chanmode::Change> wire;
-    for (chanmode::Change& change : requested) {
-        const chanmode::Mode& mode = change.mode;
+    std::vector<Channel::ModeChange> wire;
+    for (Channel::ModeChange& change : requested) {
+        const Channel::ModeInfo& mode = change.mode;
 
         if (mode.serverOnly && from.isClient()) {
             elog << "xServer::Mode> (" << theChan->getName() << "): only a server may change mode '"
@@ -2438,8 +2435,8 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
         }
 
         switch (mode.kind) {
-        case chanmode::Kind::Key:
-        case chanmode::Kind::Password: {
+        case Channel::ModeKind::Key:
+        case Channel::ModeKind::Password: {
             // A key or password cannot be replaced, only removed and set
             // again; removing one that is not there is a no-op.
             const bool isSet = theChan->getMode(mode.flag);
@@ -2452,7 +2449,7 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
             break;
         }
 
-        case chanmode::Kind::Member: {
+        case Channel::ModeKind::Member: {
             iClient* targetClient = Network->findNick(change.arg);
             ChannelUser* targetUser = (targetClient != 0) ? theChan->findUser(targetClient) : 0;
             if (0 == targetUser) {
@@ -2466,9 +2463,9 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
             break;
         }
 
-        case chanmode::Kind::Flag:
-        case chanmode::Kind::Limit:
-        case chanmode::Kind::Ban:
+        case Channel::ModeKind::Flag:
+        case Channel::ModeKind::Limit:
+        case Channel::ModeKind::Ban:
             break;
         }
 
@@ -2484,8 +2481,7 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
     // follow the mode that caused it.
     SendChannelModes(numericOf(from), theChan, wire);
 
-    const ModeApplyResult applied = applyChannelModes(*this, *theChan, theUser, wire);
-    logModeProblems("xServer::Mode>", theChan->getName(), applied.problems);
+    ApplyChannelModes(theChan, theUser, wire, "xServer::Mode>");
 
     return true;
 }

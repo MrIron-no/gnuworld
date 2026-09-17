@@ -178,9 +178,9 @@ void string_toupper(string& Key) {
  * Return true if this string consists of all numerical
  * [0,9] characters.
  * Return false otherwise. */
-bool IsNumeric(const string& s) {
-    for (string::const_iterator ptr = s.begin(), endPtr = s.end(); ptr != endPtr; ++ptr) {
-        if (!isdigit(*ptr)) {
+bool IsNumeric(std::string_view s) {
+    for (const char c : s) {
+        if (!isdigit(static_cast<unsigned char>(c))) {
             return false;
         }
     }

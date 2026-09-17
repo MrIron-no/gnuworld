@@ -45,8 +45,6 @@
 #include "ip.h"
 #include "NetworkTarget.h"
 #include "client.h"
-#include "ChannelModeApply.h"
-#include "ChannelModes.h"
 #include "EConfig.h"
 #include "StringTokenizer.h"
 #include "ELog.h"
@@ -696,7 +694,7 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
 
     string banMask = Channel::createBan(theClient);
 
-    const chanmode::Change ban{true, *chanmode::find('b'), banMask};
+    const Channel::ModeChange ban{true, *Channel::findMode('b'), banMask};
     MyUplink->SendChannelModes(getCharYYXXX(), theChan, std::span(&ban, 1));
 
     Write("{} K {} {} :{}", getCharYYXXX(), theChan->getName(), theClient->getCharYYXXX(), reason);

@@ -44,8 +44,6 @@
 #include "Network.h"
 #include "iClient.h"
 #include "ServerCommandHandler.h"
-#include "ChannelModeApply.h"
-#include "ChannelModes.h"
 
 namespace gnuworld {
 using std::endl;
@@ -172,13 +170,10 @@ bool msg_B::Execute(const xParameters& Param) {
     if ('+' == Param[whichToken][0]) {
         // The arguments of the mode block are followed by the member list,
         // so leftovers are expected; argsUsed says where the members start.
-        const std::vector<std::string_view> args = modeArguments(Param, whichToken + 1);
-        const chanmode::Parsed parsed =
-            chanmode::parse(Param[whichToken], args, {.allowLeftover = true});
-        logModeProblems("msg_B>", theChan->getName(), parsed.problems);
-
-        const ModeApplyResult applied = applyChannelModes(*theServer, *theChan, 0, parsed.changes);
-        logModeProblems("msg_B>", theChan->getName(), applied.problems);
+        const std::vector<std::string_view> args = Param.views(whichToken + 1);
+        const Channel::ParsedModes parsed =
+            Channel::parseModes(Param[whichToken], args, {.allowLeftover = true});
+        theServer->ApplyChannelModes(theChan, 0, parsed, "msg_B>");
 
         whichToken += 1 + parsed.argsUsed;
     }

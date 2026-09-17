@@ -118,9 +118,42 @@ class xParameters {
      * This method will assert false if the requested index
      * is out of bounds, according to validSubscript.
      */
+    /**
+     * The parameter at `pos`, or an empty string if there is none.
+     *
+     * A line from the network may have fewer parameters than its handler
+     * expects.  This used to assert, and so abort the whole process, on an
+     * index that was out of range, which let one short line from the uplink
+     * take the services down.  A handler that forgot to check the count now
+     * sees an empty parameter instead.  Use has() to tell the two apart.
+     */
     inline char* operator[](const size_type& pos) const {
-        assert(validSubscript(pos));
+        if (!validSubscript(pos)) {
+            // Shared, and never to be written to; nothing writes through
+            // this pointer, setValue() replaces the pointer itself.
+            static char empty[1] = {0};
+            return empty;
+        }
         return myVector[pos];
+    }
+
+    /// The parameters from `first` on, as views: the argument list of a
+    /// mode string, for one.
+    inline std::vector<std::string_view> views(const size_type& first) const {
+        std::vector<std::string_view> out;
+        for (size_type i = first; i < myVector.size(); ++i) {
+            out.emplace_back(myVector[i]);
+        }
+        return out;
+    }
+
+    /// True if there is a parameter at `pos`.
+    inline bool has(const size_type& pos) const { return validSubscript(pos); }
+
+    /// The parameter at `pos` as a view; empty if there is none.  For a
+    /// number, hand it to parseNumber() (misc.h), which is not atoi().
+    inline std::string_view view(const size_type& pos) const {
+        return validSubscript(pos) ? std::string_view(myVector[pos]) : std::string_view();
     }
 
     /**
@@ -169,8 +202,7 @@ class xParameters {
      * be placed between token in the string returned.
      */
     inline std::string assemble(const size_type& beginIndex) const {
-        assert(validSubscript(beginIndex));
-        if (myVector.empty()) {
+        if (!validSubscript(beginIndex)) {
             return std::string();
         }
         std::string retMe("");

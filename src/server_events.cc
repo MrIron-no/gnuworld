@@ -28,6 +28,9 @@
 
 #include <new>
 #include <string>
+#include <string_view>
+#include <vector>
+#include <span>
 #include <list>
 #include <stack>
 #include <iostream>
@@ -35,6 +38,7 @@
 #include <csignal>
 
 #include "server.h"
+#include "misc.h"
 #include "Network.h"
 #include "iClient.h"
 #include "ELog.h"
@@ -603,6 +607,108 @@ void xServer::OnChannelModeB(Channel* theChan, ChannelUser* sourceUser,
     list<xClient*>* listPtr = chanPtr->second;
     for (list<xClient*>::iterator ptr = listPtr->begin(), end = listPtr->end(); ptr != end; ++ptr) {
         (*ptr)->OnChannelModeB(theChan, sourceUser, banVector);
+    }
+}
+
+/**
+ * The one place where a parsed mode change becomes a change of state.  It
+ * goes through the OnChannelMode*() methods above, which update the Channel
+ * and notify the modules, in the order the handlers have always used: a
+ * limit, key or password as soon as it is met, then the flags, the ops, the
+ * voices and the bans, each as one batch.
+ */
+void xServer::ApplyChannelModes(Channel* theChan, ChannelUser* sourceUser,
+                                std::span<const Channel::ModeChange> changes,
+                                std::string_view where) {
+    std::vector<Channel::ModeProblem> problems;
+
+    modeVectorType modeVector;
+    opVectorType opVector;
+    voiceVectorType voiceVector;
+    banVectorType banVector;
+
+    for (const Channel::ModeChange& change : changes) {
+        const Channel::ModeInfo& mode = change.mode;
+
+        switch (mode.kind) {
+        case Channel::ModeKind::Flag:
+            modeVector.emplace_back(change.set, mode.flag);
+            break;
+
+        case Channel::ModeKind::Limit:
+            // parseModes() has validated the argument; -l carries none
+            OnChannelModeL(theChan, change.set, sourceUser,
+                           parseNumber<unsigned int>(change.arg).value_or(0));
+            break;
+
+        case Channel::ModeKind::Key:
+            OnChannelModeK(theChan, change.set, sourceUser, change.arg);
+            break;
+
+        case Channel::ModeKind::Password:
+            if ('A' == mode.letter) {
+                OnChannelModeA(theChan, change.set, sourceUser, change.arg);
+            } else {
+                OnChannelModeU(theChan, change.set, sourceUser, change.arg);
+            }
+            break;
+
+        case Channel::ModeKind::Member: {
+            // With oplevels the target is "<numeric>:<level>"; the level
+            // is not tracked.
+            const std::string numeric = change.arg.substr(0, change.arg.find(':'));
+            iClient* target = Network->findClient(numeric);
+            ChannelUser* member = (target != 0) ? theChan->findUser(target) : 0;
+            if (0 == member) {
+                problems.push_back({Channel::ModeError::InvalidTarget, mode.letter, change.arg});
+                continue;
+            }
+            ('o' == mode.letter ? opVector : voiceVector).emplace_back(change.set, member);
+            break;
+        }
+
+        case Channel::ModeKind::Ban:
+            banVector.emplace_back(change.set, change.arg);
+            break;
+        }
+    }
+
+    if (!modeVector.empty()) {
+        OnChannelMode(theChan, sourceUser, modeVector);
+    }
+    if (!opVector.empty()) {
+        OnChannelModeO(theChan, sourceUser, opVector);
+    }
+    if (!voiceVector.empty()) {
+        OnChannelModeV(theChan, sourceUser, voiceVector);
+    }
+    if (!banVector.empty()) {
+        OnChannelModeB(theChan, sourceUser, banVector);
+    }
+
+    // What could not be applied is ours to report: the caller has nothing
+    // to do about it.
+    logModeProblems(where, theChan->getName(), problems);
+}
+
+void xServer::ApplyChannelModes(Channel* theChan, ChannelUser* sourceUser,
+                                const Channel::ParsedModes& parsed, std::string_view where) {
+    // A line from the network is applied as far as it is valid
+    logModeProblems(where, theChan->getName(), parsed.problems);
+    ApplyChannelModes(theChan, sourceUser, parsed.changes, where);
+}
+
+void xServer::logModeProblems(std::string_view where, std::string_view channelName,
+                              std::span<const Channel::ModeProblem> problems) const {
+    for (const Channel::ModeProblem& problem : problems) {
+        elog << where << " (" << channelName << "): " << Channel::describe(problem.error);
+        if (problem.letter != 0) {
+            elog << " for mode '" << problem.letter << "'";
+        }
+        if (!problem.detail.empty()) {
+            elog << ": " << problem.detail;
+        }
+        elog << endl;
     }
 }
 

@@ -34,7 +34,6 @@
 #include "xparameters.h"
 #include "ELog.h"
 #include "ServerCommandHandler.h"
-#include "ChannelModes.h"
 
 namespace gnuworld {
 using std::endl;
@@ -90,36 +89,36 @@ bool msg_CM::Execute(const xParameters& Param) {
     xServer::modeVectorType modeVector;
 
     for (const char letter : Modes) {
-        const std::optional<chanmode::Mode> mode = chanmode::find(letter);
+        const std::optional<Channel::ModeInfo> mode = Channel::findMode(letter);
         if (!mode) {
             elog << "msg_CM> (" << tmpChan->getName() << "): "
-                 << (chanmode::isLocalOnly(letter) ? "mode is local to a server: "
-                                                   : "unknown mode: ")
+                 << (Channel::isLocalOnlyMode(letter) ? "mode is local to a server: "
+                                                      : "unknown mode: ")
                  << letter << endl;
             continue;
         }
 
         switch (mode->kind) {
-        case chanmode::Kind::Flag:
+        case Channel::ModeKind::Flag:
             modeVector.push_back(make_pair(false, mode->flag));
             break;
-        case chanmode::Kind::Key:
+        case Channel::ModeKind::Key:
             theServer->OnChannelModeK(tmpChan, false, 0, std::string());
             break;
-        case chanmode::Kind::Limit:
+        case Channel::ModeKind::Limit:
             theServer->OnChannelModeL(tmpChan, false, 0, 0);
             break;
-        case chanmode::Kind::Password:
+        case Channel::ModeKind::Password:
             if ('A' == letter) {
                 theServer->OnChannelModeA(tmpChan, false, 0, std::string());
             } else {
                 theServer->OnChannelModeU(tmpChan, false, 0, std::string());
             }
             break;
-        case chanmode::Kind::Member:
+        case Channel::ModeKind::Member:
             ('o' == letter ? clearOps : clearVoice) = true;
             break;
-        case chanmode::Kind::Ban:
+        case Channel::ModeKind::Ban:
             clearBans = true;
             break;
         }

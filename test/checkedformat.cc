@@ -1,6 +1,6 @@
 /**
  * checkedformat.cc
- * Unit test for libgnuworld/CheckedFormat.h.  Runs under "make check".
+ * Unit test for CheckedFormat, in libgnuworld/misc.h.  Runs under "make check".
  *
  * What matters most about CheckedFormat is what it refuses to compile, and a
  * test program cannot contain that.  These do not compile, as intended:
@@ -14,7 +14,7 @@
 #include <string>
 #include <utility>
 
-#include "CheckedFormat.h"
+#include "misc.h"
 
 using namespace gnuworld;
 

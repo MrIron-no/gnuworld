@@ -39,8 +39,6 @@
 #include "ELog.h"
 #include "StringTokenizer.h"
 #include "ServerCommandHandler.h"
-#include "ChannelModeApply.h"
-#include "ChannelModes.h"
 
 namespace gnuworld {
 
@@ -141,9 +139,9 @@ bool msg_M::Execute(const xParameters& Param) {
     }
 
     // <source> M <#channel> <modes> [<args>...] [<channel timestamp>]
-    const std::vector<std::string_view> args = modeArguments(Param, 3);
-    const chanmode::Parsed parsed = chanmode::parse(Param[2], args, {.trailingTimestamp = true});
-    logModeProblems("msg_M>", theChan->getName(), parsed.problems);
+    const std::vector<std::string_view> args = Param.views(3);
+    const Channel::ParsedModes parsed =
+        Channel::parseModes(Param[2], args, {.trailingTimestamp = true});
 
     // An older timestamp means the sender knows an older instance of the
     // channel, and we adopt it.  Only a real timestamp counts: this used to
@@ -156,9 +154,7 @@ bool msg_M::Execute(const xParameters& Param) {
         }
     }
 
-    const ModeApplyResult applied =
-        applyChannelModes(*theServer, *theChan, theUser, parsed.changes);
-    logModeProblems("msg_M>", theChan->getName(), applied.problems);
+    theServer->ApplyChannelModes(theChan, theUser, parsed, "msg_M>");
 
     return true;
 }

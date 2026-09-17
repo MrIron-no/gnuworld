@@ -27,6 +27,7 @@
 #include <optional>
 #include <format>
 #include <span>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -39,9 +40,6 @@
 #include <ctime>
 #include <cassert>
 
-#include "ChannelModes.h"
-#include "CheckedFormat.h"
-#include "Source.h"
 #include "NetworkTarget.h"
 #include "iServer.h"
 #include "iClient.h"
@@ -66,10 +64,59 @@ class xClient;
 class Channel;
 
 /**
+ * Who a change sent to the network comes from.
+ *
+ * Normally the object the method is called on says it: MyUplink->Op(...) is
+ * the gnuworld server opping someone, bot->Op(...) is that xClient doing it.
+ * A fake client or a spawned or juped server has no such object: it is only
+ * an iClient or an iServer, which cannot do anything by itself.  For those,
+ * the xServer methods take a Source as their last argument:
+ *
+ *   MyUplink->Op(theChan, target);              // the gnuworld server
+ *   MyUplink->Op(theChan, target, fakeClient);  // a fake client
+ *   MyUplink->Op(theChan, target, fakeServer);  // a server we introduced
+ *
+ * A client source has to be on the channel, opped, or the call fails: the
+ * network would bounce the change.  A server source needs neither.
+ */
+class Source {
+  public:
+    /// The gnuworld server itself.
+    Source() = default;
+
+    /// A client: a fake one, or an xClient's own iClient.  Implicit on
+    /// purpose, so that an iClient* can be passed where a Source is expected.
+    Source(const iClient* client) : theClient(client) {}
+
+    /// A server other than ourselves: one we spawned, or a jupe.
+    Source(const iServer* server) : theServer(server) {}
+
+    /// A null pointer says nothing about which of the two was meant.
+    Source(std::nullptr_t) = delete;
+
+    /// The client, or null if the source is a server.
+    const iClient* client() const noexcept { return theClient; }
+
+    /// The server, or null if it is a client or the gnuworld server itself.
+    const iServer* server() const noexcept { return theServer; }
+
+    bool isClient() const noexcept { return theClient != nullptr; }
+
+  private:
+    const iClient* theClient = nullptr;
+    const iServer* theServer = nullptr;
+};
+
+/**
  * This class is the server proper; it is responsible for the connection
  * to the IRC network, and for maintaining the services clients.
  */
 class xServer : public ConnectionManager, public ConnectionHandler, public NetworkTarget {
+    /**
+     * xClient makes its channel changes out of the protected plan*() and
+     * commit*() pieces below.
+     */
+    friend class xClient;
 
   protected:
     /**
@@ -621,63 +668,15 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     /// WALLCHOPS: a notice to the ops of a channel
     virtual bool SendWallchops(const Source& from, const Channel*, std::string_view text);
 
-    /*
-     * The pieces the methods above are made of.  xClient uses them too: it
-     * has to be on the channel with ops between the planning and the
-     * committing, which may mean joining first and parting after.
-     */
-
-    /// The numeric a change goes out under.
-    std::string numericOf(const Source& from) const;
-
-    /// True for a server; for a client, true if it is on the channel, opped.
-    bool canChangeChannel(const Source& from, const Channel* theChan) const;
-
-    /**
-     * What +/-o or +/-v on these targets would really change.  A target
-     * that is null, not on the channel, or a network service being deopped
-     * is skipped, or with a single target fails the call (nullopt).  An
-     * empty result means there is nothing to do.
-     */
-    std::optional<opVectorType> planMemberModes(Channel* theChan, char letter, bool set,
-                                                std::span<iClient* const> targets);
-
-    /// Send the planned member modes, then update the channel and the modules.
-    void commitMemberModes(const std::string& sourceNumeric, ChannelUser* eventSource,
-                           Channel* theChan, char letter, const opVectorType& members);
-
-    /// The ban changes that would really change something.
-    banVectorType planBans(const Channel* theChan, const banVectorType& bans) const;
-
-    /// Bans for these clients; services and those not on the channel are skipped.
-    banVectorType planBans(const Channel* theChan, std::span<iClient* const> targets) const;
-
-    /// Send the planned bans, then update the channel and the modules.
-    void commitBans(const std::string& sourceNumeric, ChannelUser* eventSource, Channel* theChan,
-                    banVectorType bans);
-
-    /// Those of the targets that can be kicked: on the channel, and not a
-    /// network service.
-    std::vector<iClient*> planKick(const Channel* theChan, std::span<iClient* const> targets) const;
-
-    /**
-     * Send the kicks, take the members off the channel and notify the
-     * modules.  `kicker` is reported to them and may be null, for a server.
-     * Does not remove a channel left empty: the caller may still have to
-     * part it.
-     */
-    void commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
-                    std::span<iClient* const> targets, const std::string& reason);
-
     /**
      * Send channel mode changes to the network, as `source` (a server or
      * client numeric).  This only writes: it does not check the changes
      * against the channel and does not update our tables, which is what
      * Mode() is for.  Every channel MODE line gnuworld sends is formatted
-     * here, by chanmode::formatLines().
+     * here, by Channel::formatModeLines().
      */
     virtual bool SendChannelModes(const std::string& source, Channel* theChan,
-                                  std::span<const chanmode::Change> changes);
+                                  std::span<const Channel::ModeChange> changes);
 
     /**
      * The same, for a channel named by hand.  Needed while joining: the
@@ -685,7 +684,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * carry the timestamp it was created with.
      */
     virtual bool SendChannelModes(const std::string& source, const std::string& chanName,
-                                  time_t timestamp, std::span<const chanmode::Change> changes);
+                                  time_t timestamp, std::span<const Channel::ModeChange> changes);
 
     /* Event registration stuff */
 
@@ -1090,6 +1089,24 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual void OnChannelModeB(Channel*, ChannelUser*, banVectorType&);
 
     /**
+     * Apply channel mode changes: the one place where a parsed change
+     * becomes a change of state.  It goes through the OnChannelMode*()
+     * methods above.  `sourceUser` is the member that made the change; null
+     * for a server, or for a client that is not on the channel (OPMODE).
+     *
+     * The first form is for a line from the network: whatever
+     * Channel::parseModes() found wrong is logged, and the rest applied.
+     * Either form logs a change it cannot apply, which is a +o/+v whose
+     * target is unknown or not on the channel, and applies the others.
+     * `where` starts the log lines: "msg_M>".
+     */
+    virtual void ApplyChannelModes(Channel*, ChannelUser* sourceUser,
+                                   const Channel::ParsedModes& parsed, std::string_view where);
+    virtual void ApplyChannelModes(Channel*, ChannelUser* sourceUser,
+                                   std::span<const Channel::ModeChange> changes,
+                                   std::string_view where);
+
+    /**
      * Check the list of glines for any that are about to
      * expire.
      */
@@ -1159,10 +1176,63 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     bool writeLine(std::string_view text, bool duringBurst);
 
+    /// One line in elog for each problem: "<where> (<channel>): ...".
+    void logModeProblems(std::string_view where, std::string_view channelName,
+                         std::span<const Channel::ModeProblem> problems) const;
+
+    /*
+     * The pieces the channel methods (Op(), Ban(), Kick()...) are made of.
+     * Not part of the API for modules.  xClient, a friend, uses them as well:
+     * it has to be on the channel with ops between the planning and the
+     * committing, which may mean joining first and parting after.
+     */
+
+    /// The numeric a change goes out under.
+    std::string numericOf(const Source& from) const;
+
+    /// True for a server; for a client, true if it is on the channel, opped.
+    bool canChangeChannel(const Source& from, const Channel* theChan) const;
+
+    /**
+     * What +/-o or +/-v on these targets would really change.  A target
+     * that is null, not on the channel, or a network service being deopped
+     * is skipped, or with a single target fails the call (nullopt).  An
+     * empty result means there is nothing to do.
+     */
+    std::optional<opVectorType> planMemberModes(Channel* theChan, char letter, bool set,
+                                                std::span<iClient* const> targets);
+
+    /// Send the planned member modes, then update the channel and the modules.
+    void commitMemberModes(const std::string& sourceNumeric, ChannelUser* eventSource,
+                           Channel* theChan, char letter, const opVectorType& members);
+
+    /// The ban changes that would really change something.
+    banVectorType planBans(const Channel* theChan, const banVectorType& bans) const;
+
+    /// Bans for these clients; services and those not on the channel are skipped.
+    banVectorType planBans(const Channel* theChan, std::span<iClient* const> targets) const;
+
+    /// Send the planned bans, then update the channel and the modules.
+    void commitBans(const std::string& sourceNumeric, ChannelUser* eventSource, Channel* theChan,
+                    banVectorType bans);
+
+    /// Those of the targets that can be kicked: on the channel, and not a
+    /// network service.
+    std::vector<iClient*> planKick(const Channel* theChan, std::span<iClient* const> targets) const;
+
+    /**
+     * Send the kicks, take the members off the channel and notify the
+     * modules.  `kicker` is reported to them and may be null, for a server.
+     * Does not remove a channel left empty: the caller may still have to
+     * part it.
+     */
+    void commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
+                    std::span<iClient* const> targets, const std::string& reason);
+
     bool sendText(const char* token, const Source& from, std::string_view target,
                   std::string_view text);
 
-    void applyModesSilently(Channel* theChan, std::span<const chanmode::Change> changes);
+    void applyModesSilently(Channel* theChan, std::span<const Channel::ModeChange> changes);
 
     bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets,
                        const Source& from);
