@@ -263,7 +263,7 @@ string channelName(const string& name) {
 
 /*
  * Every message below is sent by xServer::SendMessage(), SendNotice() or
- * SendWallchops(), from source(): this client, or the server if it is a
+ * SendWallchops(), from getInstance(): this client, or the server if it is a
  * stealth module with no client on the network.
  */
 
@@ -271,7 +271,7 @@ bool xClient::DoCTCP(iClient* Target, const string& CTCP, const string& Message)
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(source(), Target->getCharYYXXX(), ctcpText(CTCP, Message));
+    return MyUplink->SendNotice(getInstance(), Target->getCharYYXXX(), ctcpText(CTCP, Message));
 }
 
 bool xClient::DoFakeCTCP(const iClient* destClient, const iClient* srcClient, const string& CTCP,
@@ -319,7 +319,7 @@ bool xClient::Message(const iClient* Target, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(source(), Target->getCharYYXXX(), Message);
+    return MyUplink->SendMessage(getInstance(), Target->getCharYYXXX(), Message);
 }
 
 bool xClient::Message(const Channel* theChan, const string& Message) {
@@ -328,28 +328,28 @@ bool xClient::Message(const Channel* theChan, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(source(), theChan->getName(), Message);
+    return MyUplink->SendMessage(getInstance(), theChan->getName(), Message);
 }
 
 bool xClient::Message(const string& chanName, const string& Message) {
     if (chanName.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(source(), channelName(chanName), Message);
+    return MyUplink->SendMessage(getInstance(), channelName(chanName), Message);
 }
 
 bool xClient::Notice(const iClient* Target, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(source(), Target->getCharYYXXX(), Message);
+    return MyUplink->SendNotice(getInstance(), Target->getCharYYXXX(), Message);
 }
 
 bool xClient::Notice(const string& Channel, const string& Message) {
     if (Channel.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(source(), channelName(Channel), Message);
+    return MyUplink->SendNotice(getInstance(), channelName(Channel), Message);
 }
 
 bool xClient::Notice(const Channel* theChan, const string& Message) {
@@ -358,7 +358,7 @@ bool xClient::Notice(const Channel* theChan, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(source(), theChan->getName(), Message);
+    return MyUplink->SendNotice(getInstance(), theChan->getName(), Message);
 }
 
 bool xClient::NoticeChannelOps(const Channel* theChan, const string& Message) {
@@ -368,7 +368,7 @@ bool xClient::NoticeChannelOps(const Channel* theChan, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return true;
     }
-    return MyUplink->SendWallchops(source(), theChan, Message);
+    return MyUplink->SendWallchops(getInstance(), theChan, Message);
 }
 
 bool xClient::NoticeChannelOps(const string& chanName, const string& Message) {
@@ -483,13 +483,6 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
     delete Network->removeClient(theClient);
 
     return true;
-}
-
-const iClient* xClient::source() const {
-    // A stealth module has no iClient on the network, so there is no
-    // numeric of its own to send from.  The server is the only source it
-    // has, and whatever it does goes out as the server's doing.
-    return IsStealth() ? nullptr : me;
 }
 
 bool xClient::enterToChange(Channel* theChan, bool& joined) {
@@ -730,7 +723,7 @@ bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
         MyUplink->Op(theChan, me);
     }
 
-    const bool sent = MyUplink->Topic(theChan, newTopic, source());
+    const bool sent = MyUplink->Topic(theChan, newTopic, getInstance());
 
     if (joined) {
         Part(theChan);
@@ -896,7 +889,7 @@ bool xClient::Invite(iClient* theClient, Channel* theChan) {
         return false;
     }
     // A service may invite to a channel it is not on, so nothing is joined
-    return MyUplink->Invite(theClient, theChan, source());
+    return MyUplink->Invite(theClient, theChan, getInstance());
 }
 
 bool xClient::isOnChannel(const string& chanName) const {
@@ -966,7 +959,7 @@ bool xClient::ClearMode(Channel* theChan, const string& modes, bool modeAsServer
     // As the server, or as ourselves.  An oper needs no ops for a CLEARMODE;
     // anybody else has to be opped on the channel, or it fails.
     return (modeAsServer || IsStealth()) ? MyUplink->ClearMode(theChan, modes)
-                                         : MyUplink->ClearMode(theChan, modes, source());
+                                         : MyUplink->ClearMode(theChan, modes, getInstance());
 }
 
 bool xClient::checkMigrationsAfterDBConnect(const std::string& moduleName, dbHandle* db) {

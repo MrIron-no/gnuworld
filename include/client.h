@@ -755,7 +755,9 @@ class xClient : public TimerHandler, public NetworkTarget {
     }
 
     /**
-     * Return this xClient's network instance (iClient*).
+     * Return this xClient's network instance (iClient*).  Null for a
+     * stealth module, which has no client on the network: what it does is
+     * sent by the server, as a null source is everywhere in xServer.
      */
     inline iClient* getInstance() const { return me; }
 
@@ -879,10 +881,6 @@ class xClient : public TimerHandler, public NetworkTarget {
      * the channel without ops: the network would bounce the change.
      */
     bool enterToChange(Channel* theChan, bool& joined);
-
-    /// Who we send as: ourselves, or null, the server, if we are a stealth
-    /// module, which has no client on the network to send from.
-    const iClient* source() const;
 
     /// Op(), DeOp(), Voice() and DeVoice(), for one target or several.
     bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets);
