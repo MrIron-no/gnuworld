@@ -2066,8 +2066,17 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
                  << " from the iClient " << *target << endl;
         }
 
+        // The network keeps a kicked member as a zombie until its own server
+        // confirms with a PART (ircu, make_zombie()).  For a client of ours
+        // that is us: nobody else will.  Where the uplink has removed the
+        // member already, which it does when the kicker sits on the victim's
+        // server, a PART for somebody who is not on the channel is ignored.
+        if (isOurClient(target)) {
+            Write("{} L {}", target->getCharYYXXX(), theChan->getName());
+        }
+
         // The last argument says the kicked client is one of ours
-        PostChannelKick(theChan, kicker, target, reason, target->getIntYY() == getIntYY());
+        PostChannelKick(theChan, kicker, target, reason, isOurClient(target));
     }
 
     // Parting removes a channel that is left empty; otherwise it is ours to
@@ -2838,6 +2847,16 @@ bool xServer::serverMessage(Channel* theChan, const string& message) {
     }
 
     return sendText(TextType::PRIVMSG, nullptr, theChan->getName(), message);
+}
+
+bool xServer::isOurClient(const iClient* theClient) const {
+    if (0 == theClient) {
+        return false;
+    }
+    if (theClient->getIntYY() == getIntYY()) {
+        return true;
+    }
+    return Network->findFakeClient(const_cast<iClient*>(theClient)) != 0;
 }
 
 bool xServer::OpMode(iClient* target, const string& userModes) {

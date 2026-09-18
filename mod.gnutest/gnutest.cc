@@ -445,6 +445,12 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
 
     // silence <nick> <mask>, unsilence <mask>, opmode <nick> <user modes>,
     // globalnotice <text>, servsay <nick|#channel> <text>
+    if ((st[0] == "kill" || st[0] == "servkill") && st.size() > 2) {
+        if (iClient* victim = Network->findNick(st[1])) {
+            Kill(victim, st.assemble(2), st[0] == "servkill");
+        }
+        return;
+    }
     if (st[0] == "servnotice" && st.size() > 2) {
         if (Channel* targetChan = Network->findChannel(st[1])) {
             MyUplink->serverNotice(targetChan, st.assemble(2));
@@ -720,8 +726,11 @@ void gnutest::removeClient(iClient* requestingClient, const StringTokenizer& st)
 }
 
 void gnutest::spawnClient(iClient* requestingClient, const StringTokenizer& st) {
-    if (st.size() != 2) {
-        Notice(requestingClient, "Usage: spawnclient <nickname>");
+    // spawnclient <nickname> [server]: on this server, or on one that
+    // spawnserver made
+    iServer* onServer = (st.size() == 3) ? Network->findServerName(st[2]) : MyUplink->getMe();
+    if (st.size() < 2 || st.size() > 3 || 0 == onServer) {
+        Notice(requestingClient, "Usage: spawnclient <nickname> [spawned server]");
         return;
     }
 
@@ -731,13 +740,13 @@ void gnutest::spawnClient(iClient* requestingClient, const StringTokenizer& st) 
 
     char newCharYY[6];
     newCharYY[2] = 0;
-    inttobase64(newCharYY, MyUplink->getIntYY(), 2);
+    inttobase64(newCharYY, onServer->getIntYY(), 2);
 
     // elog	<< "gnutest::spawnClient> newCharYY: "
     //	<< newCharYY
     //	<< endl ;
 
-    iClient* newClient = new (std::nothrow) iClient(MyUplink->getIntYY(), // intYY
+    iClient* newClient = new (std::nothrow) iClient(onServer->getIntYY(), // intYY
                                                     newCharYY,            // charYYXXX
                                                     nickName, "username",
                                                     "AAAAAA",                 // host base 64

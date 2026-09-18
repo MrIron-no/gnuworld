@@ -193,10 +193,19 @@ bool msg_K::Execute(const xParameters& Param) {
     }
 
     // Post the channel kick event
-    // A kicked member stays on the channel, as a zombie, until its own
-    // server confirms the kick with a PART.  For a client of ours, a fake
-    // one included, that server is us.
-    if (destClient->getIntYY() == theServer->getIntYY()) {
+    /*
+     * ircu (make_zombie()) keeps a kicked member on the channel as a zombie
+     * until its own server confirms the kick with a PART, so that what the
+     * victim sent before it knew can still be matched and is not bounced.
+     * We bounce nothing, and ircu treats a zombie as no member at all, so
+     * the member is gone from our channel at once, above; the PART that
+     * follows finds nobody and is ignored, and a kick that is bounced
+     * brings the victim back with a JOIN.
+     *
+     * For a client of ours, a fake one on a spawned server included, the
+     * server that has to confirm is us.
+     */
+    if (theServer->isOurClient(destClient)) {
         theServer->Write("{} L {}", destClient->getCharYYXXX(), theChan->getName());
     }
 

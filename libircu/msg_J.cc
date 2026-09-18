@@ -132,7 +132,10 @@ bool msg_J::Execute(const xParameters& Param) {
             // Nope, this transmutes to a CREATE
             // Create a new Channel to represent this
             // network channel
-            theChan = new (std::nothrow) Channel(st[i], ::time(0));
+            // With the timestamp of the JOIN, which is the channel's: a JOIN
+            // also brings back the victim of a kick that was bounced, to a
+            // channel we may have removed when the kick left it empty.
+            theChan = new (std::nothrow) Channel(st[i], joinTs);
             assert(theChan != 0);
 
             // Add the channel to the network tables

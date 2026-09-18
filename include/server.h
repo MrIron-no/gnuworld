@@ -544,6 +544,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool serverMessage(Channel*, const std::string&);
 
     /**
+     * True for a client the network holds us responsible for: an xClient,
+     * or a fake client, whether it sits on this server or on one a module
+     * spawned.  Towards ircu we are the server of all of them.
+     */
+    virtual bool isOurClient(const iClient*) const;
+
+    /**
      * OPMODE on a client: change its user modes, as the server.  "+o" makes
      * it an oper.  Its own server tells the network, and us, what came of it.
      */

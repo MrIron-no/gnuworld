@@ -54,6 +54,31 @@ bool msg_D::Execute(const xParameters& Param) {
         return false;
     }
 
+    // <source> D <victim> :<path> <reason>     P10
+    // <source> D <victim> <path> :<reason>     P11
+    // The modules are given both, as they always were: "<path> <reason>".
+    const bool splitPath = (Param.size() >= 4);
+    const string path =
+        splitPath ? string(Param[2]) : string(Param[2]).substr(0, string(Param[2]).find(' '));
+
+    /*
+     * A KILL needs no confirmation: every server removes the victim as the
+     * KILL passes, and so do we, below.  What ircu does as the victim's own
+     * server (ms_kill()) is to send a KILL back the way this one came, for a
+     * numeric that was given out again while the KILL was on its way: the
+     * uplink then knows a client by this numeric that we are about to
+     * forget.  Where the uplink knows none, the KILL ends there.
+     */
+    if (iClient* ours = Network->findClient(Param[1]); theServer->isOurClient(ours)) {
+        if (splitPath) {
+            theServer->Write("{} D {} {} :(Ghost 5 Numeric Collided)", theServer->getCharYY(),
+                             Param[1], path);
+        } else {
+            theServer->Write("{} D {} :{} (Ghost 5 Numeric Collided)", theServer->getCharYY(),
+                             Param[1], path);
+        }
+    }
+
     if ((Param[1][0] == theServer->getCharYY()[0]) && (Param[1][1] == theServer->getCharYY()[1])) {
         // See if the client being killed is one of my own.
         xClient* myClient = Network->findLocalClient(Param[1]);
@@ -110,7 +135,7 @@ bool msg_D::Execute(const xParameters& Param) {
     // Notify all listeners of the EVT_KILL event before removing the client,
     // so that listeners still see it fully attached (channel membership,
     // numeric, nick all valid).
-    string reason(Param[2]);
+    string reason(splitPath ? path + ' ' + Param[3] : string(Param[2]));
 
     if (source != NULL) {
         theServer->PostEvent(EVT_KILL, static_cast<void*>(source), static_cast<void*>(target),
