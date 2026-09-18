@@ -58,3 +58,24 @@ async def test_join_to_a_channel_we_do_not_know_is_a_create(debug_linked_p11):
     await hub.send_raw(f"{n['other']} J #joined {now}")
     info = await chaninfo(hub, asker, "#joined")
     assert info.members == {"plain": "+o", "other": "none"}
+
+
+@pytest.mark.asyncio
+async def test_one_join_to_several_channels(debug_linked_p11):
+    """A JOIN may name several channels: a member of each, and the op only
+    where the JOIN created the channel."""
+    hub, _proc = debug_linked_p11
+    asker, n, _ts = await _setup(hub)
+    now = int(time.time())
+
+    await hub.send_raw(f"{n['other']} C #first {now}")
+    await hub.send_raw(f"{n['plain']} J #first,#second,#third {now}")
+
+    assert (await chaninfo(hub, asker, "#first")).members == {"other": "+o", "plain": "none"}
+    assert (await chaninfo(hub, asker, "#second")).members == {"plain": "+o"}
+    assert (await chaninfo(hub, asker, "#third")).members == {"plain": "+o"}
+
+    # Each membership is its own: a change in one channel leaves the others
+    await hub.send_raw(f"{hub.server_numnick} M #second -o {n['plain']} {now}")
+    assert (await chaninfo(hub, asker, "#second")).members == {"plain": "none"}
+    assert (await chaninfo(hub, asker, "#third")).members == {"plain": "+o"}

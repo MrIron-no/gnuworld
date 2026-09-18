@@ -1816,55 +1816,15 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const iClien
         return false;
     }
 
-    // Work out what clearing these modes removes from the channel as it is
-    // now: for a flag or a setting the mode itself, for 'o' and 'v' every
-    // member that holds it, for 'b' every ban.
-    std::vector<Channel::ModeChange> changes;
+    // What clearing these modes removes from the channel as it is now.  A
+    // letter that is no mode is left out, and the rest is cleared.
+    std::vector<std::string> problems;
+    std::vector<Channel::ModeChange> changes = theChan->changesToClear(modes, problems);
+    logModeProblems("xServer::ClearMode>", theChan->getName(), problems);
+
     string letters;
-
-    for (const char letter : modes) {
-        const std::optional<Channel::ModeInfo> mode = Channel::findMode(letter);
-        if (!mode) {
-            elog << "xServer::ClearMode> (" << theChan->getName() << "): "
-                 << (Channel::isLocalOnlyMode(letter) ? "mode is local to a server: "
-                                                      : "unknown mode: ")
-                 << letter << endl;
-            continue;
-        }
-        letters += letter;
-
-        switch (mode->type) {
-        case Channel::ModeType::Flag:
-        case Channel::ModeType::SetOnly:
-            if (theChan->getMode(mode->flag)) {
-                changes.push_back({false, *mode, string()});
-            }
-            break;
-        case Channel::ModeType::Setting:
-            // Taking one off names its current value
-            if (theChan->getMode(mode->flag)) {
-                changes.push_back({false, *mode,
-                                   ('k' == letter)   ? theChan->getKey()
-                                   : ('A' == letter) ? theChan->getApass()
-                                                     : theChan->getUpass()});
-            }
-            break;
-        case Channel::ModeType::Prefix:
-            for (const auto& [id, member] : theChan->users()) {
-                (void)id;
-                if (('o' == letter) ? member->isModeO() : member->isModeV()) {
-                    changes.push_back({false, *mode, member->getCharYYXXX()});
-                }
-            }
-            break;
-        case Channel::ModeType::List:
-            for (Channel::const_banIterator ban = theChan->banList_begin();
-                 ban != theChan->banList_end(); ++ban) {
-                changes.push_back({false, *mode, *ban});
-            }
-            break;
-        }
-    }
+    std::ranges::copy_if(modes, std::back_inserter(letters),
+                         [](char letter) { return Channel::findMode(letter).has_value(); });
 
     if (letters.empty()) {
         return false;

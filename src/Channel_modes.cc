@@ -91,6 +91,11 @@ std::string quoted(char letter) { return std::string("'") + letter + "'"; }
 
 } // namespace
 
+std::string Channel::describeNonMode(char letter) {
+    return isLocalOnlyMode(letter) ? "mode " + quoted(letter) + " is local to a server"
+                                   : "unknown mode " + quoted(letter);
+}
+
 bool Channel::isValidKey(std::string_view key) noexcept {
     return isSingleToken(key) && key.size() <= MAX_KEY_LENGTH &&
            key.find(',') == std::string_view::npos;
@@ -122,9 +127,7 @@ Channel::ParsedModes Channel::parseModes(std::string_view modeString,
         const std::optional<ModeInfo> mode = findMode(letter);
         if (!mode) {
             // Nothing is known about its argument, so none is consumed.
-            result.problems.push_back(isLocalOnlyMode(letter)
-                                          ? "mode " + quoted(letter) + " is local to a server"
-                                          : "unknown mode " + quoted(letter));
+            result.problems.push_back(describeNonMode(letter));
             continue;
         }
 

@@ -193,12 +193,18 @@ class ChannelUser {
      * Changing a mode here changes what gnuworld believes about the member,
      * and nothing else: the network is not told and no module is notified.
      * That is why they are not public.  A module uses Op(), Voice() and
-     * their opposites, of xServer or of its xClient; a handler passes what
-     * it has parsed to xServer::OnChannelModeO() and OnChannelModeV(), and
-     * a member that arrives with a mode is constructed with it.
+     * their opposites, of xServer or of its xClient.  The IRC parser is what
+     * they are for: a handler that has parsed a mode change passes it to
+     * xServer::ApplyChannelModes(), and the ones named below set the
+     * creator's op themselves.
      */
     friend class Channel;
     friend class xServer;
+
+    /// The IRC parser: the handlers of libircu that set a member's modes
+    /// themselves, which is the creator's op.
+    friend class msg_C;
+    friend class msg_J;
 
     /**
      * Set a given channel user mode.

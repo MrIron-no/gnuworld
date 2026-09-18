@@ -190,6 +190,51 @@ bool Channel::getUserMode(const ChannelUser::modeType& whichMode, iClient* theCl
     return theChanUser->getMode(whichMode);
 }
 
+std::vector<Channel::ModeChange> Channel::changesToClear(std::string_view letters,
+                                                         std::vector<std::string>& problems) const {
+    std::vector<ModeChange> changes;
+
+    for (const char letter : letters) {
+        const std::optional<ModeInfo> mode = findMode(letter);
+        if (!mode) {
+            problems.push_back(describeNonMode(letter));
+            continue;
+        }
+
+        switch (mode->type) {
+        case ModeType::Flag:
+        case ModeType::SetOnly:
+            if (getMode(mode->flag)) {
+                changes.push_back({false, *mode, std::string()});
+            }
+            break;
+        case ModeType::Setting:
+            // Taking one off names its current value
+            if (getMode(mode->flag)) {
+                changes.push_back({false, *mode,
+                                   ('k' == letter)   ? getKey()
+                                   : ('A' == letter) ? getApass()
+                                                     : getUpass()});
+            }
+            break;
+        case ModeType::Prefix:
+            for (const auto& [id, member] : users()) {
+                (void)id;
+                if (('o' == letter) ? member->isModeO() : member->isModeV()) {
+                    changes.push_back({false, *mode, member->getCharYYXXX()});
+                }
+            }
+            break;
+        case ModeType::List:
+            for (const_banIterator ban = banList_begin(); ban != banList_end(); ++ban) {
+                changes.push_back({false, *mode, *ban});
+            }
+            break;
+        }
+    }
+    return changes;
+}
+
 bool Channel::revealUser(const iClient* theClient) {
     ChannelUser* theUser = findUser(theClient);
     if (0 == theUser || !theUser->isHidden()) {

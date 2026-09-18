@@ -63,29 +63,12 @@ bool msg_CM::Execute(const xParameters& Param) {
         return false;
     }
 
-    /*
-     * First, determine what we are going to clear.
-     */
-    std::string Modes = Param[2];
-
+    // What clearing these letters takes off the channel as it is now
     std::vector<std::string> problems;
-    for (const char letter : Modes) {
-        if (!Channel::findMode(letter)) {
-            problems.push_back(std::string(Channel::isLocalOnlyMode(letter)
-                                               ? "mode is local to a server: "
-                                               : "unknown mode: ") +
-                               letter);
-        }
-    }
+    const std::vector<Channel::ModeChange> changes = tmpChan->changesToClear(Param[2], problems);
     if (!problems.empty()) {
         theServer->ProtocolError("msg_CM>", problems);
     }
-
-    // These three variables will be set to true if we are to clear either
-    // the ops, voice, or bans, respectively
-    bool clearOps = false;
-    bool clearVoice = false;
-    bool clearBans = false;
 
     // Go ahead and post the server mode event
     iServer* serverSource = 0;
@@ -101,77 +84,7 @@ bool msg_CM::Execute(const xParameters& Param) {
     if (serverSource != 0)
         theServer->PostChannelEvent(EVT_SERVERMODE, tmpChan, static_cast<void*>(serverSource));
 
-    xServer::modeVectorType modeVector;
-
-    for (const char letter : Modes) {
-        // Every letter was looked up above
-        const Channel::ModeInfo mode = *Channel::findMode(letter);
-
-        switch (mode.type) {
-        case Channel::ModeType::Flag:
-            modeVector.push_back(make_pair(false, mode.flag));
-            break;
-        case Channel::ModeType::SetOnly:
-            theServer->OnChannelModeL(tmpChan, false, 0, 0);
-            break;
-        case Channel::ModeType::Setting:
-            if ('k' == letter) {
-                theServer->OnChannelModeK(tmpChan, false, 0, std::string());
-            } else if ('A' == letter) {
-                theServer->OnChannelModeA(tmpChan, false, 0, std::string());
-            } else {
-                theServer->OnChannelModeU(tmpChan, false, 0, std::string());
-            }
-            break;
-        case Channel::ModeType::Prefix:
-            ('o' == letter ? clearOps : clearVoice) = true;
-            break;
-        case Channel::ModeType::List:
-            clearBans = true;
-            break;
-        }
-    }
-
-    if (!modeVector.empty()) {
-        theServer->OnChannelMode(tmpChan, 0, modeVector);
-    }
-
-    if (clearOps || clearVoice) {
-        /*
-         * Lets loop over everyone in the channel and either deop
-         * or devoice them.
-         */
-        xServer::opVectorType opVector;
-        xServer::voiceVectorType voiceVector;
-
-        for (Channel::const_userIterator ptr = tmpChan->userList_begin();
-             ptr != tmpChan->userList_end(); ++ptr) {
-            if (clearOps && ptr->second->isModeO()) {
-                opVector.push_back(pair<bool, ChannelUser*>(false, ptr->second));
-            }
-            if (clearVoice && ptr->second->isModeV()) {
-                voiceVector.push_back(pair<bool, ChannelUser*>(false, ptr->second));
-            }
-        }
-
-        if (!voiceVector.empty()) {
-            theServer->OnChannelModeV(tmpChan, 0, voiceVector);
-        }
-        if (!opVector.empty()) {
-            theServer->OnChannelModeO(tmpChan, 0, opVector);
-        }
-    } // if( clearOps || clearVoice )
-
-    if (clearBans) {
-        xServer::banVectorType banVector;
-
-        for (Channel::banIterator ptr = tmpChan->banList_begin(), endPtr = tmpChan->banList_end();
-             ptr != endPtr; ++ptr) {
-            banVector.push_back(pair<bool, std::string>(false, *ptr));
-        }
-
-        theServer->OnChannelModeB(tmpChan, 0, banVector);
-    } // if( clearBans )
+    theServer->ApplyChannelModes(tmpChan, 0, changes, "msg_CM>");
 
     return true;
 }

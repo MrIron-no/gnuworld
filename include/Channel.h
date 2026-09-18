@@ -320,6 +320,20 @@ class Channel {
     /// burst order.  Empty if nothing remains.
     static std::string burstModeBlock(std::span<const ModeChange> changes);
 
+    /**
+     * What a CLEARMODE of these letters takes off this channel as it is
+     * now: a flag or a limit that is set, a key or password that is set,
+     * with its value, for 'o' and 'v' every member that holds it, and for
+     * 'b' every ban.  A letter that is no mode is reported in `problems`,
+     * in the words of parseModes().
+     */
+    std::vector<ModeChange> changesToClear(std::string_view letters,
+                                           std::vector<std::string>& problems) const;
+
+    /// What is wrong with a letter findMode() does not know: "unknown mode
+    /// 'x'", or that it is local to a server.
+    static std::string describeNonMode(char letter);
+
     /// Type used to store number of clients in channel
     typedef userListType::size_type size_type;
 
