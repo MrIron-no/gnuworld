@@ -1211,14 +1211,21 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     bool sendChannelModes(const std::string& source, const std::string& chanName, time_t timestamp,
                           std::span<const Channel::ModeChange> changes);
 
+    /// The kinds of text message there are.
+    enum class TextType {
+        PRIVMSG,  ///< token P
+        NOTICE,   ///< token O
+        WALLCHOPS ///< token WC: a notice to the ops of a channel
+    };
+
     /**
-     * What Message(), Notice() and Wallchops() of xClient, and our own
-     * Notice(), are sent with.  `token` is "P", "O" or "WC"; `from` is null
-     * for the server; `target` is a numnick or a channel name.  A line break
-     * in the text starts another message, and a line too long for one
-     * message is continued in the next.
+     * What Message(), Notice() and NoticeChannelOps() of xClient, and our
+     * own Notice(), are sent with.  `from` is null for the server; `target`
+     * is a numnick or a channel name.  A line break in the text starts
+     * another message, and a line too long for one message is continued in
+     * the next.
      */
-    bool sendText(const char* token, const iClient* from, std::string_view target,
+    bool sendText(TextType type, const iClient* from, std::string_view target,
                   std::string_view text);
 
     /// The modes of a channel we join or burst: they change the channel, and

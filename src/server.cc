@@ -2079,11 +2079,15 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
     return true;
 }
 
-bool xServer::sendText(const char* token, const iClient* from, std::string_view target,
+bool xServer::sendText(TextType type, const iClient* from, std::string_view target,
                        std::string_view text) {
     if (target.empty()) {
         return false;
     }
+
+    const char* const token = (TextType::PRIVMSG == type)  ? "P"
+                              : (TextType::NOTICE == type) ? "O"
+                                                           : "WC";
 
     const std::string prefix = numericOf(from) + ' ' + token + ' ' + std::string(target) + " :";
     if (prefix.size() + 1 >= (IRC_MAX_LINE - 2)) {
@@ -2818,7 +2822,7 @@ bool xServer::Notice(iClient* theClient, const string& message) {
         return false;
     }
 
-    return sendText("O", nullptr, theClient->getCharYYXXX(), message);
+    return sendText(TextType::NOTICE, nullptr, theClient->getCharYYXXX(), message);
 }
 
 bool xServer::serverNotice(Channel* theChan, const string& Message) {
@@ -2828,7 +2832,7 @@ bool xServer::serverNotice(Channel* theChan, const string& Message) {
         return false;
     }
 
-    return sendText("O", nullptr, theChan->getName(), Message);
+    return sendText(TextType::NOTICE, nullptr, theChan->getName(), Message);
 }
 
 bool xServer::XReply(iServer* theServer, const string& Routing, const string& Message) {
