@@ -2815,6 +2815,35 @@ bool xServer::hasControlAccess(const std::string& userName) const {
     return (allowControlSet.find(userName) != allowControlSet.end());
 }
 
+bool xServer::Message(iClient* theClient, const string& message) {
+    assert(theClient != 0);
+
+    if (message.empty() || !isConnected()) {
+        return false;
+    }
+
+    return sendText(TextType::PRIVMSG, nullptr, theClient->getCharYYXXX(), message);
+}
+
+bool xServer::serverMessage(Channel* theChan, const string& message) {
+    assert(theChan != 0);
+
+    if (message.empty() || !isConnected()) {
+        return false;
+    }
+
+    return sendText(TextType::PRIVMSG, nullptr, theChan->getName(), message);
+}
+
+bool xServer::GlobalNotice(const string& text, const iClient* from) {
+    if (text.empty() || !isConnected()) {
+        return false;
+    }
+
+    // "$*": every server, which is to say every user
+    return sendText(TextType::NOTICE, from, "$*", text);
+}
+
 bool xServer::Notice(iClient* theClient, const string& message) {
     assert(theClient != 0);
 

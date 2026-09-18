@@ -5023,7 +5023,7 @@ bool ccontrol::glineChannelUsers(iClient* theClient, Channel* theChan, const str
                        AnnounceNick.c_str());
             MsgChanLog("Nick %s is already in use for ANNOUNCE. Will use my own",
                        AnnounceNick.c_str());
-            MyUplink->Write("%s O $* :%s", getCharYYXXX().c_str(), text.c_str());
+            MyUplink->GlobalNotice(text, getInstance());
             return;
         }
 
@@ -5037,12 +5037,12 @@ bool ccontrol::glineChannelUsers(iClient* theClient, Channel* theChan, const str
                 Notice(theClient,
                        "Error attaching announce client. Using my own nick for the announce.");
             MsgChanLog("Error attaching announce client. Using my own nick for the announce.");
-            MyUplink->Write("%s O $* :%s", getCharYYXXX().c_str(), text.c_str());
+            MyUplink->GlobalNotice(text, getInstance());
             delete newClient;
             return;
         }
 
-        MyUplink->Write("%s O $* :%s", newClient->getCharYYXXX().c_str(), text.c_str());
+        MyUplink->GlobalNotice(text, newClient);
 
         stringstream Quit;
         Quit << "Did what I had to do! (At " << theClient->getNickName() << "'s request)";
@@ -6209,9 +6209,9 @@ bool ccontrol::glineChannelUsers(iClient* theClient, Channel* theChan, const str
              */
             // ipLRecentIauthList.push_back(ipLRecentIauthListType::value_type(newClient,
             // ::time(0)));
-            response = " :OK";
+            response = "OK";
         } else {
-            response = " :NO Connection limit exceeded from " + IP + url_excessive_conn;
+            response = "NO Connection limit exceeded from " + IP + url_excessive_conn;
 
             for (ipLretStructListType::const_iterator Itr = retList.begin(); Itr != retList.end();
                  Itr++) {
@@ -6228,11 +6228,7 @@ bool ccontrol::glineChannelUsers(iClient* theClient, Channel* theChan, const str
             // ipLDropClient(newClient);
         }
         ipLDropClient(newClient);
-        std::stringstream ss;
-        ss << getUplink()->getCharYY() << " XR " << theServer->getCharYY() << " " << Routing
-           << response;
-        // elog << "mod.ccontrol> XR> " << ss.str() << endl;
-        Write(ss.str());
+        MyUplink->XReply(theServer, Routing, response);
 
         return 0;
     }

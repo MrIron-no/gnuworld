@@ -75,10 +75,8 @@ bool TOPICCommand::Exec(iClient* theClient, const string& Message) {
         return true;
     }
 
-    stringstream s;
-    s << bot->getCharYY() << " T " << theChan->getName() << " :" << topic << ends;
-
-    bot->Write(s);
+    // As the server, which needs no ops on the channel
+    bot->getUplink()->Topic(theChan, topic);
 
     return true;
 }

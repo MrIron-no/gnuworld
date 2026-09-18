@@ -537,6 +537,19 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool serverNotice(Channel*, const std::string&);
 
     /**
+     * A message (PRIVMSG), where Notice() and serverNotice() send a notice,
+     * as the server: to a client, and to a channel.
+     */
+    virtual bool Message(iClient*, const std::string&);
+    virtual bool serverMessage(Channel*, const std::string&);
+
+    /**
+     * A notice to every user on the network, from the server or from a
+     * client of ours: NOTICE $*, which only an oper or a server may send.
+     */
+    virtual bool GlobalNotice(const std::string& text, const iClient* from = nullptr);
+
+    /**
      * Sending XQuery and XReply as a server to a server.
      */
     virtual bool XQuery(iServer*, const std::string&, const std::string&);

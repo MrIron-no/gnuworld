@@ -121,22 +121,25 @@ async def linked(gnuworld):
 
 @pytest_asyncio.fixture
 async def ccontrol_linked(docker_stack, fake_hub, tmp_path):
-    """Dockerized gnuworld with libccontrol against compose Postgres."""
+    """gnuworld with libccontrol against the Postgres of the compose file,
+    which publishes it on the host: gnuworld itself runs from the build tree,
+    or in Docker under GNUWORLD_HARNESS=docker."""
     require_module("ccontrol")
-    docker_stack.up()  # for Postgres; gnuworld runs in Docker here too
+    docker_stack.up()  # Postgres
+    local = not use_docker()
     hub = fake_hub
     conf_dir = _prepare_conf_dir(tmp_path)
     GnuworldProc.write_ccontrol_config(conf_dir / "ccontrol.conf")
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",
-        local=False,
+        local=local,
         uplink=CONTAINER_UPLINK,
         port=hub.port,
         password=hub.password,
-        module_lines=f"module = libccontrol.la {GnuworldProc.conf_root(conf_dir, local=False)}/ccontrol.conf",
+        module_lines=f"module = libccontrol.la {GnuworldProc.conf_root(conf_dir, local=local)}/ccontrol.conf",
     )
 
-    proc = GnuworldProc(conf_dir=conf_dir, local=False)
+    proc = GnuworldProc(conf_dir=conf_dir, local=local)
     await proc.start()
     try:
         await hub.accept_and_handshake(timeout=90.0)

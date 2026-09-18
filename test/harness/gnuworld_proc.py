@@ -79,24 +79,29 @@ class DockerStack:
         self.started = False
 
     def up(self) -> None:
+        """Start Postgres; under GNUWORLD_HARNESS=docker, build the gnuworld
+        image first. From the build tree gnuworld needs no image."""
         if self.started:
             return
         RUN_DIR.mkdir(parents=True, exist_ok=True)
-        logger.info("Building gnuworld image and starting Postgres...")
-        subprocess.run(
-            _compose_cmd("build", "gnuworld"),
-            cwd=str(HARNESS_DIR),
-            check=True,
-        )
-        # The image copies the freshly installed binaries, so nearly every
-        # session builds a new one and leaves the last one untagged: 240 MB a
-        # time, which filled a disk within a day. Drop those, and only those:
-        # the label keeps this away from anybody else's dangling images.
-        subprocess.run(
-            ["docker", "image", "prune", "-f", "--filter", f"label={IMAGE_LABEL}"],
-            check=False,
-            capture_output=True,
-        )
+        if use_docker():
+            logger.info("Building gnuworld image...")
+            subprocess.run(
+                _compose_cmd("build", "gnuworld"),
+                cwd=str(HARNESS_DIR),
+                check=True,
+            )
+            # The image copies the freshly installed binaries, so nearly every
+            # session builds a new one and leaves the last one untagged: 240 MB
+            # a time, which filled a disk within a day. Drop those, and only
+            # those: the label keeps this away from anybody else's dangling
+            # images.
+            subprocess.run(
+                ["docker", "image", "prune", "-f", "--filter", f"label={IMAGE_LABEL}"],
+                check=False,
+                capture_output=True,
+            )
+        logger.info("Starting Postgres...")
         subprocess.run(
             _compose_cmd("up", "-d", "postgres"),
             cwd=str(HARNESS_DIR),
