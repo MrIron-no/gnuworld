@@ -619,10 +619,17 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * Each of them works out what would really change, tells the network,
      * then updates the channel and notifies the modules.  A call that would
      * change nothing sends nothing and returns true.
+     *
+     * Every MODE line ends in the channel's creation time, and a server that
+     * is told an older one than it has takes it over (ircu, mode_parse()).
+     * `olderTimestamp` is for a caller that knows an older one: mod.cservice
+     * sets +R on a registered channel with the time the channel was
+     * registered with.  If it is older than ours it becomes ours, and the
+     * network's with the line; one that is not older changes nothing.
      */
 
     virtual bool Mode(Channel*, const std::string& modes, const std::string& args,
-                      const iClient* from = nullptr);
+                      const iClient* from = nullptr, time_t olderTimestamp = 0);
 
     /// Clear these modes: a flag or a setting itself, for 'o' and 'v' every
     /// member holding it, for 'b' every ban.
@@ -1238,9 +1245,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * nothing; false if one of them cannot be made, and nothing is then
      * done.  Tells the network, then updates the channel and the modules,
      * to which `eventSource` is reported as the member who did it.
+     *
+     * `olderTimestamp`, if not 0, is a creation time for the channel that
+     * the caller knows of: if it is older than ours it becomes ours, and the
+     * line carries it, which makes it the network's.  See Mode().
      */
     bool changeModes(Channel* theChan, std::vector<Channel::ModeChange> requested,
-                     const iClient* from, ChannelUser* eventSource);
+                     const iClient* from, ChannelUser* eventSource, time_t olderTimestamp = 0);
 
     /**
      * +/-o or +/-v for these clients.  A target that is null, not on the

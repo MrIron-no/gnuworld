@@ -133,3 +133,36 @@ async def test_a_network_service_is_not_deopped_or_banned(gnutest_linked_p11):
         f"{v['srv']} M {CHAN} -o {v['alice']} {v['ts']}"
     ]
     assert (await chaninfo(hub, v["asker"], CHAN)).members["service"] == "+o"
+
+
+@pytest.mark.asyncio
+async def test_a_mode_with_an_older_timestamp_makes_the_channel_older(gnutest_linked_p11):
+    """Every MODE line ends in the channel's creation time, and a server that is
+    told an older one takes it over (ircu, mode_parse()). mod.cservice sets +R
+    on a registered channel with the time the channel was registered with;
+    what ircu then believes about the channel, gnuworld has to believe too."""
+    from debugquery import chaninfo
+
+    hub, _proc = gnutest_linked_p11
+    v = await _setup(hub)
+    srv, ts = v["srv"], v["ts"]
+
+    async def run(command: str) -> list[str]:
+        return await gt.run(hub, v["asker"], command.format(**v))
+
+    older = ts - 5000000
+    assert await run(f"servmodets {{c}} {older} +R") == [f"{srv} M {CHAN} +R {older}"]
+    assert (await chaninfo(hub, v["asker"], CHAN)).created == older
+
+    # A younger one would have ircu bounce the line: ours stands
+    assert await run(f"servmodets {{c}} {ts} +m") == [f"{srv} M {CHAN} +m {older}"]
+    assert (await chaninfo(hub, v["asker"], CHAN)).created == older
+
+    # Nothing to change, nothing sent, and so nothing taken over either
+    assert await run(f"servmodets {{c}} {older - 100} -b *!*@nobody.example") == []
+    assert (await chaninfo(hub, v["asker"], CHAN)).created == older
+
+    # A number among the arguments is an argument, or a mistake; never a time
+    assert await run("servmode {c} +l 25") == [f"{srv} M {CHAN} +l 25 {older}"]
+    assert await run(f"servmode {{c}} +i {older - 100}") == []
+    assert (await chaninfo(hub, v["asker"], CHAN)).created == older

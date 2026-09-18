@@ -534,10 +534,9 @@ void cservice::BurstChannels() {
              * it exists on the Network.
              */
             if (tmpChan) {
-                stringstream tmpTS;
-                tmpTS << theChan->getChannelTS();
-                string channelTS = tmpTS.str();
-                MyUplink->Mode(NULL, tmpChan, string("+R"), channelTS);
+                // With the time the channel was registered with: if that is
+                // older than the channel's, the network takes it over
+                MyUplink->Mode(tmpChan, "+R", string(), nullptr, theChan->getChannelTS());
             }
         }
         ++ptr;
@@ -5102,10 +5101,9 @@ void cservice::OnChannelEvent(const channelEventType& whichEvent, Channel* theCh
          * If not, set it to +R (channel creation)
          */
         if (!theChan->getMode(Channel::MODE_REGISTERED)) {
-            stringstream tmpTS;
-            tmpTS << reggedChan->getChannelTS();
-            string channelTS = tmpTS.str();
-            MyUplink->Mode(NULL, theChan, string("+R"), channelTS);
+            // With the time the channel was registered with: if that is older
+            // than the channel's, the network takes it over
+            MyUplink->Mode(theChan, "+R", string(), nullptr, reggedChan->getChannelTS());
         }
 
         /* If this is a registered channel, but we're not in it -

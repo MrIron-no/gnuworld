@@ -445,6 +445,15 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
 
     // silence <nick> <mask>, unsilence <mask>, opmode <nick> <user modes>,
     // globalnotice <text>, servsay <nick|#channel> <text>
+    if (st[0] == "servmodets" && st.size() > 3) {
+        // servmodets <#chan> <timestamp> <modes> [args]: a mode change by
+        // the server that names a creation time for the channel
+        if (Channel* theChan = Network->findChannel(st[1])) {
+            MyUplink->Mode(theChan, st[3], st.size() > 4 ? st.assemble(4) : string(), nullptr,
+                           static_cast<time_t>(atol(st[2].c_str())));
+        }
+        return;
+    }
     if (st[0] == "usermode" && st.size() > 1) {
         // Our own user modes: xClient::Mode( modes )
         Mode(st[1]);

@@ -2207,7 +2207,7 @@ bool xServer::enterChannel(const iClient* from, Channel* theChan, xClient*& join
 }
 
 bool xServer::changeModes(Channel* theChan, std::vector<Channel::ModeChange> requested,
-                          const iClient* from, ChannelUser* eventSource) {
+                          const iClient* from, ChannelUser* eventSource, time_t olderTimestamp) {
     assert(theChan != 0);
 
     // Everything is validated before anything is sent or changed, so that a
@@ -2271,6 +2271,20 @@ bool xServer::changeModes(Channel* theChan, std::vector<Channel::ModeChange> req
     xClient* joined = 0;
     if (!enterChannel(from, theChan, joined)) {
         return false;
+    }
+
+    // The line ends in the channel's timestamp.  A server that knows an
+    // older one takes that over (ircu, mode_parse()), so an older one we
+    // are given becomes ours before it goes out.  A younger one would have
+    // the line bounced as coming from a server out of step: ours stands.
+    if (olderTimestamp != 0) {
+        if (olderTimestamp < theChan->getCreationTime()) {
+            theChan->setCreationTime(olderTimestamp);
+        } else if (olderTimestamp > theChan->getCreationTime()) {
+            LOG(WARN,
+                "({}): the timestamp given, {}, is younger than the channel's and is not sent",
+                theChan->getName(), olderTimestamp);
+        }
     }
 
     // Tell the network first, then update our tables and the modules: a
@@ -2668,7 +2682,8 @@ bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, co
                             : Mode(theChan, modes, args);
 }
 
-bool xServer::Mode(Channel* theChan, const string& modes, const string& args, const iClient* from) {
+bool xServer::Mode(Channel* theChan, const string& modes, const string& args, const iClient* from,
+                   time_t olderTimestamp) {
     assert(theChan != 0);
 
     // The modes string must not be empty; the args string may be
@@ -2686,13 +2701,6 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
 
     std::vector<Channel::ModeChange> requested;
     for (std::size_t index = 0; index < tokens.size();) {
-        // cservice passes the channel timestamp as an argument to "+R", from
-        // when this method did not add one.  It is ours to add now.
-        if (std::ranges::all_of(tokens[index], [](char c) { return c >= '0' && c <= '9'; })) {
-            ++index;
-            continue;
-        }
-
         const Channel::ParsedModes parsed = Channel::parseModes(
             tokens[index], std::span(tokens).subspan(index + 1),
             {.allowLeftover = true, .protocol = (Uplink != 0) ? Uplink->getProtocol() : 11});
@@ -2716,7 +2724,7 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
     }
 
     return changeModes(theChan, std::move(requested), from,
-                       (from != 0) ? theChan->findUser(from) : 0);
+                       (from != 0) ? theChan->findUser(from) : 0, olderTimestamp);
 }
 
 // Make sure the banMask is of the form nick!user@host
