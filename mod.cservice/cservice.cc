@@ -5445,8 +5445,8 @@ void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
             }
 
             const std::optional<Channel::ModeInfo> mode = Channel::findMode(c);
-            if (!mode)
-                continue;
+            if (!mode || mode->protocol > MyUplink->getUplink()->getProtocol())
+                continue; // no such mode, or none on this link: u and M are P11
             if (c != 'b' && theChan->getMode(mode->flag))
                 continue; // set already, and not ours to lift
 

@@ -1389,7 +1389,9 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             tokens.emplace_back(st[i]);
         }
 
-        Channel::ParsedModes parsed = Channel::parseModes(tokens[0], std::span(tokens).subspan(1));
+        Channel::ParsedModes parsed =
+            Channel::parseModes(tokens[0], std::span(tokens).subspan(1),
+                                {.protocol = (Uplink != 0) ? Uplink->getProtocol() : 11});
         logModeProblems("xServer::JoinChannel>", chanName, parsed.problems);
 
         for (Channel::ModeChange& change : parsed.changes) {
@@ -2357,7 +2359,8 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
         }
 
         const Channel::ParsedModes parsed = Channel::parseModes(
-            tokens[index], std::span(tokens).subspan(index + 1), {.allowLeftover = true});
+            tokens[index], std::span(tokens).subspan(index + 1),
+            {.allowLeftover = true, .protocol = (Uplink != 0) ? Uplink->getProtocol() : 11});
         if (!parsed.ok()) {
             logModeProblems("xServer::Mode>", theChan->getName(), parsed.problems);
             return false;
@@ -2709,7 +2712,9 @@ bool xServer::BurstChannel(const string& chanName, const string& chanModes,
             tokens.emplace_back(st[i]);
         }
 
-        Channel::ParsedModes parsed = Channel::parseModes(tokens[0], std::span(tokens).subspan(1));
+        Channel::ParsedModes parsed =
+            Channel::parseModes(tokens[0], std::span(tokens).subspan(1),
+                                {.protocol = (Uplink != 0) ? Uplink->getProtocol() : 11});
         if (!parsed.ok()) {
             logModeProblems("xServer::BurstChannel>", chanName, parsed.problems);
             return false;

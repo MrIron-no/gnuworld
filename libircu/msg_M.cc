@@ -140,8 +140,9 @@ bool msg_M::Execute(const xParameters& Param) {
 
     // <source> M <#channel> <modes> [<args>...] [<channel timestamp>]
     const std::vector<std::string_view> args = Param.views(3);
-    const Channel::ParsedModes parsed =
-        Channel::parseModes(Param[2], args, {.trailingTimestamp = true});
+    const Channel::ParsedModes parsed = Channel::parseModes(
+        Param[2], args,
+        {.trailingTimestamp = true, .protocol = theServer->getUplink()->getProtocol()});
     if (!parsed.ok()) {
         theServer->ProtocolError("msg_M>", parsed.problems);
     }

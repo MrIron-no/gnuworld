@@ -252,22 +252,13 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
 
             modeString += st[2][charPos];
             break;
-        /*case 'u': //No part msg
-                if( !plus )
-                        tmpChan->removeMode( Channel::MODE_PART ) ;
-                else
-                        tmpChan->setMode( Channel::MODE_PART ) ;
-
-                modeString += st[ 2 ][ charPos ] ;
-                break ;
-        case 'M': //Moderated for non-registered users
-                if( !plus )
-                        tmpChan->removeMode( Channel::MODE_MNOREG ) ;
-                else
-                        tmpChan->setMode( Channel::MODE_MNOREG ) ;
-
-                modeString += st[ 2 ][ charPos ] ;
-                break ;*/
+        case 'u': // No part messages
+        case 'M': // Moderated for unauthenticated users
+            // P11 has these two; a P10 uplink does not know them
+            if (bot->getUplink()->getUplink()->getProtocol() < 11)
+                break;
+            modeString += st[2][charPos];
+            break;
         case 'D': // Delayed joins
 
             modeString += st[2][charPos];

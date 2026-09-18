@@ -238,6 +238,26 @@ void testParseProblems() {
     CHECK(parseArgs("+AU", {"apass", "upass"}).ok());
 }
 
+void testProtocol() {
+    // u and M came with P11.  On a P10 link they are neither sent nor
+    // believed: a problem, as an unknown mode is, and the rest stands.
+    for (const Channel::ModeInfo& mode : Channel::modeTable) {
+        CHECK(mode.protocol == (('u' == mode.letter || 'M' == mode.letter) ? 11 : 10));
+    }
+
+    const std::vector<std::string_view> none;
+    const Channel::ParsedModes p11 = Channel::parseModes("+muM", none, {.protocol = 11});
+    CHECK(p11.ok() && p11.changes.size() == 3);
+
+    const Channel::ParsedModes p10 = Channel::parseModes("+muM", none, {.protocol = 10});
+    CHECK(p10.problems ==
+          (std::vector<std::string>{"mode 'u' needs protocol 11", "mode 'M' needs protocol 11"}));
+    CHECK(p10.changes.size() == 1 && 'm' == p10.changes[0].mode.letter);
+
+    // The default is the protocol we speak ourselves
+    CHECK(Channel::parseModes("+uM", none).ok());
+}
+
 void testKeysAndLimits() {
     CHECK(isValidKey("sekrit"));
     CHECK(isValidKey(std::string(maxKeyLength, 'k')));
@@ -425,6 +445,7 @@ void testBurstModeBlockOutput() {
 int main() {
     testTable();
     testTypes();
+    testProtocol();
     testParseValid();
     testParseProblems();
     testKeysAndLimits();

@@ -175,6 +175,10 @@ class Channel {
         /// of the channel as a whole: bans and members are kept in lists.
         modeType flag;
 
+        /// The first protocol that has the mode: 10, or 11 for one that a
+        /// P10 uplink does not know, and must be neither sent nor believed.
+        unsigned char protocol;
+
         /// Does it carry an argument when being set (true) or cleared (false)?
         constexpr bool takesArg(bool set) const noexcept {
             return ModeType::Flag != type && (ModeType::SetOnly != type || set);
@@ -201,27 +205,27 @@ class Channel {
      * but local to one server; see isLocalOnlyMode().
      */
     static constexpr std::array<ModeInfo, 21> modeTable{{
-        {'s', ModeType::Flag, MODE_S},      // secret
-        {'p', ModeType::Flag, MODE_P},      // private
-        {'m', ModeType::Flag, MODE_M},      // moderated
-        {'t', ModeType::Flag, MODE_T},      // only ops set the topic
-        {'i', ModeType::Flag, MODE_I},      // invite only
-        {'n', ModeType::Flag, MODE_N},      // no messages from outside
-        {'r', ModeType::Flag, MODE_R},      // registered users only
-        {'D', ModeType::Flag, MODE_D},      // delayed joins
-        {'R', ModeType::Flag, MODE_REG},    // registered with services
-        {'c', ModeType::Flag, MODE_C},      // no colours
-        {'C', ModeType::Flag, MODE_CTCP},   // no CTCP
-        {'u', ModeType::Flag, MODE_PART},   // no part messages
-        {'M', ModeType::Flag, MODE_MNOREG}, // moderate unregistered users
-        {'Z', ModeType::Flag, MODE_Z},      // TLS only
-        {'l', ModeType::SetOnly, MODE_L},   // limit: +l <n>, -l
-        {'k', ModeType::Setting, MODE_K},   // key: +k <key>, -k <key>
-        {'A', ModeType::Setting, MODE_A},   // admin pass (ircu OPLEVELS)
-        {'U', ModeType::Setting, MODE_U},   // user pass (ircu OPLEVELS)
-        {'o', ModeType::Prefix, 0},         // op: +o <member>
-        {'v', ModeType::Prefix, 0},         // voice: +v <member>
-        {'b', ModeType::List, 0},           // ban: +b <mask>
+        {'s', ModeType::Flag, MODE_S, 10},      // secret
+        {'p', ModeType::Flag, MODE_P, 10},      // private
+        {'m', ModeType::Flag, MODE_M, 10},      // moderated
+        {'t', ModeType::Flag, MODE_T, 10},      // only ops set the topic
+        {'i', ModeType::Flag, MODE_I, 10},      // invite only
+        {'n', ModeType::Flag, MODE_N, 10},      // no messages from outside
+        {'r', ModeType::Flag, MODE_R, 10},      // registered users only
+        {'D', ModeType::Flag, MODE_D, 10},      // delayed joins
+        {'R', ModeType::Flag, MODE_REG, 10},    // registered with services
+        {'c', ModeType::Flag, MODE_C, 10},      // no colours
+        {'C', ModeType::Flag, MODE_CTCP, 10},   // no CTCP
+        {'u', ModeType::Flag, MODE_PART, 11},   // no part messages
+        {'M', ModeType::Flag, MODE_MNOREG, 11}, // moderate unregistered users
+        {'Z', ModeType::Flag, MODE_Z, 10},      // TLS only
+        {'l', ModeType::SetOnly, MODE_L, 10},   // limit: +l <n>, -l
+        {'k', ModeType::Setting, MODE_K, 10},   // key: +k <key>, -k <key>
+        {'A', ModeType::Setting, MODE_A, 10},   // admin pass (ircu OPLEVELS)
+        {'U', ModeType::Setting, MODE_U, 10},   // user pass (ircu OPLEVELS)
+        {'o', ModeType::Prefix, 0, 10},         // op: +o <member>
+        {'v', ModeType::Prefix, 0, 10},         // voice: +v <member>
+        {'b', ModeType::List, 0, 10},           // ban: +b <mask>
     }};
 
     /// Look a mode up by its letter.
@@ -282,6 +286,10 @@ class Channel {
         /// Arguments nobody asked for are not a problem: a BURST has its
         /// member list right behind the mode block's arguments.
         bool allowLeftover = false;
+        /// The protocol of the link the modes come from or are meant for.
+        /// A mode that protocol does not have is a problem, as an unknown
+        /// one is: "mode 'M' needs protocol 11".
+        unsigned int protocol = 11;
     };
 
     /**

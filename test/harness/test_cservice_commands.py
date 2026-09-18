@@ -90,6 +90,18 @@ async def test_mode_command_lets_a_user_change_only_what_x_allows(cservice_linke
 
 
 @pytest.mark.asyncio
+async def test_mode_command_has_u_and_m_on_a_p11_link(cservice_linked):
+    """They were commented out of X's whitelist while the network was P10."""
+    hub, _proc = cservice_linked
+    CHAN, admin, asker, _n, ts = await _setup(hub)
+    x = cs.numnick(hub)
+
+    sent = cs.network(await cs.run(hub, admin, f"mode {CHAN} +uM"), admin)
+    assert sent == [f"{x} M {CHAN} +uM {ts}"]
+    assert (await chaninfo(hub, asker, CHAN)).modes == "".join(sorted("MRntu"))
+
+
+@pytest.mark.asyncio
 async def test_mode_command_changes_nothing_when_x_cannot(cservice_linked):
     """X on the channel without ops: nothing is sent. X used to have changed the
     channel's state by hand before it asked, so gnuworld believed in modes the

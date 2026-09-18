@@ -173,8 +173,9 @@ bool msg_B::Execute(const xParameters& Param) {
         // The arguments of the mode block are followed by the member list,
         // so leftovers are expected; argsUsed says where the members start.
         const std::vector<std::string_view> args = Param.views(whichToken + 1);
-        const Channel::ParsedModes parsed =
-            Channel::parseModes(Param[whichToken], args, {.allowLeftover = true});
+        const Channel::ParsedModes parsed = Channel::parseModes(
+            Param[whichToken], args,
+            {.allowLeftover = true, .protocol = theServer->getUplink()->getProtocol()});
         if (!parsed.ok()) {
             theServer->ProtocolError("msg_B>", parsed.problems);
         }

@@ -131,6 +131,13 @@ Channel::ParsedModes Channel::parseModes(std::string_view modeString,
             continue;
         }
 
+        if (mode->protocol > options.protocol) {
+            // None of these takes an argument
+            result.problems.push_back("mode " + quoted(letter) + " needs protocol " +
+                                      std::to_string(mode->protocol));
+            continue;
+        }
+
         if (!mode->takesArg(set)) {
             result.changes.push_back({set, *mode, {}});
             continue;
