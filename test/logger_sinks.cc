@@ -159,7 +159,7 @@ bool shapeMatches(std::string_view text, std::string_view shape) {
 }
 
 /// 2026-09-18 12:34:56.789 local time, so that the time column is known
-std::chrono::system_clock::time_point fixedTime() {
+std::chrono::system_clock::time_point computeFixedTime() {
     std::tm broken{};
     broken.tm_year = 2026 - 1900;
     broken.tm_mon = 8;
@@ -172,6 +172,14 @@ std::chrono::system_clock::time_point fixedTime() {
     const std::time_t when = std::mktime(&broken);
 
     return std::chrono::system_clock::from_time_t(when) + std::chrono::milliseconds(789);
+}
+
+/// Worked out once: mktime() reads the time zone, and the writer threads of
+/// testFileSinkTwoThreads() must not do that side by side
+std::chrono::system_clock::time_point fixedTime() {
+    static const std::chrono::system_clock::time_point fixed = computeFixedTime();
+
+    return fixed;
 }
 
 LogRecord makeRecord(Verbosity level, const std::string& logger, const std::string& message) {

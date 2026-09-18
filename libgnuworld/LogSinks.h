@@ -129,8 +129,12 @@ class ConsoleSink : public LogSink {
     bool colour;
     bool highlight;
 
-    /// Shared by every console sink: one line at a time on std::cout
-    static std::mutex outputLock;
+    /**
+     * Shared by every console sink: one line at a time on std::cout.  It is
+     * allocated on first use and never destroyed, because a static destructor
+     * elsewhere may still log while the process is on its way out.
+     */
+    static std::mutex& outputLock();
     static std::atomic<bool> enabledFlag;
 };
 

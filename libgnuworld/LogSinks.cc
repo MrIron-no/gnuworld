@@ -104,8 +104,13 @@ bool FileSink::isOpen() const {
  * ConsoleSink
  * ------------------------------------------------------------------ */
 
-std::mutex ConsoleSink::outputLock;
 std::atomic<bool> ConsoleSink::enabledFlag(true);
+
+std::mutex& ConsoleSink::outputLock() {
+    static std::mutex* const lock = new std::mutex();
+
+    return *lock;
+}
 
 ConsoleSink::ConsoleSink(Colour colour, bool highlight)
     : colour(Colour::Auto == colour ? colourWanted() : Colour::Yes == colour),
@@ -119,7 +124,7 @@ void ConsoleSink::emit(const LogRecord& record) {
     const std::string line =
         formatText(record, TextStyle{false, colour, highlight, LogSinks::nameWidth()});
 
-    const std::lock_guard<std::mutex> guard(outputLock);
+    const std::lock_guard<std::mutex> guard(outputLock());
 
     std::cout << line << '\n';
     std::cout.flush();
