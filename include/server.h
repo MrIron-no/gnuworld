@@ -224,7 +224,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool Write(const xParameters::tagListType& tags, const std::stringstream& line);
     template <typename... Args>
     bool Write(const xParameters::tagListType& tags, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Write(tags, std::format(fmt.format, std::forward<Args>(args)...));
+        return Write(tags, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -234,7 +234,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool WriteWithTime(const std::string& line);
     virtual bool WriteWithTime(const std::stringstream& line);
     template <typename... Args> bool WriteWithTime(CheckedFormat<Args...> fmt, Args&&... args) {
-        return WriteWithTime(std::format(fmt.format, std::forward<Args>(args)...));
+        return WriteWithTime(formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -252,7 +252,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * defaults to NOT writing during burst.
      */
     template <typename... Args> bool Write(CheckedFormat<Args...> fmt, Args&&... args) {
-        return Write(std::format(fmt.format, std::forward<Args>(args)...));
+        return Write(formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -261,7 +261,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * buffer even during burst time.
      */
     template <typename... Args> bool WriteDuringBurst(CheckedFormat<Args...> fmt, Args&&... args) {
-        return WriteDuringBurst(std::format(fmt.format, std::forward<Args>(args)...));
+        return WriteDuringBurst(formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -523,7 +523,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool Notice(iClient*, const std::string&);
     template <typename... Args>
     bool Notice(iClient* theClient, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Notice(theClient, std::format(fmt.format, std::forward<Args>(args)...));
+        return Notice(theClient, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -531,7 +531,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     template <typename... Args>
     bool serverNotice(Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
-        return serverNotice(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+        return serverNotice(theChan, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     virtual bool serverNotice(Channel*, const std::string&);

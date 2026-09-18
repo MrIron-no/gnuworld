@@ -29,6 +29,7 @@
 #include <charconv>
 #include <concepts>
 #include <cstddef>
+#include <cstdio>
 #include <format>
 #include <optional>
 #include <string_view>
@@ -385,39 +386,163 @@ constexpr std::size_t formatArgumentCount(std::string_view fmt) noexcept {
 
 } // namespace detail
 
+namespace detail {
+
 /**
- * What the network functions take in place of "const char*, ...".
+ * The number of arguments a printf format consumes: one for every
+ * conversion, and one more for each '*' that stands for a width or a
+ * precision.  "%%" is a literal '%'.
+ */
+constexpr std::size_t printfArgumentCount(std::string_view fmt) noexcept {
+    constexpr std::string_view flags = "-+#0";
+    constexpr std::string_view lengths = "hlqjztL";
+    constexpr std::string_view conversions = "diouxXeEfgGcspaA";
+    const auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
+
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] != '%') {
+            continue;
+        }
+        std::size_t j = i + 1;
+        if (j < fmt.size() && '%' == fmt[j]) {
+            i = j;
+            continue;
+        }
+
+        // %[flags][width][.precision][length]conversion.  Anything else is
+        // a '%' in the text, as in "100% sure": the space flag is left out
+        // for that reason.
+        std::size_t stars = 0;
+        while (j < fmt.size() && flags.find(fmt[j]) != std::string_view::npos) {
+            ++j;
+        }
+        for (int part = 0; part < 2; ++part) {
+            if (1 == part) {
+                if (j >= fmt.size() || fmt[j] != '.') {
+                    break;
+                }
+                ++j;
+            }
+            if (j < fmt.size() && '*' == fmt[j]) {
+                ++stars;
+                ++j;
+            } else {
+                while (j < fmt.size() && isDigit(fmt[j])) {
+                    ++j;
+                }
+            }
+        }
+        while (j < fmt.size() && lengths.find(fmt[j]) != std::string_view::npos) {
+            ++j;
+        }
+        if (j < fmt.size() && conversions.find(fmt[j]) != std::string_view::npos) {
+            count += 1 + stars;
+            i = j;
+        }
+    }
+    return count;
+}
+
+/// A value as printf takes it: a string as a "const char*", which the
+/// holder keeps alive for the call; anything it cannot take as "?".
+template <typename T> auto printfHold(const T& value) {
+    using U = std::remove_cvref_t<T>;
+    if constexpr (std::is_arithmetic_v<U> || std::is_pointer_v<U> || std::is_enum_v<U>) {
+        return value;
+    } else if constexpr (std::is_convertible_v<const T&, std::string_view>) {
+        return std::string(std::string_view(value));
+    } else {
+        return static_cast<const char*>("?");
+    }
+}
+
+template <typename H> auto printfPass(const H& held) {
+    if constexpr (std::is_same_v<H, std::string>) {
+        return held.c_str();
+    } else {
+        return held;
+    }
+}
+
+/// snprintf() into a string.  The format is not a literal here: it was
+/// counted against the arguments when it was one, and comes from our own
+/// tables when it was not.
+template <typename... Held> std::string printfText(const char* format, const Held&... held) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#pragma GCC diagnostic ignored "-Wformat-security"
+    const int length = std::snprintf(nullptr, 0, format, printfPass(held)...);
+    if (length <= 0) {
+        return std::string();
+    }
+    std::string out(static_cast<std::size_t>(length), '\0');
+    std::snprintf(out.data(), out.size() + 1, format, printfPass(held)...);
+#pragma GCC diagnostic pop
+    return out;
+}
+
+} // namespace detail
+
+/**
+ * What the network functions take in place of "const char*, ...": a format
+ * and, behind it, the arguments as a typed pack.  Either syntax will do:
  *
- * std::format_string checks at compile time that the fields fit the types
- * of the arguments, but it accepts arguments that no field uses.  This code
- * base is being moved off printf, where that matters: a call left behind,
+ *     Notice(theClient, "{} is not on {}", nick, channel);   // std::format
+ *     Notice(theClient, "%s is not on %s", nick, channel);   // printf
+ *     Notice(theClient, getResponse(...).c_str(), nick);     // printf, read at run time
  *
- *     Notice(theClient, "%s is not on %s", nick, channel);
- *
- * is a valid std::format string with no fields and two unused arguments, and
- * would send "%s is not on %s" to the user.  Requiring the counts to match
- * makes it a compile error instead.
+ * A literal is checked when it is compiled: it has to be of one syntax, and
+ * to use exactly the arguments given; std::format checks their types too.
+ * A format that is only known at run time, which is what the language
+ * tables of cservice hold, is printf and cannot be checked.  No va_list in
+ * any of it: the arguments reach snprintf() with the types they have, so a
+ * std::string for a %s is a string, where through "..." it was a crash.
  */
 template <typename... Args> struct BasicCheckedFormat {
+    /// A literal.
     template <typename T>
-        requires std::convertible_to<const T&, std::string_view>
-    consteval BasicCheckedFormat(const T& text) : format(text) {
-        if (detail::formatArgumentCount(std::string_view(text)) != sizeof...(Args)) {
+        requires(std::convertible_to<const T&, std::string_view> && !std::is_pointer_v<T>)
+    consteval BasicCheckedFormat(const T& literal) : text(literal) {
+        const std::size_t fields = detail::formatArgumentCount(text);
+        const std::size_t conversions = detail::printfArgumentCount(text);
+
+        if (0 == conversions && fields == sizeof...(Args)) {
+            // Has std::format check the fields against the types
+            (void)std::format_string<Args...>(text);
+        } else if (0 == fields && conversions == sizeof...(Args)) {
+            printfStyle = true;
+        } else {
             // Not a constant expression, so this is a compile error, and the
             // name shows up in it.
-            formatStringDoesNotUseExactlyTheArgumentsGiven_isItStillPrintfStyle();
+            formatDoesNotUseExactlyTheArgumentsGiven_orMixesPrintfAndFormatSyntax();
         }
     }
 
-    std::format_string<Args...> format;
+    /// A format read at run time: printf, and NUL terminated.
+    template <typename T>
+        requires(std::is_pointer_v<T> && std::convertible_to<T, const char*>)
+    BasicCheckedFormat(const T& runtimeFormat) : text(runtimeFormat), printfStyle(true) {}
+
+    std::string_view text;
+    bool printfStyle = false;
 
   private:
-    static void formatStringDoesNotUseExactlyTheArgumentsGiven_isItStillPrintfStyle();
+    static void formatDoesNotUseExactlyTheArgumentsGiven_orMixesPrintfAndFormatSyntax();
 };
 
 /// As std::format_string does, keep the parameter out of template argument
 /// deduction: Args come from the arguments alone.
 template <typename... Args> using CheckedFormat = BasicCheckedFormat<std::type_identity_t<Args>...>;
+
+/// The text of a checked format and its arguments.
+template <typename... Args> std::string formatMessage(CheckedFormat<Args...> fmt, Args&&... args) {
+    if (!fmt.printfStyle) {
+        return std::vformat(fmt.text, std::make_format_args(args...));
+    }
+
+    return detail::printfText(std::string(fmt.text).c_str(), detail::printfHold(args)...);
+}
 
 } // namespace gnuworld
 

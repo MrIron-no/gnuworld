@@ -120,7 +120,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      * Write a variable length argument list to the network.
      */
     template <typename... Args> bool Write(CheckedFormat<Args...> fmt, Args&&... args) {
-        return Write(std::format(fmt.format, std::forward<Args>(args)...));
+        return Write(formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -612,7 +612,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     template <typename... Args>
     bool Message(const iClient* Target, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Message(Target, std::format(fmt.format, std::forward<Args>(args)...));
+        return Message(Target, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -650,7 +650,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     template <typename... Args>
     bool Message(const std::string& Channel, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Message(Channel, std::format(fmt.format, std::forward<Args>(args)...));
+        return Message(Channel, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -670,7 +670,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     template <typename... Args>
     bool Message(const Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Message(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+        return Message(theChan, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -678,7 +678,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     template <typename... Args>
     bool Notice(const iClient* Target, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Notice(Target, std::format(fmt.format, std::forward<Args>(args)...));
+        return Notice(Target, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -694,7 +694,7 @@ class xClient : public TimerHandler, public NetworkTarget {
 
     template <typename... Args>
     bool Notice(const std::string& Channel, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Notice(Channel, std::format(fmt.format, std::forward<Args>(args)...));
+        return Notice(Channel, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -702,7 +702,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     template <typename... Args>
     bool Notice(const Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
-        return Notice(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+        return Notice(theChan, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -712,7 +712,7 @@ class xClient : public TimerHandler, public NetworkTarget {
 
     template <typename... Args>
     bool NoticeChannelOps(const Channel* theChan, CheckedFormat<Args...> fmt, Args&&... args) {
-        return NoticeChannelOps(theChan, std::format(fmt.format, std::forward<Args>(args)...));
+        return NoticeChannelOps(theChan, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -722,7 +722,7 @@ class xClient : public TimerHandler, public NetworkTarget {
 
     template <typename... Args>
     bool NoticeChannelOps(const std::string& chanName, CheckedFormat<Args...> fmt, Args&&... args) {
-        return NoticeChannelOps(chanName, std::format(fmt.format, std::forward<Args>(args)...));
+        return NoticeChannelOps(chanName, formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -739,7 +739,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      * Have this bot send a global wallops message.
      */
     template <typename... Args> bool Wallops(CheckedFormat<Args...> fmt, Args&&... args) {
-        return Wallops(std::format(fmt.format, std::forward<Args>(args)...));
+        return Wallops(formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
@@ -751,7 +751,7 @@ class xClient : public TimerHandler, public NetworkTarget {
      * Have the server send a wallops.
      */
     template <typename... Args> bool WallopsAsServer(CheckedFormat<Args...> fmt, Args&&... args) {
-        return WallopsAsServer(std::format(fmt.format, std::forward<Args>(args)...));
+        return WallopsAsServer(formatMessage<Args...>(fmt, std::forward<Args>(args)...));
     }
 
     /**
