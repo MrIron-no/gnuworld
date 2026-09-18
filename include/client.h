@@ -875,20 +875,6 @@ class xClient : public TimerHandler, public NetworkTarget {
 
   protected:
     /**
-     * Make sure we can change this channel as ourselves, which means being
-     * on it, opped.  If we are not on it we join with ops, and `joined`
-     * tells the caller to part again afterwards.  Returns false if we are on
-     * the channel without ops: the network would bounce the change.
-     */
-    bool enterToChange(Channel* theChan, bool& joined);
-
-    /// Op(), DeOp(), Voice() and DeVoice(), for one target or several.
-    bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets);
-
-    /// Every Ban() and UnBan().
-    bool changeBans(Channel* theChan, xServer::banVectorType bans);
-
-    /**
      * Allow sub classes to call default constructor
      * This method is defined in the source file.
      */

@@ -69,8 +69,8 @@ class Channel;
  */
 class xServer : public ConnectionManager, public ConnectionHandler, public NetworkTarget {
     /**
-     * xClient makes its channel changes out of the protected plan*() and
-     * commit*() pieces below.
+     * xClient makes its channel changes with the protected changeModes()
+     * and its kin below.
      */
     friend class xClient;
 
@@ -1142,53 +1142,56 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
                          std::span<const std::string> problems) const;
 
     /*
-     * The pieces the channel methods (Op(), Ban(), Kick()...) are made of.
-     * Not part of the API for modules.  xClient, a friend, uses them as well:
-     * it has to be on the channel with ops between the planning and the
-     * committing, which may mean joining first and parting after.
+     * What the channel methods (Mode(), Op(), Ban(), Kick()...) of xServer
+     * and of xClient are made of.  Not part of the API for modules.
      */
 
     /// The numeric a change goes out under.
     std::string numericOf(const iClient* from) const;
 
-    /// True for a server; for a client, true if it is on the channel, opped.
-    bool canChangeChannel(const iClient* from, const Channel* theChan) const;
+    /**
+     * Whoever changes a channel has to be able to.  A server (null) always
+     * can; a client has to be on the channel, opped.  One of our xClients
+     * that is not on the channel joins it for as long as the change takes:
+     * `joined` is then set to it, and the caller has it Part() afterwards.
+     */
+    bool enterChannel(const iClient* from, Channel* theChan, xClient*& joined);
 
     /**
-     * What +/-o or +/-v on these targets would really change.  A target
-     * that is null, not on the channel, or a network service being deopped
-     * is skipped, or with a single target fails the call (nullopt).  An
-     * empty result means there is nothing to do.
+     * Make these mode changes: the one way a channel mode change of ours
+     * happens.  Checks each against the channel, names an o/v target by its
+     * numeric (it may be given by nick), and drops what would change
+     * nothing; false if one of them cannot be made, and nothing is then
+     * done.  Tells the network, then updates the channel and the modules,
+     * to which `eventSource` is reported as the member who did it.
      */
-    std::optional<opVectorType> planMemberModes(Channel* theChan, char letter, bool set,
-                                                std::span<iClient* const> targets);
-
-    /// Send the planned member modes, then update the channel and the modules.
-    void commitMemberModes(const std::string& sourceNumeric, ChannelUser* eventSource,
-                           Channel* theChan, char letter, const opVectorType& members);
-
-    /// The ban changes that would really change something.
-    banVectorType planBans(const Channel* theChan, const banVectorType& bans) const;
-
-    /// Bans for these clients; services and those not on the channel are skipped.
-    banVectorType planBans(const Channel* theChan, std::span<iClient* const> targets) const;
-
-    /// Send the planned bans, then update the channel and the modules.
-    void commitBans(const std::string& sourceNumeric, ChannelUser* eventSource, Channel* theChan,
-                    banVectorType bans);
-
-    /// Those of the targets that can be kicked: on the channel, and not a
-    /// network service.
-    std::vector<iClient*> planKick(const Channel* theChan, std::span<iClient* const> targets) const;
+    bool changeModes(Channel* theChan, std::vector<Channel::ModeChange> requested,
+                     const iClient* from, ChannelUser* eventSource);
 
     /**
-     * Send the kicks, take the members off the channel and notify the
-     * modules.  `kicker` is reported to them and may be null, for a server.
-     * Does not remove a channel left empty: the caller may still have to
-     * part it.
+     * +/-o or +/-v for these clients.  A target that is null, not on the
+     * channel, or a network service being deopped is skipped, or with a
+     * single target fails the call.
      */
-    void commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
-                    std::span<iClient* const> targets, const std::string& reason);
+    bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets,
+                       const iClient* from, ChannelUser* eventSource);
+
+    /// +/-b for these masks.
+    bool changeBans(Channel* theChan, const banVectorType& bans, const iClient* from,
+                    ChannelUser* eventSource);
+
+    /// The bans for these clients; network services and those not on the
+    /// channel are skipped.
+    banVectorType bansFor(const Channel* theChan, std::span<iClient* const> targets) const;
+
+    /**
+     * Kick those of the targets that are on the channel and not a network
+     * service: send the kicks, take the members off and notify the modules,
+     * to which `kicker` is reported; null for a server.  With nobody to
+     * kick, a single target is a refusal and several are nothing to do.
+     */
+    bool kickMembers(Channel* theChan, std::span<iClient* const> targets, const std::string& reason,
+                     const iClient* from, iClient* kicker);
 
     /**
      * Send channel mode changes to the network, as `source` (a server or
@@ -1218,11 +1221,9 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     bool sendText(const char* token, const iClient* from, std::string_view target,
                   std::string_view text);
 
+    /// The modes of a channel we join or burst: they change the channel, and
+    /// have never been reported to the modules.
     void applyModesSilently(Channel* theChan, std::span<const Channel::ModeChange> changes);
-
-    bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets,
-                       const iClient* from);
-    bool changeBans(Channel* theChan, banVectorType bans, const iClient* from);
 
     /**
      * Allow only subclasses to call the default

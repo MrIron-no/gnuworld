@@ -213,32 +213,14 @@ bool xClient::Mode(const string& chanName, const string& modes, const string& ar
 
 bool xClient::Mode(Channel* theChan, const string& modes, const string& args, bool modeAsServer) {
     assert(theChan != 0);
-    // A stealth module has no client on the network to act as
-    modeAsServer = modeAsServer || IsStealth();
 
     if (!isConnected()) {
         return false;
     }
-
-    bool doJoinPart = false;
-    if (!modeAsServer && !isOnChannel(theChan)) {
-        doJoinPart = true;
-        Join(theChan, string(), 0, true);
-    }
-
-    xClient* theClient = 0;
-    if (!modeAsServer) {
-        // Set the mode as the client, so theClient needs to
-        // be non-NULL
-        theClient = this;
-    }
-
-    bool retVal = getUplink()->Mode(theClient, theChan, modes, args);
-
-    if (doJoinPart) {
-        Part(theChan);
-    }
-    return retVal;
+    // As the server, which a stealth module always is, or as ourselves: on
+    // the channel, opped, which xServer sees to by having us join and part
+    // around the change if we are not there.
+    return MyUplink->Mode(theChan, modes, args, modeAsServer ? nullptr : getInstance());
 }
 
 namespace {
@@ -485,130 +467,50 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
     return true;
 }
 
-bool xClient::enterToChange(Channel* theChan, bool& joined) {
-    joined = false;
-
-    if (!isOnChannel(theChan)) {
-        // Join, having the server op us; the caller parts again
-        Join(theChan, string(), 0, true);
-        joined = true;
-        return true;
-    }
-
-    const ChannelUser* meUser = theChan->findUser(me);
-    if (NULL == meUser) {
-        elog << "xClient::enterToChange> Unable to find myself in channel: " << theChan->getName()
-             << endl;
-        return false;
-    }
-    return meUser->isModeO();
-}
-
 /**
  * Op(), DeOp(), Voice() and DeVoice() as this client.  What is to change is
  * worked out, sent and applied by xServer; what is ours is being on the
  * channel with ops while it happens.
  */
-bool xClient::changeMembers(Channel* theChan, char letter, bool set,
-                            std::span<iClient* const> targets) {
-    assert(theChan != 0);
-
-    if (!isConnected()) {
-        return false;
-    }
-
-    if (IsStealth()) {
-        const std::vector<iClient*> all(targets.begin(), targets.end());
-        const bool isOp = ('o' == letter);
-        return isOp ? (set ? MyUplink->Op(theChan, all) : MyUplink->DeOp(theChan, all))
-                    : (set ? MyUplink->Voice(theChan, all) : MyUplink->DeVoice(theChan, all));
-    }
-
-    const std::optional<xServer::opVectorType> members =
-        MyUplink->planMemberModes(theChan, letter, set, targets);
-    if (!members) {
-        return false;
-    }
-    if (members->empty()) {
-        // Nothing to change, so nothing to join for
-        return true;
-    }
-
-    bool joined = false;
-    if (!enterToChange(theChan, joined)) {
-        return false;
-    }
-
-    // These have always reported the change without a source member
-    MyUplink->commitMemberModes(getCharYYXXX(), 0, theChan, letter, *members);
-
-    if (joined) {
-        Part(theChan);
-    }
-    return true;
-}
-
 /// Every Ban() and UnBan() as this client.
-bool xClient::changeBans(Channel* theChan, xServer::banVectorType bans) {
-    assert(theChan != 0);
-
-    if (!isConnected()) {
-        return false;
-    }
-    if (bans.empty()) {
-        return true;
-    }
-    if (IsStealth()) {
-        return MyUplink->Ban(theChan, bans);
-    }
-
-    bool joined = false;
-    if (!enterToChange(theChan, joined)) {
-        return false;
-    }
-
-    MyUplink->commitBans(getCharYYXXX(), 0, theChan, std::move(bans));
-
-    if (joined) {
-        Part(theChan);
-    }
-    return true;
-}
-
 bool xClient::Op(Channel* theChan, iClient* theClient) {
     iClient* const target[] = {theClient};
-    return changeMembers(theChan, 'o', true, target);
+    return isConnected() && MyUplink->changeMembers(theChan, 'o', true, target, getInstance(), 0);
 }
 
 bool xClient::Op(Channel* theChan, const std::vector<iClient*>& clientVector) {
-    return changeMembers(theChan, 'o', true, clientVector);
+    return isConnected() &&
+           MyUplink->changeMembers(theChan, 'o', true, clientVector, getInstance(), 0);
 }
 
 bool xClient::DeOp(Channel* theChan, iClient* theClient) {
     iClient* const target[] = {theClient};
-    return changeMembers(theChan, 'o', false, target);
+    return isConnected() && MyUplink->changeMembers(theChan, 'o', false, target, getInstance(), 0);
 }
 
 bool xClient::DeOp(Channel* theChan, const std::vector<iClient*>& clientVector) {
-    return changeMembers(theChan, 'o', false, clientVector);
+    return isConnected() &&
+           MyUplink->changeMembers(theChan, 'o', false, clientVector, getInstance(), 0);
 }
 
 bool xClient::Voice(Channel* theChan, iClient* theClient) {
     iClient* const target[] = {theClient};
-    return changeMembers(theChan, 'v', true, target);
+    return isConnected() && MyUplink->changeMembers(theChan, 'v', true, target, getInstance(), 0);
 }
 
 bool xClient::Voice(Channel* theChan, const std::vector<iClient*>& clientVector) {
-    return changeMembers(theChan, 'v', true, clientVector);
+    return isConnected() &&
+           MyUplink->changeMembers(theChan, 'v', true, clientVector, getInstance(), 0);
 }
 
 bool xClient::DeVoice(Channel* theChan, iClient* theClient) {
     iClient* const target[] = {theClient};
-    return changeMembers(theChan, 'v', false, target);
+    return isConnected() && MyUplink->changeMembers(theChan, 'v', false, target, getInstance(), 0);
 }
 
 bool xClient::DeVoice(Channel* theChan, const std::vector<iClient*>& clientVector) {
-    return changeMembers(theChan, 'v', false, clientVector);
+    return isConnected() &&
+           MyUplink->changeMembers(theChan, 'v', false, clientVector, getInstance(), 0);
 }
 
 bool xClient::Ban(Channel* theChan, iClient* theClient) {
@@ -620,28 +522,25 @@ bool xClient::Ban(Channel* theChan, iClient* theClient) {
         return false;
     }
     iClient* const target[] = {theClient};
-    return changeBans(theChan, MyUplink->planBans(theChan, target));
+    return Ban(theChan, MyUplink->bansFor(theChan, target));
 }
 
 bool xClient::Ban(Channel* theChan, const std::vector<iClient*>& clientVector) {
     assert(theChan != nullptr);
-    return changeBans(theChan, MyUplink->planBans(theChan, clientVector));
+    return Ban(theChan, MyUplink->bansFor(theChan, clientVector));
 }
 
 bool xClient::Ban(Channel* theChan, const xServer::banVectorType& banVector) {
     assert(theChan != nullptr);
-    return changeBans(theChan, MyUplink->planBans(theChan, banVector));
+    return isConnected() && MyUplink->changeBans(theChan, banVector, getInstance(), 0);
 }
 
 bool xClient::UnBan(Channel* theChan, const string& banMask) {
-    assert(theChan != 0);
-    return changeBans(theChan,
-                      MyUplink->planBans(theChan, xServer::banVectorType{{false, banMask}}));
+    return Ban(theChan, xServer::banVectorType{{false, banMask}});
 }
 
 bool xClient::UnBan(Channel* theChan, const xServer::banVectorType& banVector) {
-    assert(theChan != 0);
-    return changeBans(theChan, MyUplink->planBans(theChan, banVector));
+    return Ban(theChan, banVector);
 }
 
 bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason) {
@@ -656,37 +555,24 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
         return false;
     }
 
-    iClient* const target[] = {theClient};
-    const std::vector<iClient*> kicked = MyUplink->planKick(theChan, target);
-    if (kicked.empty()) {
+    if (0 == theChan->findUser(theClient)) {
         // User is not on that channel
         return true;
     }
 
-    // A stealth module has no client on the network to act as.  As
-    // ourselves we have to be on the channel, opped, while it happens.
-    const bool asServer = IsStealth();
-    bool joined = false;
-    if (!asServer && !enterToChange(theChan, joined)) {
-        return false;
+    // Two changes: be on the channel for both, not once for each
+    const bool join = !IsStealth() && !isOnChannel(theChan);
+    if (join) {
+        Join(theChan, string(), 0, true);
     }
-    const string sourceNumeric = asServer ? string(MyUplink->getCharYY()) : getCharYYXXX();
 
-    // The ban, unless it is there already, and then the kick
-    const xServer::banVectorType wanted{{true, Channel::createBan(theClient)}};
-    xServer::banVectorType bans = MyUplink->planBans(theChan, wanted);
-    if (!bans.empty()) {
-        MyUplink->commitBans(sourceNumeric, 0, theChan, std::move(bans));
-    }
-    MyUplink->commitKick(sourceNumeric, getInstance(), theChan, kicked, reason);
+    const bool done = Ban(theChan, theClient) && Kick(theChan, theClient, reason);
 
-    if (joined) {
+    // Parting removes the channel if that leaves it empty
+    if (join) {
         Part(theChan);
     }
-    if (theChan->empty()) {
-        delete Network->removeChannel(theChan->getName());
-    }
-    return true;
+    return done;
 }
 
 bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
@@ -721,49 +607,22 @@ bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
 }
 
 bool xClient::Kick(Channel* theChan, iClient* theClient, const string& reason, bool modeAsServer) {
-    assert(theChan != NULL);
     assert(theClient != NULL);
-
     iClient* const target[] = {theClient};
-    if (MyUplink->planKick(theChan, target).empty()) {
-        // A network service, or not on the channel
-        return false;
-    }
     return Kick(theChan, std::vector<iClient*>(target, target + 1), reason, modeAsServer);
 }
 
 bool xClient::Kick(Channel* theChan, const std::vector<iClient*>& theClients, const string& reason,
                    bool modeAsServer) {
     assert(theChan != NULL);
-    // A stealth module has no client on the network to act as
-    modeAsServer = modeAsServer || IsStealth();
 
     if (!isConnected()) {
         return false;
     }
-
-    const std::vector<iClient*> kicked = MyUplink->planKick(theChan, theClients);
-    if (kicked.empty()) {
-        return true;
-    }
-
-    // As ourselves we have to be on the channel, opped, while it happens.
+    // As the server, which a stealth module always is, or as ourselves.
     // Either way the modules are told that we did it, as they always were.
-    bool joined = false;
-    if (!modeAsServer && !enterToChange(theChan, joined)) {
-        return false;
-    }
-
-    MyUplink->commitKick(modeAsServer ? string(MyUplink->getCharYY()) : getCharYYXXX(),
-                         getInstance(), theChan, kicked, reason);
-
-    if (joined) {
-        Part(theChan);
-    }
-    if (theChan->empty()) {
-        delete Network->removeChannel(theChan->getName());
-    }
-    return true;
+    return MyUplink->kickMembers(theChan, theClients, reason,
+                                 modeAsServer ? nullptr : getInstance(), getInstance());
 }
 
 bool xClient::Kick(Channel* theChan, const string& IP, const string& reason, bool modeAsServer) {

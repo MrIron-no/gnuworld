@@ -209,3 +209,32 @@ async def test_bankick_takes_the_member_off_the_channel(gnutest_linked_p11):
         f"{me} K {CHAN} {n['bob']} :and stay out",
     ]
     assert "bob" not in (await chaninfo(hub, asker, CHAN)).members
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_is_not_on_the_channel_joins_only_when_there_is_something_to_do(
+    gnutest_linked_p11,
+):
+    hub, proc = gnutest_linked_p11
+
+    asker = await hub.introduce_nick("asker", username="asker")
+    await hub.send_account(asker, PERMIT_ACCOUNT)
+    n = {nick: await hub.introduce_nick(nick, username=nick) for nick in ("alice", "loner")}
+    ts = int(time.time()) - 3600
+    hub_yy = hub.server_numnick
+    me, srv = gt.numnick(hub), hub.peer_numeric
+    await hub.send_raw(f"{hub_yy} B {AWAY} {ts} +tn {n['alice']}:o")
+    await hub.send_raw(f"{hub_yy} B #lonely {ts} +tn {n['loner']}:o")
+
+    # alice is an op already: nothing to change, so nothing to join for
+    assert await gt.run(hub, asker, f"op {AWAY} alice") == []
+
+    # Kicking the only member: we join, kick and part, and the channel is gone
+    assert await gt.run(hub, asker, "kick #lonely loner bye") == [
+        f"{me} J #lonely {ts}",
+        f"{srv} M #lonely +o {me} {ts}",
+        f"{me} K #lonely {n['loner']} :bye",
+        f"{me} L #lonely :",
+    ]
+    assert not (await chaninfo(hub, asker, "#lonely")).found
+    assert proc.proc is not None and proc.proc.returncode is None
