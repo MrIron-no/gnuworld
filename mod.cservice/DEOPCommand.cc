@@ -102,7 +102,7 @@ bool DEOPCommand::Exec(iClient* theClient, const string& Message) {
         return false;
     }
 
-    if (!tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         bot->Notice(theClient, "I'm not opped in %s", theChan->getName().c_str());
         return false;
     }
@@ -179,7 +179,7 @@ bool DEOPCommand::Exec(iClient* theClient, const string& Message) {
         }
 
         // User isn't opped?
-        if (!tmpChanUser->getMode(ChannelUser::MODE_O)) {
+        if (!tmpChanUser->getMode(ChannelUser::MODE_CHANOP)) {
             bot->Notice(theClient, bot->getResponse(theUser, language::not_opped).c_str(),
                         target->getNickName().c_str(), theChan->getName().c_str());
 

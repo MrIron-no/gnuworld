@@ -945,7 +945,7 @@ void cservice::OnChannelCTCP(iClient* Sender, Channel* theChan, const string& CT
     // Exempt users who are opped
     ChannelUser* tmpChanUser = theChan->findUser(Sender);
     if (tmpChanUser) {
-        if (tmpChanUser->getMode(ChannelUser::MODE_O))
+        if (tmpChanUser->getMode(ChannelUser::MODE_CHANOP))
             return;
     }
     if (!sqlChan->getFlag(sqlChannel::F_FLOODPRO))
@@ -1100,7 +1100,7 @@ void cservice::OnChannelMessage(iClient* Sender, Channel* theChan, const std::st
     // Exempt users who are opped
     ChannelUser* tmpChanUser = theChan->findUser(Sender);
     if (tmpChanUser) {
-        if (tmpChanUser->getMode(ChannelUser::MODE_O))
+        if (tmpChanUser->getMode(ChannelUser::MODE_CHANOP))
             return;
     }
     if (!sqlChan->getFlag(sqlChannel::F_FLOODPRO))
@@ -1190,7 +1190,7 @@ void cservice::OnChannelNotice(iClient* Sender, Channel* theChan, const std::str
     // Exempt users who are opped
     ChannelUser* tmpChanUser = theChan->findUser(Sender);
     if (tmpChanUser) {
-        if (tmpChanUser->getMode(ChannelUser::MODE_O))
+        if (tmpChanUser->getMode(ChannelUser::MODE_CHANOP))
             return;
     }
     if (!sqlChan->getFlag(sqlChannel::F_FLOODPRO))
@@ -1340,7 +1340,7 @@ void cservice::handleChannelPart(iClient* Sender, Channel* theChan, const string
     // Exempt users who are opped
     ChannelUser* tmpChanUser = theChan->findUser(Sender);
     if (tmpChanUser) {
-        if (tmpChanUser->getMode(ChannelUser::MODE_O))
+        if (tmpChanUser->getMode(ChannelUser::MODE_CHANOP))
             return;
     }
 
@@ -2531,7 +2531,7 @@ void cservice::performReops() {
         }
 
         // If the bot has no op, op it
-        if (tmpChan && !tmpBotUser->getMode(ChannelUser::MODE_O))
+        if (tmpChan && !tmpBotUser->getMode(ChannelUser::MODE_CHANOP))
             doTheRightThing(tmpChan);
     }
 }
@@ -4274,7 +4274,7 @@ void cservice::OnChannelModeV(Channel* theChan, ChannelUser* theChanUser,
                    string("The NOVOICE flag is set on %s") /*)*/.c_str(),
                    reggedChan->getName().c_str());
         }
-        if (theChanUser->getMode(ChannelUser::MODE_O))
+        if (theChanUser->getMode(ChannelUser::MODE_CHANOP))
             if (!theChanUser->getClient()->getMode(iClient::MODE_SERVICES))
                 DeOp(theChan, theChanUser->getClient());
         DeVoice(theChan, deVoiceList);
@@ -4655,7 +4655,7 @@ void cservice::deVoiceAllOnChan(Channel* theChan) {
     /* Check we're actually opped first.. */
 
     ChannelUser* tmpBotUser = theChan->findUser(getInstance());
-    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         return;
     }
 
@@ -4663,7 +4663,7 @@ void cservice::deVoiceAllOnChan(Channel* theChan) {
 
     for (Channel::const_userIterator ptr = theChan->userList_begin();
          ptr != theChan->userList_end(); ++ptr) {
-        if (ptr->second->getMode(ChannelUser::MODE_V)) {
+        if (ptr->second->getMode(ChannelUser::MODE_VOICE)) {
             deVoiceList.push_back(ptr->second->getClient());
         }
     }
@@ -4695,7 +4695,7 @@ void cservice::deopAllOnChan(Channel* theChan) {
     /* Check we're actually opped first.. */
 
     ChannelUser* tmpBotUser = theChan->findUser(getInstance());
-    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         return;
     }
 
@@ -4703,7 +4703,7 @@ void cservice::deopAllOnChan(Channel* theChan) {
 
     for (Channel::const_userIterator ptr = theChan->userList_begin();
          ptr != theChan->userList_end(); ++ptr) {
-        if (ptr->second->getMode(ChannelUser::MODE_O)) {
+        if (ptr->second->getMode(ChannelUser::MODE_CHANOP)) {
 
             /* Don't deop +k things */
             if (!ptr->second->getClient()->getMode(iClient::MODE_SERVICES))
@@ -4727,7 +4727,7 @@ size_t cservice::countChanOps(const Channel* theChan) {
 
     for (Channel::const_userIterator ptr = theChan->userList_begin();
          ptr != theChan->userList_end(); ++ptr) {
-        if (ptr->second->getMode(ChannelUser::MODE_O)) {
+        if (ptr->second->getMode(ChannelUser::MODE_CHANOP)) {
             chanOps++;
         } // If opped.
     }
@@ -4755,7 +4755,7 @@ void cservice::deopAllUnAuthedOnChan(Channel* theChan) {
     /* Check we're actually opped first.. */
 
     ChannelUser* tmpBotUser = theChan->findUser(getInstance());
-    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         return;
     }
 
@@ -4763,7 +4763,7 @@ void cservice::deopAllUnAuthedOnChan(Channel* theChan) {
 
     for (Channel::const_userIterator ptr = theChan->userList_begin();
          ptr != theChan->userList_end(); ++ptr) {
-        if (ptr->second->getMode(ChannelUser::MODE_O)) {
+        if (ptr->second->getMode(ChannelUser::MODE_CHANOP)) {
             /* Are they authed? */
             sqlUser* authUser = isAuthed(ptr->second->getClient(), false);
 
@@ -4807,7 +4807,7 @@ void cservice::deopSuspendedOnChan(Channel* theChan, sqlUser* theUser) {
     /* Check we're actually opped first.. */
 
     ChannelUser* tmpBotUser = theChan->findUser(getInstance());
-    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         return;
     }
 
@@ -4817,7 +4817,7 @@ void cservice::deopSuspendedOnChan(Channel* theChan, sqlUser* theUser) {
              cliPtr != theUser->networkClientList.end(); ++cliPtr) {
             iClient* tmpClient = (*cliPtr);
             ChannelUser* tmpUser = theChan->findUser(tmpClient);
-            if ((tmpUser) && (tmpUser->getMode(ChannelUser::MODE_O) &&
+            if ((tmpUser) && (tmpUser->getMode(ChannelUser::MODE_CHANOP) &&
                               (!tmpClient->getMode(iClient::MODE_SERVICES))))
                 deopList.push_back(tmpClient);
         }
@@ -4840,7 +4840,7 @@ void cservice::doAllBansOnChan(Channel* tmpChan) {
     }
 
     ChannelUser* tmpBotUser = tmpChan->findUser(getInstance());
-    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser || !tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         return;
     }
 
@@ -4879,7 +4879,7 @@ void cservice::doTheRightThing(Channel* tmpChan) {
     }
 
     // If the bot has no op, op it
-    if (tmpChan && !tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (tmpChan && !tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         // Make sure +R is also set for the channel
         MyUplink->Mode(NULL, tmpChan, "+R", std::string());
 
@@ -5052,7 +5052,7 @@ void cservice::OnChannelEvent(const channelEventType& whichEvent, Channel* theCh
         /* This is a registered channel, check it is set +R.
          * If not, set it to +R (channel creation)
          */
-        if (!theChan->getMode(Channel::MODE_REG)) {
+        if (!theChan->getMode(Channel::MODE_REGISTERED)) {
             stringstream tmpTS;
             tmpTS << reggedChan->getChannelTS();
             string channelTS = tmpTS.str();
@@ -5287,7 +5287,7 @@ bool cservice::Kick(Channel* theChan, const string& mask, const std::string& rea
         assert(meUser != 0);
 
         // Make sure we have ops
-        if (!meUser->getMode(ChannelUser::MODE_O)) {
+        if (!meUser->getMode(ChannelUser::MODE_CHANOP)) {
             // The bot does NOT have ops
             return false;
         }
@@ -5416,7 +5416,7 @@ void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
         ChannelUser* tmpBotUser = theChan->findUser(getInstance());
         if (!tmpBotUser)
             return;
-        if (!tmpBotUser->getMode(ChannelUser::MODE_O))
+        if (!tmpBotUser->getMode(ChannelUser::MODE_CHANOP))
             return;
 
         // Leave out the modes the channel has already, so that they are not
@@ -5515,7 +5515,7 @@ void cservice::doFloatingLimit(sqlChannel* reggedChan, Channel* theChan) {
     ChannelUser* tmpBotUser = theChan->findUser(getInstance());
     if (!tmpBotUser)
         return;
-    if (!tmpBotUser->getMode(ChannelUser::MODE_O))
+    if (!tmpBotUser->getMode(ChannelUser::MODE_CHANOP))
         return;
 
     reggedChan->setLastLimitCheck(currentTime());
@@ -8854,7 +8854,7 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
             continue;
         }
 
-        if (!theChan->getInChan() || !tmpBotUser->getMode(ChannelUser::MODE_O)) {
+        if (!theChan->getInChan() || !tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
             continue;
         }
 
@@ -8901,11 +8901,11 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
          */
 
         if (resultPtr->flags & sqlLevel::F_AUTOOP) {
-            if (!tmpChanUser->getMode(ChannelUser::MODE_O)) {
+            if (!tmpChanUser->getMode(ChannelUser::MODE_CHANOP)) {
                 Op(netChan, theClient);
             }
         } else if (resultPtr->flags & sqlLevel::F_AUTOVOICE) {
-            if ((!tmpChanUser->getMode(ChannelUser::MODE_V)) &&
+            if ((!tmpChanUser->getMode(ChannelUser::MODE_VOICE)) &&
                 (!theChan->getFlag(sqlChannel::F_NOVOICE))) {
                 Voice(netChan, theClient);
             }

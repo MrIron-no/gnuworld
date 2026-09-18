@@ -178,7 +178,7 @@ bool PURGECommand::Exec(iClient* theClient, const string& Message) {
                 /* check we are in the channel, and opped */
                 ChannelUser* tmpBotUser = tmpChan->findUser(bot->getInstance());
                 if (tmpBotUser) {
-                    if (!tmpBotUser->getMode(ChannelUser::MODE_O)) {
+                    if (!tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
                         /* op ourselves so that we can do the reops */
                         bot->getUplink()->Op(tmpChan, bot->getInstance());
                     }

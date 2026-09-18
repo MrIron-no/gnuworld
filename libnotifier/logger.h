@@ -383,8 +383,10 @@ class Logger {
             if (!theUser)
                 return *this;
 
-            fields[prefix + "_is_op"] = theUser->getMode(ChannelUser::MODE_O) ? "true" : "false";
-            fields[prefix + "_is_voice"] = theUser->getMode(ChannelUser::MODE_V) ? "true" : "false";
+            fields[prefix + "_is_op"] =
+                theUser->getMode(ChannelUser::MODE_CHANOP) ? "true" : "false";
+            fields[prefix + "_is_voice"] =
+                theUser->getMode(ChannelUser::MODE_VOICE) ? "true" : "false";
             // fields[ prefix + "_channel_modes" ] = theUser->getModeString() ;
 
             return *this;

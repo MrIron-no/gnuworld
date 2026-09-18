@@ -87,7 +87,7 @@ void REQUESTOPCommand::Exec(iClient* theClient, sqlcfUser* theUser, const std::s
 
     chanfix::chanOpsType myOps = bot->getMyOps(st[1]);
 
-    if (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REG)) {
+    if (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REGISTERED)) {
         bot->SendTo(theClient,
                     bot->getResponse(theUser, language::registered_channel,
                                      std::string("%s is a registered channel."))

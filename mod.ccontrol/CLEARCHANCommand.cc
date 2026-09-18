@@ -155,7 +155,7 @@ bool CLEARCHANCommand::Exec(iClient* theClient, const string& Message) {
                             for( Channel::const_userIterator ptr = theChan->userList_begin();
                             ptr != theChan->userList_end() ; ++ptr )
                                     {
-                                    if( ptr->second->getMode(ChannelUser::MODE_O))
+                                    if( ptr->second->getMode(ChannelUser::MODE_CHANOP))
                                             {
                                             // Don't deop +k things
                                             if (
@@ -163,7 +163,7 @@ bool CLEARCHANCommand::Exec(iClient* theClient, const string& Message) {
                                                     {
                                                     modes+= 'o';
                                                     args+= ptr->second->getCharYYXXX() + " ";
-                                                    ptr->second->removeMode(ChannelUser::MODE_O);
+                                                    ptr->second->removeMode(ChannelUser::MODE_CHANOP);
                                                     }
                                             } // If opped.
                                     if(modes.size() > 5) //if we got more than 5 , set the mode and
@@ -179,61 +179,61 @@ bool CLEARCHANCommand::Exec(iClient* theClient, const string& Message) {
                             }
                             break;
                     case 'K':  //Key?
-                            if(theChan->getMode(Channel::MODE_K))
+                            if(theChan->getMode(Channel::MODE_KEY))
                                     {
-                                    theChan->removeMode(Channel::MODE_K);
+                                    theChan->removeMode(Channel::MODE_KEY);
                                     remModes+= "k";
                                     args+= theChan->getKey() + " ";
                                     theChan->setKey("");
                                     }
                             break;
                     case 'I':  //Invite?
-                            if(theChan->getMode(Channel::MODE_I))
+                            if(theChan->getMode(Channel::MODE_INVITEONLY))
                                     {
-                                    theChan->removeMode(Channel::MODE_I);
+                                    theChan->removeMode(Channel::MODE_INVITEONLY);
                                     remModes+= "i";
                                     }
                             break;
                     case 'L': //Limit?
-                            if(theChan->getMode(Channel::MODE_L))
+                            if(theChan->getMode(Channel::MODE_LIMIT))
                                     {
-                                    theChan->removeMode(Channel::MODE_L);
+                                    theChan->removeMode(Channel::MODE_LIMIT);
                                     remModes+= "l";
                                     //args+= theChan->getLimit() + " ";
                                     }
                             break;
                     case 'P':  //Private?
-                            if(theChan->getMode(Channel::MODE_P))
+                            if(theChan->getMode(Channel::MODE_PRIVATE))
                                     {
-                                    theChan->removeMode(Channel::MODE_P);
+                                    theChan->removeMode(Channel::MODE_PRIVATE);
                                     remModes+= "p";
                                     }
                             break;
                     case 'S':  //Secret?
-                            if(theChan->getMode(Channel::MODE_S))
+                            if(theChan->getMode(Channel::MODE_SECRET))
                                     {
-                                    theChan->removeMode(Channel::MODE_S);
+                                    theChan->removeMode(Channel::MODE_SECRET);
                                     remModes+= "s";
                                     }
                             break;
                     case 'M':  //Moderated?
-                            if(theChan->getMode(Channel::MODE_M))
+                            if(theChan->getMode(Channel::MODE_MODERATED))
                                     {
-                                    theChan->removeMode(Channel::MODE_M);
+                                    theChan->removeMode(Channel::MODE_MODERATED);
                                     remModes+= "m";
                                     }
                             break;
                     case 'N':  //No External Messages?
-                            if(theChan->getMode(Channel::MODE_N))
+                            if(theChan->getMode(Channel::MODE_NOPRIVMSGS))
                                     {
-                                    theChan->removeMode(Channel::MODE_N);
+                                    theChan->removeMode(Channel::MODE_NOPRIVMSGS);
                                     remModes+= "n";
                                     }
                             break;
                     case 'T':  //Topic?
-                            if(theChan->getMode(Channel::MODE_T))
+                            if(theChan->getMode(Channel::MODE_TOPICLIMIT))
                                     {
-                                    theChan->removeMode(Channel::MODE_T);
+                                    theChan->removeMode(Channel::MODE_TOPICLIMIT);
                                     remModes+= "t";
                                     }
                             break;

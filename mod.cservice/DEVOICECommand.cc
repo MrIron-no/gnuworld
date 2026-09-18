@@ -147,7 +147,7 @@ bool DEVOICECommand::Exec(iClient* theClient, const string& Message) {
             cont = false;
         }
 
-        if (cont && !tmpChanUser->getMode(ChannelUser::MODE_V)) // User isn't voiced?
+        if (cont && !tmpChanUser->getMode(ChannelUser::MODE_VOICE)) // User isn't voiced?
         {
             bot->Notice(theClient, bot->getResponse(theUser, language::not_voiced).c_str(),
                         target->getNickName().c_str(), theChan->getName().c_str());

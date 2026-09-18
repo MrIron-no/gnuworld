@@ -177,7 +177,7 @@ bool VOICECommand::Exec(iClient* theClient, const string& Message) {
         }
 
         // User is already voiced?
-        if (tmpChanUser->getMode(ChannelUser::MODE_V)) {
+        if (tmpChanUser->getMode(ChannelUser::MODE_VOICE)) {
             bot->Notice(theClient, bot->getResponse(theUser, language::already_voiced).c_str(),
                         target->getNickName().c_str(), theChan->getName().c_str());
             counter++;

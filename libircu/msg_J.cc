@@ -202,14 +202,14 @@ bool msg_J::Execute(const xParameters& Param) {
         // Only tracked on a P11 uplink: without REVEAL we would rarely
         // learn that a member has spoken, and the flag would go stale.
         bool isHidden = false;
-        if (EVT_JOIN == whichEvent && theChan->getMode(Channel::MODE_D) &&
+        if (EVT_JOIN == whichEvent && theChan->getMode(Channel::MODE_DELJOINS) &&
             theServer->getUplink()->getProtocol() >= 11) {
             isHidden = true;
         }
 
         // The ChannelUser structure for this user<->channel association
-        ChannelUser* theUser = new (std::nothrow)
-            ChannelUser(Target, (EVT_CREATE == whichEvent) ? ChannelUser::MODE_O : 0, isHidden);
+        ChannelUser* theUser = new (std::nothrow) ChannelUser(
+            Target, (EVT_CREATE == whichEvent) ? ChannelUser::MODE_CHANOP : 0, isHidden);
         assert(theUser != 0);
 
         // Add a new ChannelUser representing this client to this

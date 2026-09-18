@@ -231,12 +231,12 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
 
                                     if(plus)
                                             {
-                                            theChan->setMode(Channel::MODE_K);
+                                            theChan->setMode(Channel::MODE_KEY);
                                             theChan->setKey(st [ argPos ]);
                                             }
                                     else
                                             {
-                                            theChan->removeMode(Channel::MODE_K);
+                                            theChan->removeMode(Channel::MODE_KEY);
                                             theChan->setKey("");
                                             }
 
@@ -254,7 +254,7 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                                             {
                                             // No args needed
                                             modeString += st[ modePos ][ charPos ] ;
-                                            theChan->removeMode(Channel::MODE_L);
+                                            theChan->removeMode(Channel::MODE_LIMIT);
                                             break ;
                                             }
 
@@ -268,7 +268,7 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                                             return true ;
                                             }
 
-                                    theChan->setMode(Channel::MODE_L);
+                                    theChan->setMode(Channel::MODE_LIMIT);
 
                                     // Add this mode to the current modeString
                                     modeString += st[ modePos ][ charPos ] ;
@@ -285,51 +285,51 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                                     break ;
                             case 'I':  //Invite?
                                     if(!plus)
-                                            theChan->removeMode(Channel::MODE_I);
+                                            theChan->removeMode(Channel::MODE_INVITEONLY);
                                     else
-                                            theChan->setMode(Channel::MODE_I);
+                                            theChan->setMode(Channel::MODE_INVITEONLY);
                                     modeString += st[ modePos ][ charPos ] ;
 
                                     break;
                             case 'P':  //Private?
                                     if(!plus)
-                                            theChan->removeMode(Channel::MODE_P);
+                                            theChan->removeMode(Channel::MODE_PRIVATE);
                                     else
-                                            theChan->setMode(Channel::MODE_P);
+                                            theChan->setMode(Channel::MODE_PRIVATE);
                                     modeString += st[ modePos ][ charPos ] ;
                                     break;
                             case 'S':  //Secret?
                                     if(!plus)
-                                            theChan->removeMode(Channel::MODE_S);
+                                            theChan->removeMode(Channel::MODE_SECRET);
                                     else
-                                            theChan->setMode(Channel::MODE_S);
+                                            theChan->setMode(Channel::MODE_SECRET);
 
                                     modeString += st[ modePos ][ charPos ] ;
 
                                     break;
                             case 'M':  //Moderated?
                                     if(!plus)
-                                            theChan->removeMode(Channel::MODE_M);
+                                            theChan->removeMode(Channel::MODE_MODERATED);
                                     else
-                                            theChan->setMode(Channel::MODE_M);
+                                            theChan->setMode(Channel::MODE_MODERATED);
 
                                     modeString += st[ modePos ][ charPos ] ;
 
                                     break;
                             case 'N':  //No External Messages?
                                     if(!plus)
-                                            theChan->removeMode(Channel::MODE_N);
+                                            theChan->removeMode(Channel::MODE_NOPRIVMSGS);
                                     else
-                                            theChan->setMode(Channel::MODE_N);
+                                            theChan->setMode(Channel::MODE_NOPRIVMSGS);
 
                                     modeString += st[ modePos ][ charPos ] ;
 
                                     break;
                             case 'T':  //Topic?
                                     if(!plus)
-                                            theChan->removeMode(Channel::MODE_T);
+                                            theChan->removeMode(Channel::MODE_TOPICLIMIT);
                                     else
-                                            theChan->setMode(Channel::MODE_T);
+                                            theChan->setMode(Channel::MODE_TOPICLIMIT);
                                     modeString += st[ modePos ][ charPos ] ;
                                     break;
                             case '+':

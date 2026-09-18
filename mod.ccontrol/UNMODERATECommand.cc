@@ -60,7 +60,7 @@ bool UNMODERATECommand::Exec(iClient* theClient, const string& Message) {
         return true;
     }
 
-    if (!theChan->getMode(Channel::MODE_M)) {
+    if (!theChan->getMode(Channel::MODE_MODERATED)) {
         bot->Notice(theClient, "Channel %s is not moderated", st[1].c_str());
         return false;
     }

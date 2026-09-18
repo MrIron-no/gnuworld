@@ -992,7 +992,7 @@ void dronescan::OnWhois(iClient* sourceClient, iClient* targetClient) {
             Channel* theChan = *chanPtr;
 
             const bool isSecretOrPrivate =
-                theChan->getMode(Channel::MODE_S) || theChan->getMode(Channel::MODE_P);
+                theChan->getMode(Channel::MODE_SECRET) || theChan->getMode(Channel::MODE_PRIVATE);
             if (isSecretOrPrivate && !theChan->findUser(sourceClient)) {
                 continue;
             }
@@ -2068,18 +2068,18 @@ bool dronescan::checkChannel(const Channel* theChannel, const iClient* theClient
     if (failed >= voteCutoff) {
         /* This channel is voted abnormal. */
         std::stringstream chanStat, chanParams;
-        if (theChannel->getMode(Channel::MODE_I))
+        if (theChannel->getMode(Channel::MODE_INVITEONLY))
             chanStat << "i";
-        if (theChannel->getMode(Channel::MODE_R))
+        if (theChannel->getMode(Channel::MODE_REGONLY))
             chanStat << "r";
 
-        if (theChannel->getMode(Channel::MODE_K)) {
+        if (theChannel->getMode(Channel::MODE_KEY)) {
             chanStat << "k";
             chanParams << theChannel->getKey();
         }
-        if (theChannel->getMode(Channel::MODE_L)) {
+        if (theChannel->getMode(Channel::MODE_LIMIT)) {
             chanStat << "l";
-            if (theChannel->getMode(Channel::MODE_K))
+            if (theChannel->getMode(Channel::MODE_KEY))
                 chanParams << " ";
             chanParams << theChannel->getLimit();
         }
@@ -3923,9 +3923,9 @@ int dronescan::selectFromCandidates(const std::vector<int>& candidateIds,
         if (!forcejoin && theChan) {
             // Skip +i (invite-only), +k (keyed), +l at capacity, +r with no
             // services account on the spy client, or a banned host.
-            if (theChan->getMode(Channel::MODE_I) || theChan->getMode(Channel::MODE_K) ||
-                (theChan->getMode(Channel::MODE_L) && theChan->size() >= theChan->getLimit()) ||
-                (theChan->getMode(Channel::MODE_R) && sc->getAccount().empty()) ||
+            if (theChan->getMode(Channel::MODE_INVITEONLY) || theChan->getMode(Channel::MODE_KEY) ||
+                (theChan->getMode(Channel::MODE_LIMIT) && theChan->size() >= theChan->getLimit()) ||
+                (theChan->getMode(Channel::MODE_REGONLY) && sc->getAccount().empty()) ||
                 theChan->matchBan(ic->getNickUserHost())) {
                 if (tally)
                     tally->modeOrBan++;

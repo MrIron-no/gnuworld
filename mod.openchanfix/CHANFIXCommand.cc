@@ -86,7 +86,7 @@ void CHANFIXCommand::Exec(iClient* theClient, sqlcfUser* theUser, const std::str
         return;
     }
 
-    if (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REG)) {
+    if (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REGISTERED)) {
         bot->SendTo(theClient,
                     bot->getResponse(theUser, language::registered_channel,
                                      std::string("%s is a registered channel."))
@@ -132,7 +132,8 @@ void CHANFIXCommand::Exec(iClient* theClient, sqlcfUser* theUser, const std::str
                              std::string("The highscore in channel %s is %d which is lower than "
                                          "the minimum score required (%.2f * %d = %d)."))
                 .c_str(),
-            theChan->getChannel().c_str(), theChan->getMaxScore(), FIX_MIN_ABS_SCORE_END, bot->maxScore,
+            theChan->getChannel().c_str(), theChan->getMaxScore(), FIX_MIN_ABS_SCORE_END,
+            bot->maxScore,
             static_cast<int>(static_cast<float>(FIX_MIN_ABS_SCORE_END) * bot->maxScore));
         return;
     }

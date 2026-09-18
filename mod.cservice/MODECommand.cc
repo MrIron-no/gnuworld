@@ -150,7 +150,8 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
             }
 
             if (plus) {
-                if (tmpChan->getMode(Channel::MODE_K)) /* Do not update key if chan is already +k */
+                if (tmpChan->getMode(
+                        Channel::MODE_KEY)) /* Do not update key if chan is already +k */
                 {
                     argPos++;
                     break;
@@ -167,7 +168,7 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                 }
 
             } else {
-                if (!tmpChan->getMode(Channel::MODE_K)) /* Not +k? */
+                if (!tmpChan->getMode(Channel::MODE_KEY)) /* Not +k? */
                 {
                     argPos++;
                     break;

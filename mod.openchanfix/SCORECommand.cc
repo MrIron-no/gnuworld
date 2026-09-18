@@ -51,7 +51,7 @@ void SCORECommand::Exec(iClient* theClient, sqlcfUser* theUser, const std::strin
 
     // If netchan is not null, AND either canScoreChan is false or the chan is +R
     // reject the request
-    if ((netChan) && (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REG))) {
+    if ((netChan) && (!bot->canScoreChan(netChan) || netChan->getMode(Channel::MODE_REGISTERED))) {
         if (compact)
             bot->SendTo(theClient, "~! %s", netChan->getName().c_str());
         else

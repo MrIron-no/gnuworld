@@ -692,16 +692,16 @@ size_t cloner::joinClone(iClient* theClone, Channel* theChan) {
         return 0;
 
     /* Check channel modes. */
-    if (theChan->getMode(Channel::MODE_I) || theChan->getMode(Channel::MODE_K) ||
-        (theChan->getMode(Channel::MODE_L) && theChan->getLimit() < theChan->size()))
+    if (theChan->getMode(Channel::MODE_INVITEONLY) || theChan->getMode(Channel::MODE_KEY) ||
+        (theChan->getMode(Channel::MODE_LIMIT) && theChan->getLimit() < theChan->size()))
         return 0;
 
     /* Chanmode +r? */
-    if (theChan->getMode(Channel::MODE_R) && !theClone->getMode(iClient::MODE_REGISTERED))
+    if (theChan->getMode(Channel::MODE_REGONLY) && !theClone->getMode(iClient::MODE_REGISTERED))
         return 0;
 
     /* Chanmode +Z? */
-    if (theChan->getMode(Channel::MODE_Z) && !theClone->getMode(iClient::MODE_TLS))
+    if (theChan->getMode(Channel::MODE_TLSONLY) && !theClone->getMode(iClient::MODE_TLS))
         return 0;
 
     /* Banned? */

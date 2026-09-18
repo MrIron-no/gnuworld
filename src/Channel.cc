@@ -305,40 +305,40 @@ void Channel::onMode(const vector<std::pair<bool, Channel::modeType>>& modeVecto
 
 void Channel::onModeL(bool polarity, const unsigned int& newLimit) {
     if (polarity) {
-        setMode(MODE_L);
+        setMode(MODE_LIMIT);
         setLimit(newLimit);
     } else {
-        removeMode(MODE_L);
+        removeMode(MODE_LIMIT);
         setLimit(0);
     }
 }
 
 void Channel::onModeK(bool polarity, const string& newKey) {
     if (polarity) {
-        setMode(MODE_K);
+        setMode(MODE_KEY);
         setKey(newKey);
     } else {
-        removeMode(MODE_K);
+        removeMode(MODE_KEY);
         setKey(string());
     }
 }
 
 void Channel::onModeA(bool polarity, const string& newApass) {
     if (polarity) {
-        setMode(MODE_A);
+        setMode(MODE_APASS);
         setApass(newApass);
     } else {
-        removeMode(MODE_A);
+        removeMode(MODE_APASS);
         setApass(string());
     }
 }
 
 void Channel::onModeU(bool polarity, const string& newUpass) {
     if (polarity) {
-        setMode(MODE_U);
+        setMode(MODE_UPASS);
         setUpass(newUpass);
     } else {
-        removeMode(MODE_U);
+        removeMode(MODE_UPASS);
         setUpass(string());
     }
 }
@@ -432,41 +432,41 @@ const string Channel::getModeString() const {
     string modeString("+");
     string argString;
 
-    if (modes & MODE_T)
+    if (modes & MODE_TOPICLIMIT)
         modeString += 't';
-    if (modes & MODE_N)
+    if (modes & MODE_NOPRIVMSGS)
         modeString += 'n';
-    if (modes & MODE_S)
+    if (modes & MODE_SECRET)
         modeString += 's';
-    if (modes & MODE_P)
+    if (modes & MODE_PRIVATE)
         modeString += 'p';
-    if (modes & MODE_M)
+    if (modes & MODE_MODERATED)
         modeString += 'm';
-    if (modes & MODE_I)
+    if (modes & MODE_INVITEONLY)
         modeString += 'i';
-    if (modes & MODE_R)
+    if (modes & MODE_REGONLY)
         modeString += 'r';
-    if (modes & MODE_REG)
+    if (modes & MODE_REGISTERED)
         modeString += 'R';
-    if (modes & MODE_D)
+    if (modes & MODE_DELJOINS)
         modeString += 'D';
-    if (modes & MODE_C)
+    if (modes & MODE_NOCOLOR)
         modeString += 'c';
-    if (modes & MODE_CTCP)
+    if (modes & MODE_NOCTCP)
         modeString += 'C';
-    if (modes & MODE_PART)
+    if (modes & MODE_NOPARTMSGS)
         modeString += 'u';
-    if (modes & MODE_MNOREG)
+    if (modes & MODE_MODERATENOREG)
         modeString += 'M';
-    if (modes & MODE_Z)
+    if (modes & MODE_TLSONLY)
         modeString += 'Z';
 
-    if (modes & MODE_K) {
+    if (modes & MODE_KEY) {
         modeString += 'k';
         argString += getKey() + ' ';
     }
 
-    if (modes & MODE_L) {
+    if (modes & MODE_LIMIT) {
         modeString += 'l';
 
         // Can't put numerical variables into a string
@@ -476,12 +476,12 @@ const string Channel::getModeString() const {
         argString += s.str();
     }
 
-    if (modes & MODE_A) {
+    if (modes & MODE_APASS) {
         modeString += 'A';
         argString += getApass() + ' ';
     }
 
-    if (modes & MODE_U) {
+    if (modes & MODE_UPASS) {
         modeString += 'U';
         argString += getUpass() + ' ';
     }

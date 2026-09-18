@@ -183,12 +183,12 @@ bool msg_C::Execute(const xParameters& Param) {
 
         // The user who created the channel is automatically +o
         if (creationTime == theChan->getCreationTime()) {
-            setMemberMode(theUser, ChannelUser::MODE_O);
+            setMemberMode(theUser, ChannelUser::MODE_CHANOP);
         }
         if (creationTime < theChan->getCreationTime()) {
             // Need to clean all the channel modes and op the user who created the channel
             removeAllModes(theChan);
-            setMemberMode(theUser, ChannelUser::MODE_O);
+            setMemberMode(theUser, ChannelUser::MODE_CHANOP);
             setCreationTime(theChan, creationTime);
         }
 

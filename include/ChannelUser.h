@@ -48,14 +48,14 @@ class ChannelUser {
     typedef unsigned char modeType;
 
     /// Bit representing channel user mode +o
-    static const modeType MODE_O;
+    static const modeType MODE_CHANOP;
 
     /// Bit representing channel user mode +v
-    static const modeType MODE_V;
+    static const modeType MODE_VOICE;
 
     /**
      * Construct a ChannelUser given an iClient pointer, the modes it
-     * arrives with (MODE_O for the creator of a channel) and whether it
+     * arrives with (MODE_CHANOP for the creator of a channel) and whether it
      * is hidden by a delayed join, which a member with a mode never is.
      */
     ChannelUser(iClient*, modeType initialModes = 0, bool isHidden = false);
@@ -77,13 +77,13 @@ class ChannelUser {
      * Return true if this user has mode +o on this channel,
      * false otherwise.
      */
-    inline bool isModeO() const { return getMode(MODE_O); }
+    inline bool isModeO() const { return getMode(MODE_CHANOP); }
 
     /**
      * Return true if this user has mode +v on this channel,
      * false otherwise.
      */
-    inline bool isModeV() const { return getMode(MODE_V); }
+    inline bool isModeV() const { return getMode(MODE_VOICE); }
 
     /**
      * Retrieve this ChannelUser's current modes in
@@ -210,7 +210,7 @@ class ChannelUser {
     inline void setMode(const modeType& whichMode) {
         modes |= whichMode;
         // Gaining op or voice reveals a delayed-join member
-        if (whichMode & (MODE_O | MODE_V)) {
+        if (whichMode & (MODE_CHANOP | MODE_VOICE)) {
             hidden = false;
         }
     }
@@ -218,12 +218,12 @@ class ChannelUser {
     /**
      * Set the user's mode +o state in this channel.
      */
-    inline void setModeO() { setMode(MODE_O); }
+    inline void setModeO() { setMode(MODE_CHANOP); }
 
     /**
      * Set the user's mode +v state in this channel.
      */
-    inline void setModeV() { return setMode(MODE_V); }
+    inline void setModeV() { return setMode(MODE_VOICE); }
 
     /**
      * Reveal this member: clear the hidden (delayed join) state.
@@ -238,12 +238,12 @@ class ChannelUser {
     /**
      * Remove the user's mode +o state in this channel.
      */
-    inline void removeModeO() { removeMode(MODE_O); }
+    inline void removeModeO() { removeMode(MODE_CHANOP); }
 
     /**
      * Remove the user's mode +v state in this channel.
      */
-    inline void removeModeV() { removeMode(MODE_V); }
+    inline void removeModeV() { removeMode(MODE_VOICE); }
 
     /**
      * The iClient to which this ChannelUser instance is associated.

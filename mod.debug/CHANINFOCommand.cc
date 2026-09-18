@@ -47,19 +47,19 @@ void CHANINFOCommand::Exec(const iClient* theClient, const std::string& Message)
     bot->Notice(theClient, "Created at time: {} ({} ago)", theChan->getCreationTime(),
                 prettyDuration(theChan->getCreationTime()));
 
-    if (theChan->getMode(Channel::MODE_K) || !theChan->getKey().empty()) {
+    if (theChan->getMode(Channel::MODE_KEY) || !theChan->getKey().empty()) {
         bot->Notice(theClient, "Key: {}", theChan->getKey());
     }
 
-    if (theChan->getMode(Channel::MODE_L) || theChan->getLimit() != 0) {
+    if (theChan->getMode(Channel::MODE_LIMIT) || theChan->getLimit() != 0) {
         bot->Notice(theClient, "Limit: {}", theChan->getLimit());
     }
 
-    if (theChan->getMode(Channel::MODE_A) || !theChan->getApass().empty()) {
+    if (theChan->getMode(Channel::MODE_APASS) || !theChan->getApass().empty()) {
         bot->Notice(theClient, "Apass: {}", theChan->getApass());
     }
 
-    if (theChan->getMode(Channel::MODE_U) || !theChan->getUpass().empty()) {
+    if (theChan->getMode(Channel::MODE_UPASS) || !theChan->getUpass().empty()) {
         bot->Notice(theClient, "Upass: {}", theChan->getUpass());
     }
 

@@ -81,58 +81,58 @@ class Channel {
     typedef unsigned int modeType;
 
     /// Bit representing channel mode +t
-    static constexpr modeType MODE_T = 0x00001;
+    static constexpr modeType MODE_TOPICLIMIT = 0x00001;
 
     /// Bit representing channel mode +n
-    static constexpr modeType MODE_N = 0x00002;
+    static constexpr modeType MODE_NOPRIVMSGS = 0x00002;
 
     /// Bit representing channel mode +s
-    static constexpr modeType MODE_S = 0x00004;
+    static constexpr modeType MODE_SECRET = 0x00004;
 
     /// Bit representing channel mode +p
-    static constexpr modeType MODE_P = 0x00008;
+    static constexpr modeType MODE_PRIVATE = 0x00008;
 
     /// Bit representing channel mode +k
-    static constexpr modeType MODE_K = 0x00010;
+    static constexpr modeType MODE_KEY = 0x00010;
 
     /// Bit representing channel mode +l
-    static constexpr modeType MODE_L = 0x00020;
+    static constexpr modeType MODE_LIMIT = 0x00020;
 
     /// Bit representing channel mode +m
-    static constexpr modeType MODE_M = 0x00040;
+    static constexpr modeType MODE_MODERATED = 0x00040;
 
     /// Bit representing channel mode +i
-    static constexpr modeType MODE_I = 0x00080;
+    static constexpr modeType MODE_INVITEONLY = 0x00080;
 
     /// Bit representing channel mode +r
-    static constexpr modeType MODE_R = 0x00100;
+    static constexpr modeType MODE_REGONLY = 0x00100;
 
     /// Bit representing channel mode +R
-    static constexpr modeType MODE_REG = 0x01000;
+    static constexpr modeType MODE_REGISTERED = 0x01000;
 
     /// Bit representing channel mode +D
-    static constexpr modeType MODE_D = 0x00200;
+    static constexpr modeType MODE_DELJOINS = 0x00200;
 
     /// Bit representing channel mode +c
-    static constexpr modeType MODE_C = 0x02000;
+    static constexpr modeType MODE_NOCOLOR = 0x02000;
 
     /// Bit representing channel mode +C
-    static constexpr modeType MODE_CTCP = 0x04000;
+    static constexpr modeType MODE_NOCTCP = 0x04000;
 
     /// Bit representing channel mode +P
-    static constexpr modeType MODE_PART = 0x08000;
+    static constexpr modeType MODE_NOPARTMSGS = 0x08000;
 
     /// Bit representing channel mode +M
-    static constexpr modeType MODE_MNOREG = 0x10000;
+    static constexpr modeType MODE_MODERATENOREG = 0x10000;
 
     /// Bit representing channel mode +A
-    static constexpr modeType MODE_A = 0x00400;
+    static constexpr modeType MODE_APASS = 0x00400;
 
     /// Bit representing channel mode +U
-    static constexpr modeType MODE_U = 0x00800;
+    static constexpr modeType MODE_UPASS = 0x00800;
 
     /// Bit representing channel mode +Z
-    static constexpr modeType MODE_Z = 0x20000;
+    static constexpr modeType MODE_TLSONLY = 0x20000;
 
     /*
      * The channel modes: which letters exist, what argument each takes and
@@ -205,27 +205,27 @@ class Channel {
      * but local to one server; see isLocalOnlyMode().
      */
     static constexpr std::array<ModeInfo, 21> modeTable{{
-        {'s', ModeType::Flag, MODE_S, 10},      // secret
-        {'p', ModeType::Flag, MODE_P, 10},      // private
-        {'m', ModeType::Flag, MODE_M, 10},      // moderated
-        {'t', ModeType::Flag, MODE_T, 10},      // only ops set the topic
-        {'i', ModeType::Flag, MODE_I, 10},      // invite only
-        {'n', ModeType::Flag, MODE_N, 10},      // no messages from outside
-        {'r', ModeType::Flag, MODE_R, 10},      // registered users only
-        {'D', ModeType::Flag, MODE_D, 10},      // delayed joins
-        {'R', ModeType::Flag, MODE_REG, 10},    // registered with services
-        {'c', ModeType::Flag, MODE_C, 10},      // no colours
-        {'C', ModeType::Flag, MODE_CTCP, 10},   // no CTCP
-        {'u', ModeType::Flag, MODE_PART, 11},   // no part messages
-        {'M', ModeType::Flag, MODE_MNOREG, 11}, // moderate unregistered users
-        {'Z', ModeType::Flag, MODE_Z, 11},      // TLS only
-        {'l', ModeType::SetOnly, MODE_L, 10},   // limit: +l <n>, -l
-        {'k', ModeType::Setting, MODE_K, 10},   // key: +k <key>, -k <key>
-        {'A', ModeType::Setting, MODE_A, 10},   // admin pass (ircu OPLEVELS)
-        {'U', ModeType::Setting, MODE_U, 10},   // user pass (ircu OPLEVELS)
-        {'o', ModeType::Prefix, 0, 10},         // op: +o <member>
-        {'v', ModeType::Prefix, 0, 10},         // voice: +v <member>
-        {'b', ModeType::List, 0, 10},           // ban: +b <mask>
+        {'s', ModeType::Flag, MODE_SECRET, 10},        // secret
+        {'p', ModeType::Flag, MODE_PRIVATE, 10},       // private
+        {'m', ModeType::Flag, MODE_MODERATED, 10},     // moderated
+        {'t', ModeType::Flag, MODE_TOPICLIMIT, 10},    // only ops set the topic
+        {'i', ModeType::Flag, MODE_INVITEONLY, 10},    // invite only
+        {'n', ModeType::Flag, MODE_NOPRIVMSGS, 10},    // no messages from outside
+        {'r', ModeType::Flag, MODE_REGONLY, 10},       // registered users only
+        {'D', ModeType::Flag, MODE_DELJOINS, 10},      // delayed joins
+        {'R', ModeType::Flag, MODE_REGISTERED, 10},    // registered with services
+        {'c', ModeType::Flag, MODE_NOCOLOR, 10},       // no colours
+        {'C', ModeType::Flag, MODE_NOCTCP, 10},        // no CTCP
+        {'u', ModeType::Flag, MODE_NOPARTMSGS, 11},    // no part messages
+        {'M', ModeType::Flag, MODE_MODERATENOREG, 11}, // moderate unregistered users
+        {'Z', ModeType::Flag, MODE_TLSONLY, 11},       // TLS only
+        {'l', ModeType::SetOnly, MODE_LIMIT, 10},      // limit: +l <n>, -l
+        {'k', ModeType::Setting, MODE_KEY, 10},        // key: +k <key>, -k <key>
+        {'A', ModeType::Setting, MODE_APASS, 10},      // admin pass (ircu OPLEVELS)
+        {'U', ModeType::Setting, MODE_UPASS, 10},      // user pass (ircu OPLEVELS)
+        {'o', ModeType::Prefix, 0, 10},                // op: +o <member>
+        {'v', ModeType::Prefix, 0, 10},                // voice: +v <member>
+        {'b', ModeType::List, 0, 10},                  // ban: +b <mask>
     }};
 
     /// Look a mode up by its letter.

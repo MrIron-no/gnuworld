@@ -113,7 +113,7 @@ bool OPCommand::Exec(iClient* theClient, const string& Message) {
     ChannelUser* tmpBotUser = tmpChan->findUser(bot->getInstance());
     if (!tmpBotUser)
         return false;
-    if (!tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         bot->Notice(
             theClient,
             bot->getResponse(theUser, language::im_not_opped, "I'm not opped in %s").c_str(),
@@ -191,7 +191,7 @@ bool OPCommand::Exec(iClient* theClient, const string& Message) {
         }
 
         // User is already opped?
-        if (tmpChanUser->getMode(ChannelUser::MODE_O)) {
+        if (tmpChanUser->getMode(ChannelUser::MODE_CHANOP)) {
             bot->Notice(theClient, bot->getResponse(theUser, language::already_opped).c_str(),
                         target->getNickName().c_str(), theChan->getName().c_str());
             continue;

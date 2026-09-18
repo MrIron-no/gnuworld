@@ -158,7 +158,8 @@ bool SCANCommand::Exec(iClient* theClient, const string& Message) {
                      ptr != curClient->channels_end(); ++ptr) {
                     ClientInfo += " ";
                     curChannel = (*ptr)->findUser(const_cast<iClient*>(curClient));
-                    if (((*ptr)->getMode(Channel::MODE_S)) || ((*ptr)->getMode(Channel::MODE_P)))
+                    if (((*ptr)->getMode(Channel::MODE_SECRET)) ||
+                        ((*ptr)->getMode(Channel::MODE_PRIVATE)))
                         ClientInfo += "!";
                     if (curChannel->isModeO()) {
                         ClientInfo += "@";

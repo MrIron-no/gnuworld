@@ -140,11 +140,12 @@ bool WHOISCommand::Exec(iClient* theClient, const string& Message) {
         theChannel = (*ptr);
         theChannelUser = theChannel->findUser(Target);
         tChannel = theChannel->getName();
-        if (theChannelUser->getMode(gnuworld::ChannelUser::MODE_V))
+        if (theChannelUser->getMode(gnuworld::ChannelUser::MODE_VOICE))
             tChannel = "+" + tChannel;
-        if (theChannelUser->getMode(gnuworld::ChannelUser::MODE_O))
+        if (theChannelUser->getMode(gnuworld::ChannelUser::MODE_CHANOP))
             tChannel = "@" + tChannel;
-        if ((theChannel->getMode(Channel::MODE_S)) || (theChannel->getMode(Channel::MODE_P)))
+        if ((theChannel->getMode(Channel::MODE_SECRET)) ||
+            (theChannel->getMode(Channel::MODE_PRIVATE)))
             tChannel = "!" + tChannel;
 
         hasCC = false;

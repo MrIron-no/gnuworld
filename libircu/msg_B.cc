@@ -307,7 +307,8 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         // posted below.
         bool memberHidden = false;
         if (isP11 && 0 == mode_state) {
-            memberHidden = incomingIsNewer ? theChan->getMode(Channel::MODE_D) : bucketHidden;
+            memberHidden =
+                incomingIsNewer ? theChan->getMode(Channel::MODE_DELJOINS) : bucketHidden;
         }
 
         // Find the client in the client table

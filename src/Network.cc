@@ -1314,7 +1314,7 @@ list<const Channel*> xNetwork::getChannelsWithKey(const string& key) const {
     list<const Channel*> retMe;
 
     for (const_channelIterator cptr = channels_begin(); (cptr != channels_end()); cptr++) {
-        if ((cptr->second->getMode(Channel::MODE_K)) && (!match(key, cptr->second->getKey())))
+        if ((cptr->second->getMode(Channel::MODE_KEY)) && (!match(key, cptr->second->getKey())))
             retMe.push_back(cptr->second);
     }
     return retMe;

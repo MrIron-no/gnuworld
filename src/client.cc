@@ -616,7 +616,7 @@ bool xClient::Topic(Channel* theChan, const std::string& newTopic) {
     if (!isOnChannel(theChan)) {
         Join(theChan, string(), 0, true);
         joined = true;
-    } else if (theChan->getMode(Channel::MODE_T)) {
+    } else if (theChan->getMode(Channel::MODE_TOPICLIMIT)) {
         MyUplink->Op(theChan, me);
     }
 
@@ -668,7 +668,7 @@ bool xClient::Kick(Channel* theChan, const string& IP, const string& reason, boo
         assert(meUser != 0);
 
         // Make sure we have ops
-        if (!meUser->getMode(ChannelUser::MODE_O)) {
+        if (!meUser->getMode(ChannelUser::MODE_CHANOP)) {
             // The bot does NOT have ops
             return false;
         }

@@ -1406,7 +1406,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             // A key cannot be set over another: take the old one off first,
             // in the same line.  Asking for the key already set is a no-op.
             if ('k' == change.mode.letter && change.set && theChan != 0 &&
-                theChan->getMode(Channel::MODE_K)) {
+                theChan->getMode(Channel::MODE_KEY)) {
                 if (theChan->getKey() == change.arg) {
                     continue;
                 }
@@ -1568,7 +1568,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
     // Create a new ChannelUser instance for the channel's records
     // Did the xClient request ops in the channel?
     ChannelUser* theChanUser =
-        new (std::nothrow) ChannelUser(theIClient, getOps ? ChannelUser::MODE_O : 0);
+        new (std::nothrow) ChannelUser(theIClient, getOps ? ChannelUser::MODE_CHANOP : 0);
 
     // Make sure the allocation was successful
     assert(theChanUser != 0);
@@ -1710,58 +1710,58 @@ void xServer::removeAllChanModes(Channel* theChan) {
     modeVectorType modeVector;
 
     // This is a protected method, theChan is non-NULL
-    if (theChan->getMode(Channel::MODE_T)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_T));
+    if (theChan->getMode(Channel::MODE_TOPICLIMIT)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_TOPICLIMIT));
     }
-    if (theChan->getMode(Channel::MODE_N)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_N));
+    if (theChan->getMode(Channel::MODE_NOPRIVMSGS)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_NOPRIVMSGS));
     }
-    if (theChan->getMode(Channel::MODE_S)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_S));
+    if (theChan->getMode(Channel::MODE_SECRET)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_SECRET));
     }
-    if (theChan->getMode(Channel::MODE_P)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_P));
+    if (theChan->getMode(Channel::MODE_PRIVATE)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_PRIVATE));
     }
-    if (theChan->getMode(Channel::MODE_M)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_M));
+    if (theChan->getMode(Channel::MODE_MODERATED)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_MODERATED));
     }
-    if (theChan->getMode(Channel::MODE_I)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_I));
+    if (theChan->getMode(Channel::MODE_INVITEONLY)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_INVITEONLY));
     }
-    if (theChan->getMode(Channel::MODE_R)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_R));
+    if (theChan->getMode(Channel::MODE_REGONLY)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_REGONLY));
     }
-    if (theChan->getMode(Channel::MODE_REG)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_REG));
+    if (theChan->getMode(Channel::MODE_REGISTERED)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_REGISTERED));
     }
-    if (theChan->getMode(Channel::MODE_D)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_D));
+    if (theChan->getMode(Channel::MODE_DELJOINS)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_DELJOINS));
     }
-    if (theChan->getMode(Channel::MODE_C)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_C));
+    if (theChan->getMode(Channel::MODE_NOCOLOR)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_NOCOLOR));
     }
-    if (theChan->getMode(Channel::MODE_CTCP)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_CTCP));
+    if (theChan->getMode(Channel::MODE_NOCTCP)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_NOCTCP));
     }
-    if (theChan->getMode(Channel::MODE_PART)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_PART));
+    if (theChan->getMode(Channel::MODE_NOPARTMSGS)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_NOPARTMSGS));
     }
-    if (theChan->getMode(Channel::MODE_MNOREG)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_MNOREG));
+    if (theChan->getMode(Channel::MODE_MODERATENOREG)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_MODERATENOREG));
     }
-    if (theChan->getMode(Channel::MODE_Z)) {
-        modeVector.push_back(make_pair(false, Channel::MODE_Z));
+    if (theChan->getMode(Channel::MODE_TLSONLY)) {
+        modeVector.push_back(make_pair(false, Channel::MODE_TLSONLY));
     }
-    if (theChan->getMode(Channel::MODE_L)) {
+    if (theChan->getMode(Channel::MODE_LIMIT)) {
         OnChannelModeL(theChan, false, 0, 0);
     }
-    if (theChan->getMode(Channel::MODE_K)) {
+    if (theChan->getMode(Channel::MODE_KEY)) {
         OnChannelModeK(theChan, false, 0, string());
     }
-    if (theChan->getMode(Channel::MODE_A)) {
+    if (theChan->getMode(Channel::MODE_APASS)) {
         OnChannelModeA(theChan, false, 0, string());
     }
-    if (theChan->getMode(Channel::MODE_U)) {
+    if (theChan->getMode(Channel::MODE_UPASS)) {
         OnChannelModeU(theChan, false, 0, string());
     }
 
@@ -1774,10 +1774,10 @@ void xServer::removeAllChanModes(Channel* theChan) {
 
     for (Channel::userIterator ptr = theChan->userList_begin(), end = theChan->userList_end();
          ptr != end; ++ptr) {
-        if (ptr->second->getMode(ChannelUser::MODE_O)) {
+        if (ptr->second->getMode(ChannelUser::MODE_CHANOP)) {
             opVector.push_back(opVectorType::value_type(false, ptr->second));
         }
-        if (ptr->second->getMode(ChannelUser::MODE_V)) {
+        if (ptr->second->getMode(ChannelUser::MODE_VOICE)) {
             voiceVector.push_back(voiceVectorType::value_type(false, ptr->second));
         }
     }
@@ -2147,7 +2147,7 @@ bool xServer::Topic(Channel* theChan, const std::string& newTopic, const iClient
     // is not asked.
     if ((from != 0)) {
         const ChannelUser* member = theChan->findUser(from);
-        if (0 == member || (theChan->getMode(Channel::MODE_T) && !member->isModeO())) {
+        if (0 == member || (theChan->getMode(Channel::MODE_TOPICLIMIT) && !member->isModeO())) {
             return false;
         }
     }

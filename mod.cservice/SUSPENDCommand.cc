@@ -125,7 +125,7 @@ bool SUSPENDCommand::Exec(iClient* theClient, const string& Message) {
                 ChannelUser* theChannelUser = (*chItr)->findUser(*cliPtr);
                 sqlChannel* theChan = bot->getChannelRecord((*chItr)->getName());
                 if ((theChan) && (theChan->getFlag(sqlChannel::F_STRICTOP)) &&
-                    (theChannelUser->getMode(ChannelUser::MODE_O))) {
+                    (theChannelUser->getMode(ChannelUser::MODE_CHANOP))) {
                     sqlLevel* tmpLevel = bot->getLevelRecord(targetUser, theChan);
                     if (tmpLevel) {
                         bot->removeLevelCache(tmpLevel);

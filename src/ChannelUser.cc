@@ -29,8 +29,8 @@ namespace gnuworld {
 
 using std::string;
 
-const ChannelUser::modeType ChannelUser::MODE_O = 0x01;
-const ChannelUser::modeType ChannelUser::MODE_V = 0x02;
+const ChannelUser::modeType ChannelUser::MODE_CHANOP = 0x01;
+const ChannelUser::modeType ChannelUser::MODE_VOICE = 0x02;
 // const ChannelUser::modeType ChannelUser::ZOMBIE = 0x04 ;
 
 ChannelUser::ChannelUser(iClient* _theClient, modeType initialModes, bool isHidden)

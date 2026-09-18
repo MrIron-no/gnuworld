@@ -112,7 +112,7 @@ bool BANCommand::Exec(iClient* theClient, const string& Message) {
     ChannelUser* tmpBotUser = theChannel->findUser(bot->getInstance());
     if (!tmpBotUser)
         return false;
-    if (!tmpBotUser->getMode(ChannelUser::MODE_O)) {
+    if (!tmpBotUser->getMode(ChannelUser::MODE_CHANOP)) {
         bot->Notice(
             theClient,
             bot->getResponse(theUser, language::im_not_opped, "I'm not opped in %s").c_str(),

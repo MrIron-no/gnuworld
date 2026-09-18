@@ -45,11 +45,11 @@ std::string formatChannelEntry(Channel* theChannel, const iClient* Target) {
     // Such a member never holds op or voice.
     if (theChannelUser->isHidden())
         tChannel.insert(tChannel.begin(), '<');
-    if (theChannelUser->getMode(ChannelUser::MODE_V))
+    if (theChannelUser->getMode(ChannelUser::MODE_VOICE))
         tChannel.insert(tChannel.begin(), '+');
-    if (theChannelUser->getMode(ChannelUser::MODE_O))
+    if (theChannelUser->getMode(ChannelUser::MODE_CHANOP))
         tChannel.insert(tChannel.begin(), '@');
-    if (theChannel->getMode(Channel::MODE_S) || theChannel->getMode(Channel::MODE_P))
+    if (theChannel->getMode(Channel::MODE_SECRET) || theChannel->getMode(Channel::MODE_PRIVATE))
         tChannel.insert(tChannel.begin(), '!');
 
     std::string curChannel;

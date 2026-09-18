@@ -1762,7 +1762,7 @@ void chanfix::autoFix() {
         bool hasService = false;
 
         // Do not autofix +R channels
-        if (thisChan->getMode(Channel::MODE_REG))
+        if (thisChan->getMode(Channel::MODE_REGISTERED))
             continue;
 
         if (thisChan->size() >= minClients && !isBeingFixed(thisChan)) {
@@ -1830,22 +1830,22 @@ void chanfix::manualFix(Channel* thisChan) {
             MyUplink->setBursting(true);
 
         xServer::modeVectorType modeVector;
-        if (thisChan->getMode(Channel::MODE_I))
-            modeVector.push_back(std::make_pair(false, Channel::MODE_I));
-        if (thisChan->getMode(Channel::MODE_K))
+        if (thisChan->getMode(Channel::MODE_INVITEONLY))
+            modeVector.push_back(std::make_pair(false, Channel::MODE_INVITEONLY));
+        if (thisChan->getMode(Channel::MODE_KEY))
             MyUplink->OnChannelModeK(thisChan, false, 0, std::string());
-        if (thisChan->getMode(Channel::MODE_L))
+        if (thisChan->getMode(Channel::MODE_LIMIT))
             MyUplink->OnChannelModeL(thisChan, false, 0, 0);
-        if (thisChan->getMode(Channel::MODE_R))
-            modeVector.push_back(std::make_pair(false, Channel::MODE_R));
-        if (thisChan->getMode(Channel::MODE_D))
-            modeVector.push_back(std::make_pair(false, Channel::MODE_D));
+        if (thisChan->getMode(Channel::MODE_REGONLY))
+            modeVector.push_back(std::make_pair(false, Channel::MODE_REGONLY));
+        if (thisChan->getMode(Channel::MODE_DELJOINS))
+            modeVector.push_back(std::make_pair(false, Channel::MODE_DELJOINS));
         /* Due to a bug in .11, we need to set at least one mode. */
         if (version < 12) {
-            if (!thisChan->getMode(Channel::MODE_N))
-                modeVector.push_back(std::make_pair(true, Channel::MODE_N));
-            if (!thisChan->getMode(Channel::MODE_T))
-                modeVector.push_back(std::make_pair(true, Channel::MODE_T));
+            if (!thisChan->getMode(Channel::MODE_NOPRIVMSGS))
+                modeVector.push_back(std::make_pair(true, Channel::MODE_NOPRIVMSGS));
+            if (!thisChan->getMode(Channel::MODE_TOPICLIMIT))
+                modeVector.push_back(std::make_pair(true, Channel::MODE_TOPICLIMIT));
         }
         if (!modeVector.empty())
             MyUplink->OnChannelMode(thisChan, 0, modeVector);
@@ -1992,15 +1992,15 @@ bool chanfix::simFix(sqlChannel* sqlChan, bool autofix, time_t c_Time, iClient* 
     std::stringstream chanStatus;
     std::stringstream chanModes;
 
-    if (netChan->getMode(Channel::MODE_I))
+    if (netChan->getMode(Channel::MODE_INVITEONLY))
         chanModes << "i";
-    if (netChan->getMode(Channel::MODE_K))
+    if (netChan->getMode(Channel::MODE_KEY))
         chanModes << "k";
-    if (netChan->getMode(Channel::MODE_L))
+    if (netChan->getMode(Channel::MODE_LIMIT))
         chanModes << "l";
-    if (netChan->getMode(Channel::MODE_R))
+    if (netChan->getMode(Channel::MODE_REGONLY))
         chanModes << "r";
-    if (netChan->getMode(Channel::MODE_D))
+    if (netChan->getMode(Channel::MODE_DELJOINS))
         chanModes << "d";
 
     chanStatus << "* Channel Status for " << netChan->getName() << ": " << netChan->banList_size()
@@ -2012,9 +2012,10 @@ bool chanfix::simFix(sqlChannel* sqlChan, bool autofix, time_t c_Time, iClient* 
         (!autofix || !(numClientsToOp + currentOps))) {
         if (autofix && !sqlChan->getSimModesRemoved()) {
 
-            if (netChan->banList_size() || netChan->getMode(Channel::MODE_I) ||
-                netChan->getMode(Channel::MODE_K) || netChan->getMode(Channel::MODE_L) ||
-                netChan->getMode(Channel::MODE_R) || netChan->getMode(Channel::MODE_D)) {
+            if (netChan->banList_size() || netChan->getMode(Channel::MODE_INVITEONLY) ||
+                netChan->getMode(Channel::MODE_KEY) || netChan->getMode(Channel::MODE_LIMIT) ||
+                netChan->getMode(Channel::MODE_REGONLY) ||
+                netChan->getMode(Channel::MODE_DELJOINS)) {
 
                 sqlChan->setSimModesRemoved(true);
                 SendTo(theClient,
@@ -2489,9 +2490,9 @@ bool chanfix::needsModesRemoved(Channel* theChan) {
      * to see if it matches a high scored hostmask) but this will do
      * for now.
      */
-    if (theChan->banList_size() || theChan->getMode(Channel::MODE_I) ||
-        theChan->getMode(Channel::MODE_K) || theChan->getMode(Channel::MODE_L) ||
-        theChan->getMode(Channel::MODE_R) || theChan->getMode(Channel::MODE_D))
+    if (theChan->banList_size() || theChan->getMode(Channel::MODE_INVITEONLY) ||
+        theChan->getMode(Channel::MODE_KEY) || theChan->getMode(Channel::MODE_LIMIT) ||
+        theChan->getMode(Channel::MODE_REGONLY) || theChan->getMode(Channel::MODE_DELJOINS))
         return true;
 
     return false;

@@ -196,7 +196,7 @@ void testParseValid() {
 
     // The typed record carries the table entry, not just a letter
     parsed = parseArgs("+R", {});
-    CHECK(parsed.changes.size() == 1 && parsed.changes[0].mode.flag == Channel::MODE_REG);
+    CHECK(parsed.changes.size() == 1 && parsed.changes[0].mode.flag == Channel::MODE_REGISTERED);
     CHECK(parsed.changes[0] == (Change{true, *find('R'), ""}));
 }
 
