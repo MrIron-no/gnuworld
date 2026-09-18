@@ -341,6 +341,38 @@ LogField field(const std::string& key, const LogValue& value, bool displayOnly =
     return LogField{key, value, displayOnly};
 }
 
+/// The text with every SGR sequence a formatter writes removed: ESC '[', then
+/// digits and semicolons, then 'm'.  Any ESC byte left over came from a field.
+std::string stripSgr(std::string_view text) {
+    std::string out;
+
+    for (std::size_t i = 0; i < text.size();) {
+        if ('\x1b' == text[i] && i + 1 < text.size() && '[' == text[i + 1]) {
+            std::size_t end = i + 2;
+            while (end < text.size() && (isDigit(text[end]) || ';' == text[end]))
+                ++end;
+            if (end < text.size() && 'm' == text[end]) {
+                i = end + 1;
+                continue;
+            }
+        }
+        out += text[i];
+        ++i;
+    }
+
+    return out;
+}
+
+/// How many lines a piece of text has
+std::size_t lineCount(std::string_view text) {
+    std::size_t lines = 1;
+    for (const char c : text)
+        if ('\n' == c)
+            ++lines;
+
+    return lines;
+}
+
 /// 2026-09-18 12:34:56.789 local time, so that the time column is known
 std::chrono::system_clock::time_point fixedTime() {
     std::tm broken{};
@@ -633,6 +665,88 @@ void testTextColourName() {
     CHECK(rootLine.find("\x1b[34mroot\x1b[0m        ") != std::string::npos);
 }
 
+/// A module and its sub-loggers share one hue, whatever the column cut away:
+/// the palette index is taken from the first segment of the name itself, not
+/// of the string that is printed
+void testTextColourNameTruncated() {
+    const TextStyle style{false, true, true, 20};
+
+    // "dronescan" hashes to palette entry 3 (32) and has no '.', so none of it
+    // is dim
+    const LogRecord module = makeRecord(DEBUG, "dronescan", "", "m");
+    const std::string moduleLine = formatText(module, style);
+    CHECK(moduleLine.find("\x1b[32mdronescan\x1b[0m           ") != std::string::npos);
+    CHECK(moduleLine.find("\x1b[2;") == std::string::npos);
+
+    // The sub-logger is 34 characters, so the column shows its last 19 behind
+    // a '~'.  The first '.' of the name was cut away, so the whole column is
+    // dim -- and the hue is still the module's own.
+    const std::string sub = "dronescan.spam.action.verylongname";
+    CHECK(sub.size() == 34);
+
+    const LogRecord subRecord = makeRecord(DEBUG, sub, "", "m");
+    const std::string subLine = formatText(subRecord, style);
+    CHECK(subLine.find("\x1b[2;32m~action.verylongname\x1b[0m  m") != std::string::npos);
+    // Nothing is in the bright colour: there is no normal part at all
+    CHECK(subLine.find("\x1b[32m~") == std::string::npos);
+
+    // A first '.' that survives the cut still splits the column: everything
+    // from it on is dim, the '~' and the characters before it are not
+    const LogRecord kept = makeRecord(DEBUG, "cservice.sqlx1", "", "m");
+    const std::string keptLine = formatText(kept, TextStyle{false, true, true, 13});
+    CHECK(keptLine.find("\x1b[36m~ervice\x1b[2;36m.sqlx1\x1b[0m  m") != std::string::npos);
+
+    // A truncated name without any '.' has nothing dim
+    const LogRecord flat = makeRecord(TRACE, "abcdefghijklmnopqrstuvwxyz1234", "", "m");
+    const std::string flatLine = formatText(flat, style);
+    CHECK(flatLine.find("\x1b[35m~lmnopqrstuvwxyz1234\x1b[0m  m") != std::string::npos);
+    CHECK(flatLine.find("\x1b[2;") == std::string::npos);
+}
+
+/// A name that carries a colour sequence of its own, and a function that
+/// carries a bare ESC and a newline.  The ESC is kept away from the "bar" by
+/// the concatenation: "\x1bb" would read as one hex escape.
+const std::string dirtyLogger = "cser\x1b[31mvice";
+const std::string dirtyFunction = std::string("Foo::\x1b") + "bar\n";
+
+/// The logger name and the function are cleaned exactly like the message: a
+/// control byte in either of them cannot reach the terminal
+void testTextFieldControlCharacters() {
+    const LogRecord record = makeRecord(WARN, dirtyLogger, dirtyFunction, "first\nsecond");
+
+    const std::string bare = formatText(record, plainStyle(20));
+    CHECK(bare.find('\x1b') == std::string::npos);
+    CHECK(bare.find("cser\\x1b[31mvice") != std::string::npos);
+    CHECK(bare.find("(Foo::\\x1bbar\\x0a)") != std::string::npos);
+    CHECK(lineCount(bare) == lineCount(record.message));
+
+    // With colour on, the only ESC bytes left are the formatter's own
+    const std::string painted = formatText(record, TextStyle{false, true, true, 20});
+    CHECK(stripSgr(painted).find('\x1b') == std::string::npos);
+    CHECK(painted.find("cser\\x1b[31mvice") != std::string::npos);
+    CHECK(painted.find("Foo::\\x1bbar\\x0a") != std::string::npos);
+    CHECK(lineCount(painted) == lineCount(record.message));
+}
+
+/// The IRC notice drops the control bytes of the name and of the function, so
+/// that neither can forge the sink's own colour or bold codes
+void testIrcFieldControlCharacters() {
+    const LogRecord record = makeRecord(WARN, dirtyLogger, dirtyFunction, "watch out");
+    const std::string line = formatIrcLine(record, "watch out", {}, false);
+
+    CHECK_EQ(line, "\00307[cser[31mvice] [W] Foo::bar> watch out\003");
+
+    for (const char c : line) {
+        const unsigned char byte = static_cast<unsigned char>(c);
+        CHECK(byte >= 0x20 || '\002' == c || '\003' == c);
+        CHECK(0x7f != byte);
+    }
+
+    // A function that is nothing but control bytes adds no prefix
+    const LogRecord noFunction = makeRecord(ERROR, "core", "\x1b\002\x7f", "gone");
+    CHECK_EQ(formatIrcLine(noFunction, "gone", {}, false), "\00304[core] [E] gone\003");
+}
+
 /* ------------------------------------------------------------------ *
  * splitLines and IRC
  * ------------------------------------------------------------------ */
@@ -752,9 +866,12 @@ int main() {
     testTextColour();
     testTextColourLevels();
     testTextColourName();
+    testTextColourNameTruncated();
+    testTextFieldControlCharacters();
     testSplitLines();
     testIrcLine();
     testIrcMultipleLines();
+    testIrcFieldControlCharacters();
     testParseFunction();
 
     if (failures != 0) {

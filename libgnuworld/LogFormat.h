@@ -73,7 +73,14 @@ struct TextStyle {
  *
  * Every C0 control character of the message other than the newline, and
  * 0x7f, is written as "\xNN", so that a field value cannot move the cursor
- * or set a colour of its own.
+ * or set a colour of its own.  The name and the function are cleaned the same
+ * way before they are cut, padded and coloured, the newline included: those
+ * two columns hold one line each.
+ *
+ * In colour, the name takes its palette entry from the first segment of the
+ * logger's own name, so that a module and all of its sub-loggers share a hue
+ * however much the column had to cut away; the printed text at or after the
+ * first '.' of that name is additionally dim.
  */
 std::string formatText(const LogRecord&, const TextStyle&);
 
@@ -97,7 +104,9 @@ std::vector<std::pair<std::string, std::vector<LogSpan>>> splitLines(const LogRe
  * wrapped in the bold control character.
  *
  * The line and its spans are what splitLines() returned, so the line carries
- * no control character of its own.
+ * no control character of its own.  Every control character and 0x7f of the
+ * name and of the function is removed here for the same reason; a function
+ * that is empty once cleaned gets no prefix.
  */
 std::string formatIrcLine(const LogRecord&, std::string_view line,
                           const std::vector<LogSpan>& lineSpans, bool highlight);

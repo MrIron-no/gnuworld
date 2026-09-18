@@ -227,6 +227,43 @@ std::string wrapSpans(std::string_view text, const std::vector<LogSpan>& spans,
     return out;
 }
 
+/// Writes every C0 control character, the newline included, and 0x7f, as
+/// "\xNN".  The name and the function are single-line columns, so a newline
+/// has no meaning of its own there and is escaped along with the rest.
+std::string escapeField(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+
+    for (const char ch : text) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (c >= 0x20 && 0x7f != c) {
+            out += static_cast<char>(c);
+            continue;
+        }
+
+        out += "\\x";
+        out += hexDigits[(c >> 4) & 0x0f];
+        out += hexDigits[c & 0x0f];
+    }
+
+    return out;
+}
+
+/// The text with every C0 control character and 0x7f dropped, so that a name
+/// or a function cannot forge the colour and bold codes an IRC sink writes
+std::string stripControls(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+
+    for (const char ch : text) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (c >= 0x20 && 0x7f != c)
+            out += static_cast<char>(c);
+    }
+
+    return out;
+}
+
 /// The name as the column shows it: a name longer than the column keeps its
 /// last width - 1 characters behind a '~'
 std::string truncateName(const std::string& name, std::size_t width) {
@@ -236,7 +273,9 @@ std::string truncateName(const std::string& name, std::size_t width) {
     return "~" + name.substr(name.size() - (width - 1));
 }
 
-/// The colour of a name, from the bytes of the segment before its first '.'
+/// The colour of a name, from the bytes of the segment before its first '.'.
+/// It is taken from the whole name, never from the truncated column, so that a
+/// module and all of its sub-loggers share one hue.
 int nameColour(const std::string& name) {
     unsigned int sum = 0;
     for (const char c : std::string_view(name).substr(0, name.find('.')))
@@ -245,16 +284,41 @@ int nameColour(const std::string& name) {
     return namePalette[sum % 6];
 }
 
-/// The name in its colour, the part from the first '.' on additionally dim
-std::string colourName(const std::string& name) {
+/// Where the dim part of the printed column begins, or npos when none of it is
+/// dim.  Dim is whatever printed text lies at or after the first '.' of the
+/// name itself: a name without a '.' has no dim part, and a truncation that
+/// cut the first '.' away leaves the whole column -- the '~' included -- dim.
+std::size_t dimStart(const std::string& name, const std::string& printed) {
     const std::size_t dot = name.find('.');
-    const int colour = nameColour(name);
+    if (std::string::npos == dot)
+        return std::string::npos;
+    if (printed.size() == name.size())
+        return dot; // the column shows the name itself
 
-    std::string out = std::format("\x1b[{}m", colour);
-    out += name.substr(0, dot);
-    if (dot != std::string::npos) {
+    // printed is '~' followed by the last printed.size() - 1 characters
+    const std::size_t cut = name.size() - (printed.size() - 1);
+
+    return (dot < cut) ? 0 : 1 + (dot - cut);
+}
+
+/// The printed column in the colour of its module, the part that belongs to a
+/// sub-logger additionally dim
+std::string colourName(const std::string& name, const std::string& printed) {
+    const int colour = nameColour(name);
+    const std::size_t dim = dimStart(name, printed);
+
+    const std::string_view normalPart = std::string_view(printed).substr(0, dim);
+    const std::string_view dimPart =
+        (std::string::npos == dim) ? std::string_view() : std::string_view(printed).substr(dim);
+
+    std::string out;
+    if (!normalPart.empty()) {
+        out += std::format("\x1b[{}m", colour);
+        out += normalPart;
+    }
+    if (!dimPart.empty()) {
         out += std::format("\x1b[2;{}m", colour);
-        out += name.substr(dot);
+        out += dimPart;
     }
     out += ansiReset;
 
@@ -344,7 +408,11 @@ std::string formatJson(const LogRecord& record) {
 std::string formatText(const LogRecord& record, const TextStyle& style) {
     const std::string time = formatTime(record.time, style.fullDate);
     const std::string level = levelColumn(record.level);
-    const std::string name = truncateName(displayName(record.logger), style.nameWidth);
+
+    // The name is cleaned before it is cut, padded, hashed and coloured: the
+    // hue belongs to the logger, not to whatever fits in the column
+    const std::string logger = escapeField(displayName(record.logger));
+    const std::string name = truncateName(logger, style.nameWidth);
     const std::size_t nameColumn = std::max(name.size(), style.nameWidth);
 
     std::string out;
@@ -358,7 +426,7 @@ std::string formatText(const LogRecord& record, const TextStyle& style) {
         out += ansiReset;
     out += "  ";
 
-    out += style.colour ? colourName(name) : name;
+    out += style.colour ? colourName(logger, name) : name;
     out.append(nameColumn - name.size(), ' '); // the padding follows the reset
     out += "  ";
 
@@ -366,17 +434,19 @@ std::string formatText(const LogRecord& record, const TextStyle& style) {
 
     // The function follows the last line of the message, and is left out at
     // INFO, where the sentence speaks for itself
+    const std::string function = escapeField(record.function);
+
     std::string suffix;
-    if (INFO != record.level && !record.function.empty()) {
+    if (INFO != record.level && !function.empty()) {
         suffix = "  ";
         if (style.colour) {
             suffix += "\x1b[2m(";
-            suffix += record.function;
+            suffix += function;
             suffix += ')';
             suffix += ansiReset;
         } else {
             suffix += '(';
-            suffix += record.function;
+            suffix += function;
             suffix += ')';
         }
     }
@@ -471,18 +541,22 @@ std::string formatIrcLine(const LogRecord& record, std::string_view line,
                           const std::vector<LogSpan>& lineSpans, bool highlight) {
     const char* const colour = ircColour(record.level);
 
+    // The name and the function are cleaned like the message was: nothing of
+    // theirs may look like the colour or bold code this notice writes itself
+    const std::string function = stripControls(record.function);
+
     std::string out;
     out.reserve(line.size() + 32);
 
     out += colour;
     out += '[';
-    out += displayName(record.logger);
+    out += stripControls(displayName(record.logger));
     out += "] ";
     out += levelTag(record.level);
     out += ' ';
 
-    if (INFO != record.level && !record.function.empty()) {
-        out += record.function;
+    if (INFO != record.level && !function.empty()) {
+        out += function;
         out += "> ";
     }
 
