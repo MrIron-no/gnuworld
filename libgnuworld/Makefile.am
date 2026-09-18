@@ -11,6 +11,7 @@ libgnuworld_la_SOURCES = \
 	libgnuworld/ELog.cc \
 	libgnuworld/LogFormat.cc \
 	libgnuworld/LogRender.cc \
+	libgnuworld/LogSinks.cc \
 	libgnuworld/Signal.cc \
 	libgnuworld/StringTokenizer.cc \
 	libgnuworld/gThread.cc \
@@ -41,6 +42,8 @@ EXTRA_DIST += \
 	libgnuworld/LogFormat.h \
 	libgnuworld/LogRecord.h \
 	libgnuworld/LogRender.h \
+	libgnuworld/LogSink.h \
+	libgnuworld/LogSinks.h \
 	libgnuworld/MigrationChecker.h \
 	libgnuworld/gThread.h \
 	libgnuworld/ircd_chattr.h \
