@@ -64,6 +64,8 @@ async def test_a_killed_clone_is_forgotten(cloner_linked):
         return len(clones) == 2
 
     await hub.wait_for(is_clone, timeout=20.0, after=after)
+    # The module's replies are std::format strings: a count comes out as one
+    assert any(l.endswith(f"{cloner} O {oper} :Queuing 2 Clones") for l in map(strip_msg_tags, hub.received[after:]))
 
     # The network kills the first
     await hub.send_raw(f"{hub.server_numnick} D {clones[0]} hub.testnet!oper :(bye)")

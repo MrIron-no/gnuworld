@@ -222,7 +222,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
 
     if (command == "SHOWCOMMANDS") {
         if (st.size() < 1) {
-            Notice(theClient, "Usage: %s", command.c_str());
+            Notice(theClient, "Usage: {}", command);
             return;
         }
         if (st.size() >= 1) {
@@ -234,19 +234,19 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         }
     } else if (command == "HELP") {
         if (st.size() < 1) {
-            Notice(theClient, "Usage: %s <topic>", command.c_str());
+            Notice(theClient, "Usage: {} <topic>", command);
             return;
         }
 
         if (topic == "SHOWCOMMANDS") {
-            Notice(theClient, "%s - Shows a list of all commands", topic.c_str());
+            Notice(theClient, "{} - Shows a list of all commands", topic);
         } else if (topic == "HELP") {
-            Notice(theClient, "%s <topic> - Gives help on a topic", topic.c_str());
+            Notice(theClient, "{} <topic> - Gives help on a topic", topic);
         } else if (topic == "LOADCLONES") {
             Notice(theClient,
-                   "%s <# of clones> [-iorkx] - Queue creation "
+                   "{} <# of clones> [-iorkx] - Queue creation "
                    "  of clone(s)",
-                   topic.c_str());
+                   topic);
             Notice(theClient, "-i: the clones will be unidented (~)");
             Notice(theClient, "-o: the clones will be IRC operators");
             Notice(theClient, "-k: the clones will be network services");
@@ -254,49 +254,49 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             Notice(theClient, "-x: the clones will be +x (hidden host)");
         } else if (topic == "CYCLE") {
             Notice(theClient,
-                   "%s <OFF | time:pst> - Cycling (quitting and reconnecting) "
+                   "{} <OFF | time:pst> - Cycling (quitting and reconnecting) "
                    "  of clone(s)",
-                   topic.c_str());
+                   topic);
             Notice(theClient, "time: the number of seconds to run a cycle");
             Notice(theClient, "pst : the percentage of clones to be cycled");
         } else if (topic == "JOIN") {
             Notice(theClient,
-                   "%s <#channel> [# of clones] [-d # of clones per second]- Make clones "
+                   "{} <#channel> [# of clones] [-d # of clones per second]- Make clones "
                    "/join a #channel. If # is not specified, all loaded clones will /join.",
-                   topic.c_str());
+                   topic);
         } else if (topic == "PART") {
             Notice(theClient,
-                   "%s <#channel> [# of clones] [reason] - Make "
+                   "{} <#channel> [# of clones] [reason] - Make "
                    "clones /part a #channel with an optional "
                    "reason. If # is not specified, all loaded clones will /part.",
-                   topic.c_str());
+                   topic);
         } else if (topic == "KILLALL" || topic == "QUITALL") {
             Notice(theClient,
-                   "%s [reason] - Make all "
+                   "{} [reason] - Make all "
                    "clones /quit with an optional reason",
-                   topic.c_str());
+                   topic);
         } else if (topic == "SAYALL" || topic == "MSGALL") {
             Notice(theClient,
-                   "%s <#channel/nickname> "
+                   "{} <#channel/nickname> "
                    "<message> - Make all clones /msg a #channel or "
                    "nickname",
-                   topic.c_str());
+                   topic);
         } else if (topic == "ACTALL" || topic == "DOALL" || topic == "DESCRIBEALL") {
             Notice(theClient,
-                   "%s <#channel/nickname> <action> - "
+                   "{} <#channel/nickname> <action> - "
                    "Make all clones /me a channel or nickname",
-                   topic.c_str());
+                   topic);
         } else if (topic == "NOTICEALL") {
             Notice(theClient,
-                   "%s <#channel/nickname> "
+                   "{} <#channel/nickname> "
                    "<notice> - Make all clones /notice a #channel "
                    "or nickname",
-                   topic.c_str());
+                   topic);
         }
     } // "HELP"
     else if (command == "LOADCLONES") {
         if (st.size() < 2) {
-            Notice(theClient, "Usage: %s <# of clones> [-iorkx]", command.c_str());
+            Notice(theClient, "Usage: {} <# of clones> [-iorkx]", command);
             return;
         }
 
@@ -348,11 +348,11 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             cloneQueue.push_back(settings);
         }
 
-        Notice(theClient, "Queuing %d Clones", numClones);
+        Notice(theClient, "Queuing {} Clones", numClones);
     } // "LOADCLONES"
     else if (command == "CYCLE") {
         if (st.size() < 2) {
-            Notice(theClient, "Usage: %s <OFF | time:pct>", command.c_str());
+            Notice(theClient, "Usage: {} <OFF | time:pct>", command);
             return;
         }
 
@@ -372,7 +372,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
 
         StringTokenizer st2(st[1], ':');
         if (st2.size() != 2) {
-            Notice(theClient, "Usage: %s <OFF | time:pct>", command.c_str());
+            Notice(theClient, "Usage: {} <OFF | time:pct>", command);
             return;
         }
 
@@ -398,12 +398,12 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         cyclePercentage = tempPst;
         cycleRun = true;
         cycleCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + cycleTime, this, 0);
-        Notice(theClient, "Cycle set to %d:%f", cycleTime, cyclePercentage);
+        Notice(theClient, "Cycle set to {}:{:f}", cycleTime, cyclePercentage);
         return;
     } else if (command == "JOIN") {
         if (st.size() < 2) {
-            Notice(theClient, "Usage: %s <#channel> [# of clones] [-d # of clones per second]",
-                   command.c_str());
+            Notice(theClient, "Usage: {} <#channel> [# of clones] [-d # of clones per second]",
+                   command);
             return;
         }
 
@@ -452,19 +452,19 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             joinCloneCount = static_cast<size_t>(clonesTotal);
             delayJoinTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, 0);
 
-            Notice(theClient, "Queuing %i clones per second (%i in total).", delayCount,
+            Notice(theClient, "Queuing {} clones per second ({} in total).", delayCount,
                    clonesTotal);
             return;
         }
 
         /* Regular join. */
         size_t res = joinClone(clonesTotal, theChan);
-        Notice(theClient, "Done. %i clones joined.", res);
+        Notice(theClient, "Done. {} clones joined.", res);
 
     } // JOINALL
     else if (command == "PART") {
         if (st.size() < 2) {
-            Notice(theClient, "Usage: %s <#channel> [# of clones] [reason]", command.c_str());
+            Notice(theClient, "Usage: {} <#channel> [# of clones] [reason]", command);
             return;
         }
 
@@ -496,12 +496,12 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             partReason = st.assemble(2);
 
         size_t res = partClone(noClones, theChan, partReason);
-        Notice(theClient, "Done. %i clones parted.", res);
+        Notice(theClient, "Done. {} clones parted.", res);
 
     } // PARTALL
     else if (command == "KILLALL" || command == "QUITALL") {
         if (st.size() < 1) {
-            Notice(theClient, "Usage: %s [reason]", command.c_str());
+            Notice(theClient, "Usage: {} [reason]", command);
             return;
         }
 
@@ -511,17 +511,17 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         }
 
         size_t res = quitClone(clones.size(), quitMsg);
-        Notice(theClient, "Done. %i clones have been killed.", res);
+        Notice(theClient, "Done. {} clones have been killed.", res);
 
     } // KILLALL/QUITALL
     else if (command == "QUIT") {
         if (st.size() < 2) {
-            Notice(theClient, "Usage: %s <#> [reason]", command.c_str());
+            Notice(theClient, "Usage: {} <#> [reason]", command);
             return;
         }
 
         if (!IsNumeric(st[1])) {
-            Notice(theClient, "Usage: %s <#> [reason]", command.c_str());
+            Notice(theClient, "Usage: {} <#> [reason]", command);
             return;
         }
 
@@ -537,12 +537,12 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         }
 
         size_t res = quitClone(numClones, quitMsg);
-        Notice(theClient, "Done. %i clones have been killed.", res);
+        Notice(theClient, "Done. {} clones have been killed.", res);
 
     } // QUIT
     else if (command == "SAYALL" || command == "MSGALL") {
         if (st.size() < 3) {
-            Notice(theClient, "Usage: %s <#channel/nickname> <message>", command.c_str());
+            Notice(theClient, "Usage: {} <#channel/nickname> <message>", command);
             return;
         }
 
@@ -553,7 +553,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
     } // SAYALL/MSGALL
     else if (command == "ACTALL" || command == "DOALL" || command == "DESCRIBEALL") {
         if (st.size() < 3) {
-            Notice(theClient, "Usage: %s <#channel/nickname> <action>", command.c_str());
+            Notice(theClient, "Usage: {} <#channel/nickname> <action>", command);
             return;
         }
 
@@ -564,7 +564,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
     } // ACTALL/DOALL/DESCRIBEALL
     else if (command == "NOTICEALL") {
         if (st.size() < 3) {
-            Notice(theClient, "Usage: %s <#channel/nickname> <notice>", command.c_str());
+            Notice(theClient, "Usage: {} <#channel/nickname> <notice>", command);
             return;
         }
 
@@ -582,13 +582,13 @@ void cloner::allClonesSay(iClient* theClient, const string& chanOrNickName, cons
     if ('#' == chanOrNickName[0]) {
         targetChan = Network->findChannel(chanOrNickName);
         if (nullptr == targetChan) {
-            Notice(theClient, "Unable to find channel: %s", chanOrNickName.c_str());
+            Notice(theClient, "Unable to find channel: {}", chanOrNickName);
             return;
         }
     } else { // Assume nickname
         targetClient = Network->findNick(chanOrNickName);
         if (nullptr == targetClient) {
-            Notice(theClient, "Unable to find nick: %s", chanOrNickName.c_str());
+            Notice(theClient, "Unable to find nick: {}", chanOrNickName);
             return;
         }
     }
