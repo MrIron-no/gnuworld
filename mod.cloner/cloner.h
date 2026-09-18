@@ -50,6 +50,9 @@ class cloner : public xClient {
     virtual void OnConnect();
     virtual void OnDetach(const string&);
     virtual void OnTimer(const xServer::timerID&, void*);
+
+    /// A clone that the network kills is gone: forget it.
+    virtual void OnEvent(const eventType&, void* = NULL, void* = NULL, void* = NULL, void* = NULL);
     virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false);
 
   private:
