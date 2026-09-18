@@ -86,7 +86,7 @@ bool msg_RV::Execute(const xParameters& Param) {
     }
 
     // Idempotent: the member may already be visible, or may have left.
-    theChan->revealUser(theClient);
+    revealUser(theChan, theClient);
 
     return true;
 }

@@ -111,7 +111,7 @@ bool msg_L::Execute(const xParameters& Param) {
 
         // Remove and deallocate the ChannelUser instance from this
         // channel's ChannelUser structure.
-        ChannelUser* theChanUser = theChan->removeUser(theClient);
+        ChannelUser* theChanUser = removeUser(theChan, theClient);
         if (NULL == theChanUser) {
             // This can happen if the user is a zombie
             // Since atm GNUWorld ignores zombies, just ignore

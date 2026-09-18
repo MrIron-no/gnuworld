@@ -386,72 +386,6 @@ class Channel {
     bool getUserMode(const ChannelUser::modeType& whichMode, iClient*) const;
 
     /**
-     * Remove the given mode from the ChannelUser associated with
-     * the given iClient.
-     */
-    bool removeUserMode(const ChannelUser::modeType& whichMode, iClient*);
-
-    /**
-     * Set the given mode for the ChannelUser associated with the
-     * given iClient.
-     */
-    bool setUserMode(const ChannelUser::modeType& whichMode, iClient*);
-
-    /**
-     * Set a limit on the channel.  This method will set the
-     * channel mode and set the limit.
-     */
-    inline void setLimit(const unsigned int& newLimit) { limit = newLimit; }
-
-    /**
-     * Set a key on the channel.  This method will set the
-     * channel mode and the key as well.
-     */
-    inline void setKey(const std::string& newKey) { key = newKey; }
-
-    /**
-     * Set an Apass on the channel.  This method will set the
-     * channel mode and the Apass as well.
-     */
-    inline void setApass(const std::string& newApass) { Apass = newApass; }
-
-    /**
-     * Set an Upass on the channel.  This method will set the
-     * channel mode and the Upass as well.
-     */
-    inline void setUpass(const std::string& newUpass) { Upass = newUpass; }
-
-    /**
-     * Reveal a delayed-join (hidden) member, if the given client is on
-     * this channel and hidden.  Returns true if the member was hidden.
-     */
-    bool revealUser(const iClient* theClient);
-
-    /**
-     * Add a ban to this Channel's ban list.
-     */
-    void setBan(const std::string& banMask);
-
-    /**
-     * Remove a ban from this channel's ban list.  This does a lexical
-     * comparison, not a wildcard match.
-     * Returns true if ban found (and removed), false if not
-     * found.
-     */
-    bool removeBan(const std::string& banMask);
-
-    /**
-     * Remove all the bans in the channels ban list.
-     */
-    inline void removeAllBans() { banList.clear(); }
-
-    /**
-     * Remove all channel modes on users and the channel itself.
-     * Use with caution.
-     */
-    void removeAllModes();
-
-    /**
      * Find a ban in the channel's ban list which lexically matches
      * the given banMask.
      */
@@ -501,12 +435,6 @@ class Channel {
      * Retrieve the creation time of this channel.
      */
     inline const time_t& getCreationTime() const { return creationTime; }
-
-    /**
-     * Set the creation time of this channel.  This is protected
-     * so that only class xServer may access it externally.
-     */
-    inline virtual void setCreationTime(const time_t& newCT) { creationTime = newCT; }
 
     /**
      * Retrieve this channel's key.  Note that the
@@ -606,6 +534,125 @@ class Channel {
     inline const_userIterator userList_end() const { return userList.end(); }
 
     /**
+     * Return the ChannelUser associated with the given iClient,
+     * NULL if not found.
+     */
+    ChannelUser* findUser(const iClient* theClient) const;
+
+#ifdef TOPIC_TRACK
+
+    /**
+     * Returns the channel topic (if TOPIC_TRACK is defined)
+     */
+    const std::string& getTopic() const { return topic; }
+
+    const std::string& getTopicWhoSet() const { return topic_whoset; }
+
+    const long& getTopicTS() const { return topic_ts; }
+
+#endif
+
+    /**
+     * Convenience operator for outputting Channel information
+     * to a C++ output stream.
+     */
+    friend ELog& operator<<(ELog& out, const Channel& rhs) {
+        out << "Name: " << rhs.name << ", creation time: " << rhs.creationTime;
+        return out;
+    }
+
+    /**
+     * Return a level 2 ban for the given user.
+     */
+    static std::string createBan(const iClient*);
+
+  protected:
+    /*
+     * What follows changes what gnuworld believes about the channel, and
+     * nothing else: the network is not told and no module is notified.
+     * That is why none of it is public.  A module changes a channel with the
+     * methods of xServer and of its xClient: Mode(), Op(), Ban(), Kick(),
+     * Topic(), Join(), Part().  The core records what it has sent, and the
+     * handlers of libircu, the IRC parser, what the network says: those
+     * reach these through ServerCommandHandler.
+     */
+    friend class xClient;
+    friend class xNetwork;
+    friend class ServerCommandHandler;
+
+    /**
+     * Remove the given mode from the ChannelUser associated with
+     * the given iClient.
+     */
+    bool removeUserMode(const ChannelUser::modeType& whichMode, iClient*);
+
+    /**
+     * Set the given mode for the ChannelUser associated with the
+     * given iClient.
+     */
+    bool setUserMode(const ChannelUser::modeType& whichMode, iClient*);
+
+    /**
+     * Set a limit on the channel.  This method will set the
+     * channel mode and set the limit.
+     */
+    inline void setLimit(const unsigned int& newLimit) { limit = newLimit; }
+
+    /**
+     * Set a key on the channel.  This method will set the
+     * channel mode and the key as well.
+     */
+    inline void setKey(const std::string& newKey) { key = newKey; }
+
+    /**
+     * Set an Apass on the channel.  This method will set the
+     * channel mode and the Apass as well.
+     */
+    inline void setApass(const std::string& newApass) { Apass = newApass; }
+
+    /**
+     * Set an Upass on the channel.  This method will set the
+     * channel mode and the Upass as well.
+     */
+    inline void setUpass(const std::string& newUpass) { Upass = newUpass; }
+
+    /**
+     * Reveal a delayed-join (hidden) member, if the given client is on
+     * this channel and hidden.  Returns true if the member was hidden.
+     */
+    bool revealUser(const iClient* theClient);
+
+    /**
+     * Add a ban to this Channel's ban list.
+     */
+    void setBan(const std::string& banMask);
+
+    /**
+     * Remove a ban from this channel's ban list.  This does a lexical
+     * comparison, not a wildcard match.
+     * Returns true if ban found (and removed), false if not
+     * found.
+     */
+    bool removeBan(const std::string& banMask);
+
+    /**
+     * Remove all the bans in the channels ban list.
+     */
+    inline void removeAllBans() { banList.clear(); }
+
+    /**
+     * Remove all channel modes on users and the channel itself.
+     * Use with caution.
+     */
+    void removeAllModes();
+
+    /**
+     * Set the creation time of this channel.  This is protected
+     * so that only class xServer may access it externally.
+     */
+    inline virtual void setCreationTime(const time_t& newCT) { creationTime = newCT; }
+
+    /**
      * Add a ChannelUser to this channel's internal user
      * structure.
      */
@@ -639,23 +686,6 @@ class Channel {
     ChannelUser* removeUser(const unsigned int& intYYXXX);
 
     /**
-     * Return the ChannelUser associated with the given iClient,
-     * NULL if not found.
-     */
-    ChannelUser* findUser(const iClient* theClient) const;
-
-#ifdef TOPIC_TRACK
-
-    /**
-     * Returns the channel topic (if TOPIC_TRACK is defined)
-     */
-    const std::string& getTopic() const { return topic; }
-
-    const std::string& getTopicWhoSet() const { return topic_whoset; }
-
-    const long& getTopicTS() const { return topic_ts; }
-
-    /**
      * Sets this channel's topic value to the value passed in.
      * This method exists only if TOPIC_TRACK is defined.
      */
@@ -665,23 +695,6 @@ class Channel {
 
     void setTopicTS(const time_t& _TopicTS) { topic_ts = _TopicTS; }
 
-#endif
-
-    /**
-     * Convenience operator for outputting Channel information
-     * to a C++ output stream.
-     */
-    friend ELog& operator<<(ELog& out, const Channel& rhs) {
-        out << "Name: " << rhs.name << ", creation time: " << rhs.creationTime;
-        return out;
-    }
-
-    /**
-     * Return a level 2 ban for the given user.
-     */
-    static std::string createBan(const iClient*);
-
-  protected:
     /**
      * Handle one or more "simple" mode changes.
      */

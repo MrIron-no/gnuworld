@@ -152,7 +152,7 @@ bool msg_M::Execute(const xParameters& Param) {
     if (parsed.timestamp && *parsed.timestamp != 0) {
         const time_t newCreationTime = static_cast<time_t>(*parsed.timestamp);
         if (theChan->getCreationTime() > newCreationTime) {
-            theChan->setCreationTime(newCreationTime);
+            setCreationTime(theChan, newCreationTime);
         }
     }
 

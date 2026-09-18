@@ -58,7 +58,7 @@ bool msg_T::Execute(const xParameters& Param) {
 
     // Setting the topic reveals a delayed-join (hidden) member
     if (srcClient != 0) {
-        theChan->revealUser(srcClient);
+        revealUser(theChan, srcClient);
     }
 
     std::string newTopic;
@@ -69,9 +69,9 @@ bool msg_T::Execute(const xParameters& Param) {
         /* params = numeric, channel, channel creation ts, topic ts, topic nick, topic */
         newTopic = Param[5];
 #ifdef TOPIC_TRACK
-        theChan->setTopic(Param[5]);
-        theChan->setTopicTS(theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
-        theChan->setTopicWhoSet(Param[4]);
+        setTopic(theChan, Param[5]);
+        setTopicTS(theChan, theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
+        setTopicWhoSet(theChan, Param[4]);
         hasWhoSet = true;
 #endif // TOPIC_TRACK
     } else if (Param.size() == 5) {
@@ -79,27 +79,27 @@ bool msg_T::Execute(const xParameters& Param) {
         /* params = numeric, channel, channel creation ts, topic ts, topic */
         newTopic = Param[4];
 #ifdef TOPIC_TRACK
-        theChan->setTopic(Param[4]);
-        theChan->setTopicTS(theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
+        setTopic(theChan, Param[4]);
+        setTopicTS(theChan, theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
 #endif // TOPIC_TRACK
     } else {
         /* this is a .11 hub! (3 arguments) */
         /* params = numeric, channel, topic */
         newTopic = Param[2];
 #ifdef TOPIC_TRACK
-        theChan->setTopic(Param[2]);
-        theChan->setTopicTS(::time(NULL));
+        setTopic(theChan, Param[2]);
+        setTopicTS(theChan, ::time(NULL));
 #endif // TOPIC_TRACK
     }
 
 #ifdef TOPIC_TRACK
     /* Even if we have the topic nick (>.12.19) we use srcClient if it was not a burst message */
     if (srcClient == NULL && !hasWhoSet) {
-        theChan->setTopicWhoSet("unknown");
+        setTopicWhoSet(theChan, "unknown");
     } else if (srcClient != NULL) {
         std::string client_ip;
         client_ip = xIP(srcClient->getIP()).GetNumericIP();
-        theChan->setTopicWhoSet(srcClient->getNickUserHost() + " [" + client_ip + "]");
+        setTopicWhoSet(theChan, srcClient->getNickUserHost() + " [" + client_ip + "]");
     }
 #endif // TOPIC_TRACK
 

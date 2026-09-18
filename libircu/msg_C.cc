@@ -168,7 +168,7 @@ bool msg_C::Execute(const xParameters& Param) {
             assert(theUser != 0);
 
             // Add the ChannelUser to the Channel's information
-            if (!theChan->addUser(theUser)) {
+            if (!addUser(theChan, theUser)) {
                 // Addition failed, log the error
                 // This should never happen.
                 elog << "msg_C> Unable to add user " << theUser->getNickName() << " to channel "
@@ -193,9 +193,9 @@ bool msg_C::Execute(const xParameters& Param) {
         }
         if (creationTime < theChan->getCreationTime()) {
             // Need to clean all the channel modes and op the user who created the channel
-            theChan->removeAllModes();
+            removeAllModes(theChan);
             setMemberMode(theUser, ChannelUser::MODE_O);
-            theChan->setCreationTime(creationTime);
+            setCreationTime(theChan, creationTime);
         }
 
         // Notify all listening xClients of this event

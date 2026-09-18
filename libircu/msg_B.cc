@@ -151,9 +151,9 @@ bool msg_B::Execute(const xParameters& Param) {
         // Is the old TS greater than the new TS?
         if (theChan->getCreationTime() > newCreationTime) {
             // Nope, update the timestamp
-            theChan->setCreationTime(newCreationTime);
-            theChan->removeAllModes();
-            theChan->removeAllBans();
+            setCreationTime(theChan, newCreationTime);
+            removeAllModes(theChan);
+            removeAllBans(theChan);
         }
     }
 
@@ -346,7 +346,7 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         assert(chanUser != 0);
 
         // Add this user to the channel's database.
-        if (!theChan->addUser(chanUser)) {
+        if (!addUser(theChan, chanUser)) {
             // The addition failed
             elog << "msg_B::parseBurstUsers> Unable to add user " << theClient->getNickName()
                  << " to channel " << theChan->getName() << endl;

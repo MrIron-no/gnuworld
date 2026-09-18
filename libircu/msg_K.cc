@@ -147,7 +147,7 @@ bool msg_K::Execute(const xParameters& Param) {
     if (localKick) {
         // Only remove the ChannelUser from the channel if this
         // is a local kick...otherwise, the kick is unauthoritative
-        theChan->removeUser(destClient);
+        removeUser(theChan, destClient);
 
         // Deallocate the ChannelUser
         delete destChanUser;
@@ -164,7 +164,7 @@ bool msg_K::Execute(const xParameters& Param) {
         // if it does, then its authoritative
         //	if((srcClient == 0) && (Network->findServer(Param[0])))
         //		{
-        theChan->removeUser(destClient);
+        removeUser(theChan, destClient);
 
         // Deallocate the ChannelUser
         delete destChanUser;

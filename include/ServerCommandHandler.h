@@ -26,6 +26,7 @@
 #include "xparameters.h"
 #include "ELog.h"
 #include "ChannelUser.h"
+#include "Channel.h"
 
 namespace gnuworld {
 
@@ -46,6 +47,26 @@ class ServerCommandHandler {
     static void setMemberMode(ChannelUser* member, ChannelUser::modeType whichMode) {
         member->setMode(whichMode);
     }
+
+    // The same for the channel: each is the method of Channel it is named
+    // after, with the channel in front.
+    static bool addUser(Channel* theChan, ChannelUser* newUser) {
+        return theChan->addUser(newUser);
+    }
+    static ChannelUser* removeUser(Channel* theChan, iClient* theClient) {
+        return theChan->removeUser(theClient);
+    }
+    static bool revealUser(Channel* theChan, const iClient* theClient) {
+        return theChan->revealUser(theClient);
+    }
+    static void removeAllModes(Channel* theChan) { theChan->removeAllModes(); }
+    static void removeAllBans(Channel* theChan) { theChan->removeAllBans(); }
+    static void setCreationTime(Channel* theChan, time_t newCT) { theChan->setCreationTime(newCT); }
+    static void setTopic(Channel* theChan, const std::string& topic) { theChan->setTopic(topic); }
+    static void setTopicWhoSet(Channel* theChan, const std::string& who) {
+        theChan->setTopicWhoSet(who);
+    }
+    static void setTopicTS(Channel* theChan, time_t when) { theChan->setTopicTS(when); }
 
   public:
     ServerCommandHandler(xServer* _theServer) : theServer(_theServer) {}

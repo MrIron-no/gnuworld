@@ -205,9 +205,9 @@ bool msg_J::Execute(const xParameters& Param) {
         else if (joinTs < theChan->getCreationTime()) {
             // The time of join is earlier than the creation time of the channel
             // Need to clear all the modes of the channel
-            theChan->removeAllModes();
+            removeAllModes(theChan);
             // Now reset the channel creation time to the join ts
-            theChan->setCreationTime(joinTs);
+            setCreationTime(theChan, joinTs);
         }
         // A join to a +D channel carries no status, so it is delayed
         // (hidden) until the member gains op or voice, sets the topic,
@@ -228,7 +228,7 @@ bool msg_J::Execute(const xParameters& Param) {
 
         // Add a new ChannelUser representing this client to this
         // channel's user structure.
-        if (!theChan->addUser(theUser)) {
+        if (!addUser(theChan, theUser)) {
             // Addition of this ChannelUser to the Channel failed
             // Log the error
             elog << "msg_J> Unable to add user " << theUser->getNickName()
@@ -262,7 +262,7 @@ bool msg_J::Execute(const xParameters& Param) {
             // Remove the ChannelUser from this channel, and
             // deallocate the ChannelUser to prevent memory
             // leaks
-            theChan->removeUser(theUser);
+            removeUser(theChan, Target);
             delete theUser;
             theUser = 0;
 
@@ -304,7 +304,7 @@ void msg_J::userPartAllChannels(iClient* theClient) {
         // Remove this ChannelUser from the Channel's internal
         // structure.
         // Deallocate the ChannelUser
-        ChannelUser* theChanUser = (*ptr)->removeUser(theClient);
+        ChannelUser* theChanUser = removeUser(*ptr, theClient);
         if (NULL == theChanUser) {
             elog << "msg_J::userPartAllChannels> Unable to "
                  << "remove iClient " << *theClient << " from channel " << *(*ptr) << endl;
