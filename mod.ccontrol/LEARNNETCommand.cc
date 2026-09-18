@@ -80,7 +80,7 @@ bool LEARNNETCommand::Exec(iClient* theClient, const string& Message) {
                 NewServer->setNetServer(CurServer);
 
                 bot->addServer(NewServer);
-                bot->QueryVersion(CurServer);
+                bot->Write("%s V :%s", bot->getCharYYXXX().c_str(), CurServer->getCharYY().c_str());
 
                 if (NewServer->Insert()) {
                     AddedServers++;

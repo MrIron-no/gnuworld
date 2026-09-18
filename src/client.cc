@@ -34,10 +34,7 @@
 #include <cstdio>
 #include <cctype>
 #include <cstdarg>
-#include <cerrno>
 #include <cstring>
-
-#include <sys/time.h>
 #include <cstdlib>
 
 #include "gnuworld_config.h"
@@ -436,42 +433,6 @@ void xClient::OnKill() {}
 void xClient::OnWhois(iClient*, iClient*) {}
 
 void xClient::OnInvite(iClient*, Channel*) {}
-
-bool xClient::QueryVersion(const iServer* theServer) {
-    assert(theServer != 0);
-    return isConnected() && Write("{} V :{}", getCharYYXXX(), theServer->getCharYY());
-}
-
-bool xClient::QueryTime(const iServer* theServer) {
-    assert(theServer != 0);
-    return isConnected() && Write("{} TI :{}", getCharYYXXX(), theServer->getCharYY());
-}
-
-bool xClient::SetTime(const iServer* theServer) {
-    assert(theServer != 0);
-    return isConnected() && Write("{} SE {} {}", getCharYYXXX(), static_cast<long>(::time(0)),
-                                  theServer->getCharYY());
-}
-
-bool xClient::RPing(const iServer* theServer) {
-    assert(theServer != 0);
-
-    if (!isConnected()) {
-        return false;
-    }
-
-    timeval now = {0, 0};
-    if (::gettimeofday(&now, 0) < 0) {
-        elog << "xClient::RPing> gettimeofday() failed: " << strerror(errno) << endl;
-        return false;
-    }
-
-    // <our server> RI <server> <requester> <sec> <usec> :<sec> <usec>
-    // The remark comes back in the RPONG, and with it the time this left.
-    return Write("{} RI {} {} {} {} :{} {}", MyUplink->getCharYY(), theServer->getCharYY(),
-                 getCharYYXXX(), static_cast<long>(now.tv_sec), static_cast<long>(now.tv_usec),
-                 static_cast<long>(now.tv_sec), static_cast<long>(now.tv_usec));
-}
 
 bool xClient::Silence(const iClient* whom, const string& mask) {
     assert(whom != 0);

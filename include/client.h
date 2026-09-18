@@ -93,23 +93,6 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     virtual bool BurstGlines();
 
-    /*
-     * Questions to a server of the network, and orders for it, from this
-     * client.  The answer to a question arrives in OnServerMessage().
-     */
-
-    /// VERSION: which version the server runs.
-    virtual bool QueryVersion(const iServer*);
-
-    /// TIME: what time the server has.
-    virtual bool QueryTime(const iServer*);
-
-    /// SETTIME: have the server set its clock by ours.
-    virtual bool SetTime(const iServer*);
-
-    /// RPING: measure the lag to the server; the answer is an RPONG.
-    virtual bool RPing(const iServer*);
-
     /// SILENCE: stop `whom` from reaching us from this mask, and tell it so.
     virtual bool Silence(const iClient* whom, const std::string& mask);
 

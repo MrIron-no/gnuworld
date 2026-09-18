@@ -956,7 +956,8 @@ void ccontrol::OnServerMessage(iServer* Server, const string& Message, bool) {
         if ((lagTime < MAX_LAG_TIME_FOR_SETTIME) && (timeDiff > MAX_TIME_DIFF_FOR_SETTIME) &&
             ((::time(0) - timediffServersMap[Server->getName() + "$td"]) >
              TIMEDIFF_SETTIME_INTERVAL)) {
-            SetTime(tmpServer->getNetServer());
+            Write("%s SE %d %s", getCharYYXXX().c_str(), ::time(0),
+                  tmpServer->getNetServer()->getCharYY().c_str());
             timediffServersMap[Server->getName() + "$td"] = ::time(0);
         }
     }
@@ -1328,7 +1329,8 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
         for (serversconstiterator ptr = serversMap_begin(); ptr != serversMap_end(); ++ptr) {
             TmpServer = ptr->second;
             if (TmpServer->getNetServer()) {
-                QueryTime(TmpServer->getNetServer());
+                Write("%s TI :%s", getCharYYXXX().c_str(),
+                      TmpServer->getNetServer()->getCharYY().c_str());
             }
         }
         timeCheck = MyUplink->RegisterTimer(::time(0) + 7200, this, NULL);
@@ -1337,6 +1339,15 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
             rpingCheck = MyUplink->RegisterTimer(::time(0) + 60, this, NULL);
             return;
         }
+        timeval now = {0, 0};
+        if (::gettimeofday(&now, 0) < 0) {
+            elog << "ccontrol(rpingCheck)> gettimeofday() failed: " << strerror(errno) << endl;
+            return;
+        }
+
+        stringstream s;
+        s << now.tv_usec;
+
         static int tID = 19;
         tID++;
         if (tID == 20)
@@ -1389,7 +1400,9 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
                 if ((TmpServer->getNetServer()->getIntYY() == myHub->getIntYY()) &&
                     ((!ccHub || (::time(0) - ccHub->getLastLagSent()) < 30)))
                     continue;
-                RPing(TmpServer->getNetServer());
+                Write("%s RI %s %s %d %s :%d %s", getCharYY().c_str(),
+                      TmpServer->getNetServer()->getCharYY().c_str(), getCharYYXXX().c_str(),
+                      ::time(0), s.str().c_str(), ::time(0), s.str().c_str());
                 TmpServer->setLastLagSent(::time(0));
             }
             // BG RI C] BGAAA 1246224483 960943 :1246224474
@@ -1410,7 +1423,7 @@ void ccontrol::OnConnect() {
 
     if (tServer) {
         tServer->setNetServer(tmpServer);
-        QueryVersion(tmpServer);
+        Write("%s V :%s", getCharYYXXX().c_str(), tmpServer->getCharYY().c_str());
     }
 
     xClient::OnConnect();
@@ -3347,7 +3360,7 @@ bool ccontrol::refreshVersions() {
         curServer = ptr->second;
         curNetServer = curServer->getNetServer();
         if (curNetServer) {
-            QueryVersion(curNetServer);
+            Write("%s V :%s", getCharYYXXX().c_str(), curNetServer->getCharYY().c_str());
         }
     }
     return true;

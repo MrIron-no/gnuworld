@@ -443,21 +443,6 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         return;
     }
 
-    // version|time|settime|rping <server>: the questions and orders a client
-    // of ours has for a server
-    if (st[0] == "version" || st[0] == "time" || st[0] == "settime" || st[0] == "rping") {
-        iServer* theServer = (st.size() > 1) ? Network->findServerName(st[1]) : 0;
-        if (0 == theServer) {
-            Notice(theClient, "Usage: version|time|settime|rping <server>");
-            return;
-        }
-        st[0] == "version"   ? QueryVersion(theServer)
-        : st[0] == "time"    ? QueryTime(theServer)
-        : st[0] == "settime" ? SetTime(theServer)
-                             : RPing(theServer);
-        return;
-    }
-
     // silence <nick> <mask>, unsilence <mask>, opmode <nick> <user modes>,
     // globalnotice <text>, servsay <nick|#channel> <text>
     if (st[0] == "silence" || st[0] == "opmode" || st[0] == "servsay") {
