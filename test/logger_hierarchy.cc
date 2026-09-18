@@ -187,6 +187,46 @@ void testCodeDefault() {
  * a level from.  A slot that is not installed has no say, and what it was asked
  * for in the meantime is applied when it arrives.
  */
+/**
+ * The logger this one replaces built a record if any notifier wanted it.  So
+ * while a module logs the legacy way, a sink it attached itself -- pushover,
+ * say -- raises the level to what it asks for, and stops doing so when it goes.
+ */
+void testLegacyLevelHearsTheModulesOwnSinks() {
+    Logger* const logger = LogManager::get("legacy.notifier");
+
+    const std::shared_ptr<CaptureSink> file = std::make_shared<CaptureSink>();
+    const std::shared_ptr<CaptureSink> notifier = std::make_shared<CaptureSink>();
+
+    // Without a legacy slot a sink of the module's own changes no level
+    logger->addSink(notifier, DEBUG);
+    CHECK(INFO == logger->effectiveLevel());
+
+    logger->addSink(file, TRACE);
+    logger->setLegacyFileSink(file);
+    logger->setLogVerbosity(4);
+
+    // The file asks for INFO, the notifier for DEBUG: DEBUG it is
+    CHECK(DEBUG == logger->effectiveLevel());
+
+    emit(logger, DEBUG, "for the notifier");
+    CHECK(1 == notifier->size());
+    CHECK(0 == file->size());
+
+    logger->setSinkThreshold(notifier, WARN);
+    CHECK(INFO == logger->effectiveLevel());
+
+    logger->setSinkThreshold(notifier, TRACE);
+    CHECK(TRACE == logger->effectiveLevel());
+
+    logger->removeSink(notifier);
+    CHECK(INFO == logger->effectiveLevel());
+
+    logger->removeSink(file);
+    logger->resetLegacyState();
+    CHECK(INFO == logger->effectiveLevel());
+}
+
 void testLegacyVerbosityLevel() {
     Logger* const logger = LogManager::get("legacy.mod");
 
@@ -584,6 +624,7 @@ int main() {
     testInheritance();
     testCodeDefault();
     testLegacyVerbosityLevel();
+    testLegacyLevelHearsTheModulesOwnSinks();
     testInheritEffectiveLevel();
     testAdditiveDispatch();
     testThresholdsAlongThePath();

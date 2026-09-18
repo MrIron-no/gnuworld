@@ -209,6 +209,9 @@ void Logger::addSink(std::shared_ptr<LogSink> sink, Verbosity threshold) {
     const std::lock_guard<std::mutex> guard(logMutex);
 
     codeSinks.emplace_back(std::move(sink), threshold);
+
+    // In legacy mode a sink of the module's own may ask for more than the slots
+    recomputeLegacyLevelLocked();
 }
 
 void Logger::addConfigSink(std::shared_ptr<LogSink> sink, Verbosity threshold) {
@@ -265,6 +268,8 @@ void Logger::setSinkThreshold(const std::shared_ptr<LogSink>& sink, Verbosity th
     for (SinkEntry& entry : codeSinks)
         if (entry.first == sink)
             entry.second = threshold;
+
+    recomputeLegacyLevelLocked();
 }
 
 void Logger::setContext(const std::string& key, LogValue value) {
@@ -479,6 +484,10 @@ std::string Logger::getChannel() const {
  * otherwise make the module build records for a sink that does not exist.  With
  * no slot at all there is nothing legacy about this logger and the level is
  * whatever the hierarchy says.
+ *
+ * While there is a slot, the sinks the module attached itself have a say too:
+ * the logger this one replaces built a record if any notifier wanted it, so a
+ * pushover sink that asks for more than the log file does still gets it.
  */
 void Logger::recomputeLegacyLevelLocked() {
     std::optional<Verbosity> wanted;
@@ -497,6 +506,14 @@ void Logger::recomputeLegacyLevelLocked() {
         if (!wanted || asked > *wanted)
             wanted = asked;
     }
+
+    if (wanted)
+        for (const SinkEntry& entry : codeSinks) {
+            const Verbosity asked = legacyLevelOf(entry.second);
+
+            if (asked > *wanted)
+                wanted = asked;
+        }
 
     legacyLevel = wanted;
 }
