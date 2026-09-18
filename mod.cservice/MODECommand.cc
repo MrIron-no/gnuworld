@@ -106,10 +106,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
     // Keep track of the polarity of the mode change.
     bool plus = true;
 
-    // Keep track of changes to MODE_K
-    bool changeModeK = false;
-    int keyPos = 0;
-
     // We need to put +l at the end of the modeString
     int limitPos = 0;
 
@@ -136,10 +132,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
 
             // Add this argument to the current argument string
             argString += st[argPos] + ' ';
-            if (!plus)
-                tmpChan->removeBan(st[argPos]);
-            else
-                tmpChan->setBan(st[argPos]);
 
             // Add ban to banString, to be used in the response.
             if (!banString.empty())
@@ -174,8 +166,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                     return false;
                 }
 
-                changeModeK = true;
-                keyPos = argPos;
             } else {
                 if (!tmpChan->getMode(Channel::MODE_K)) /* Not +k? */
                 {
@@ -192,8 +182,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                                     .c_str());
                     return false;
                 }
-
-                changeModeK = true;
             }
 
             // Add this mode to the current modeString
@@ -211,7 +199,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
             if (!plus) {
                 // No args needed
                 modeString += st[2][charPos];
-                tmpChan->removeMode(Channel::MODE_L);
                 break;
             }
 
@@ -222,9 +209,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                 return true;
             }
 
-            tmpChan->setMode(Channel::MODE_L);
-            tmpChan->setLimit(atoi(st[argPos].c_str()));
-
             // Save position of argument
             limitPos = argPos;
 
@@ -233,74 +217,38 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
 
             break;
         case 'i': // Invite?
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_I);
-            else
-                tmpChan->setMode(Channel::MODE_I);
 
             modeString += st[2][charPos];
             break;
         case 'p': // Private?
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_P);
-            else
-                tmpChan->setMode(Channel::MODE_P);
 
             modeString += st[2][charPos];
             break;
         case 'r': // Moderated for non-authed users?
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_R);
-            else
-                tmpChan->setMode(Channel::MODE_R);
 
             modeString += st[2][charPos];
             break;
         case 's': // Secret?
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_S);
-            else
-                tmpChan->setMode(Channel::MODE_S);
 
             modeString += st[2][charPos];
             break;
         case 'm': // Moderated?
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_M);
-            else
-                tmpChan->setMode(Channel::MODE_M);
 
             modeString += st[2][charPos];
             break;
         case 'n': // No External Messages?
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_N);
-            else
-                tmpChan->setMode(Channel::MODE_N);
 
             modeString += st[2][charPos];
             break;
         case 't': // Topic?
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_T);
-            else
-                tmpChan->setMode(Channel::MODE_T);
 
             modeString += st[2][charPos];
             break;
         case 'c': // Colours
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_C);
-            else
-                tmpChan->setMode(Channel::MODE_C);
 
             modeString += st[2][charPos];
             break;
         case 'C': // CTCP
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_CTCP);
-            else
-                tmpChan->setMode(Channel::MODE_CTCP);
 
             modeString += st[2][charPos];
             break;
@@ -321,10 +269,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                 modeString += st[ 2 ][ charPos ] ;
                 break ;*/
         case 'D': // Delayed joins
-            if (!plus)
-                tmpChan->removeMode(Channel::MODE_D);
-            else
-                tmpChan->setMode(Channel::MODE_D);
 
             modeString += st[2][charPos];
             break;
@@ -372,17 +316,6 @@ bool MODECommand::Exec(iClient* theClient, const string& Message) {
                 bot->getResponse(theUser, language::mode_banset, string("Ban-modes set for: %s"))
                     .c_str(),
                 banString.c_str());
-
-        // Update Mode_K
-        if (changeModeK) {
-            if (keyPos > 0) {
-                tmpChan->setMode(Channel::MODE_K);
-                tmpChan->setKey(st[keyPos]);
-            } else {
-                tmpChan->removeMode(Channel::MODE_K);
-                tmpChan->setKey("");
-            }
-        }
 
         // Send action opnotice to channel if OPLOG is enabled
         if (theChan->getFlag(sqlChannel::F_OPLOG))

@@ -966,14 +966,12 @@ void dronescan::OnWhois(iClient* sourceClient, iClient* targetClient) {
         return;
     }
 
-    const string& sourceNumeric = sourceClient->getCharYYXXX();
     const string& targetNick = targetClient->getNickName();
 
-    std::stringstream s311;
-    s311 << getCharYY() << " 311 " << sourceNumeric << " " << targetNick << " "
-         << targetClient->getUserName() << " " << targetClient->getInsecureHost()
-         << " * :" << targetClient->getDescription() << std::ends;
-    Write(s311);
+    MyUplink->SendNumeric(311, sourceClient,
+                          targetNick + " " + targetClient->getUserName() + " " +
+                              targetClient->getInsecureHost() +
+                              " * :" + targetClient->getDescription());
 
     if (!targetClient->isModeK()) {
         // Mirrors ShowChannel() in ircu2's m_whois.c: a +s/+p channel is
@@ -981,7 +979,7 @@ void dronescan::OnWhois(iClient* sourceClient, iClient* targetClient) {
         // are prefixed with the target's status (@ op, + voice) and the
         // list is split across multiple 319 lines if it grows too long
         // for a single protocol line.
-        const string prefix = getCharYY() + " 319 " + sourceNumeric + " " + targetNick + " :";
+        const string prefix = targetNick + " :";
         const string::size_type maxLineLen = 400;
         string buf;
 
@@ -1006,9 +1004,7 @@ void dronescan::OnWhois(iClient* sourceClient, iClient* targetClient) {
             entry += theChan->getName();
 
             if (!buf.empty() && (buf.size() + 1 + entry.size() + prefix.size() > maxLineLen)) {
-                std::stringstream s319;
-                s319 << prefix << buf << std::ends;
-                Write(s319);
+                MyUplink->SendNumeric(319, sourceClient, prefix + buf);
                 buf.clear();
             }
 
@@ -1019,56 +1015,42 @@ void dronescan::OnWhois(iClient* sourceClient, iClient* targetClient) {
         }
 
         if (!buf.empty()) {
-            std::stringstream s319;
-            s319 << prefix << buf << std::ends;
-            Write(s319);
+            MyUplink->SendNumeric(319, sourceClient, prefix + buf);
         }
     }
 
     if (sourceClient->isOper()) {
         const iServer* targetServer = targetClient->getServer();
         if (targetServer) {
-            std::stringstream s312;
-            s312 << getCharYY() << " 312 " << sourceNumeric << " " << targetNick << " "
-                 << targetServer->getName() << " :" << targetServer->getDescription() << std::ends;
-            Write(s312);
+            MyUplink->SendNumeric(312, sourceClient,
+                                  targetNick + " " + targetServer->getName() + " :" +
+                                      targetServer->getDescription());
         }
     } else {
         // Hide the real server name/description from non-opers.
-        std::stringstream s312;
-        s312 << getCharYY() << " 312 " << sourceNumeric << " " << targetNick
-             << " *.undernet.org :The Undernet Underworld" << std::ends;
-        Write(s312);
+        MyUplink->SendNumeric(312, sourceClient,
+                              targetNick + " *.undernet.org :The Undernet Underworld");
     }
 
     if (targetClient->isOper()) {
-        std::stringstream s313;
-        s313 << getCharYY() << " 313 " << sourceNumeric << " " << targetNick
-             << " :is an IRC Operator" << std::ends;
-        Write(s313);
+        MyUplink->SendNumeric(313, sourceClient, targetNick + " :is an IRC Operator");
     }
 
     if (!targetClient->getAccount().empty()) {
-        std::stringstream s330;
-        s330 << getCharYY() << " 330 " << sourceNumeric << " " << targetNick << " "
-             << targetClient->getAccount() << " :is logged in as" << std::ends;
-        Write(s330);
+        MyUplink->SendNumeric(330, sourceClient,
+                              targetNick + " " + targetClient->getAccount() + " :is logged in as");
     }
 
     if (targetClient->isFake()) {
         const time_t signOnTime = targetClient->getFirstNickTS();
         const time_t idleTime = ::time(nullptr) - signOnTime;
 
-        std::stringstream s317;
-        s317 << getCharYY() << " 317 " << sourceNumeric << " " << targetNick << " " << idleTime
-             << " " << signOnTime << " :seconds idle, signon time" << std::ends;
-        Write(s317);
+        MyUplink->SendNumeric(
+            317, sourceClient,
+            std::format("{} {} {} :seconds idle, signon time", targetNick, idleTime, signOnTime));
     }
 
-    std::stringstream s318;
-    s318 << getCharYY() << " 318 " << sourceNumeric << " " << targetNick << " :End of /WHOIS list."
-         << std::ends;
-    Write(s318);
+    MyUplink->SendNumeric(318, sourceClient, targetNick + " :End of /WHOIS list.");
 }
 
 /** Clean up after ourselves */

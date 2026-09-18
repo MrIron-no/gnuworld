@@ -98,11 +98,7 @@ bool TOPICCommand::Exec(iClient* theClient, const string& Message) {
         return false;
     }
 
-    stringstream s;
-    s << bot->getCharYYXXX() << " T " << theChan->getName() << " :(" << theUser->getUserName()
-      << ") " << topic << ends;
-
-    bot->Write(s);
+    bot->Topic(tmpChan, "(" + theUser->getUserName() + ") " + topic);
 
     return true;
 }

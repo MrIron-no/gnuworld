@@ -65,9 +65,7 @@ bool REMIGNORECommand::Exec(iClient* theClient, const string& Message) {
     for (cservice::silenceListType::iterator ptr = bot->silenceList.begin();
          ptr != bot->silenceList.end(); ++ptr) {
         if (string_lower(st[1]) == string_lower(ptr->first.c_str())) {
-            stringstream s;
-            s << bot->getCharYYXXX() << " SILENCE * -" << ptr->first.c_str() << ends;
-            bot->Write(s);
+            bot->UnSilence(ptr->first);
 
             /*
              * Locate this user by numeric.

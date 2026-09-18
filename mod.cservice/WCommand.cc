@@ -123,12 +123,9 @@ bool WCommand::Exec(iClient* theClient, const string& Message) {
                                      theClient->getAccount().c_str(),
                                      wClient->getNickName().c_str(), theChan->getName().c_str());
 
-            stringstream xQuery;
-            xQuery << bot->getCharYY() << " XQ " << wServer->getCharYY()
-                   << " AnyCServiceRouting :JOIN " << theChan->getName() << " "
-                   << theClient->getCharYYXXX() << endl;
-
-            bot->Write(xQuery);
+            bot->getUplink()->XQuery(wServer, "AnyCServiceRouting",
+                                     "JOIN " + theChan->getName() + " " +
+                                         theClient->getCharYYXXX());
             return true;
         } else {
             /* Check access level. */
@@ -151,12 +148,8 @@ bool WCommand::Exec(iClient* theClient, const string& Message) {
                                      theClient->getAccount().c_str(),
                                      wClient->getNickName().c_str(), theChan->getName().c_str());
 
-            stringstream xQuery;
-            xQuery << bot->getCharYY() << " XQ " << wServer->getCharYY()
-                   << " AnyCServiceRouting :REG " << theChan->getName() << " "
-                   << theClient->getCharYYXXX() << endl;
-
-            bot->Write(xQuery);
+            bot->getUplink()->XQuery(wServer, "AnyCServiceRouting",
+                                     "REG " + theChan->getName() + " " + theClient->getCharYYXXX());
             return true;
         }
     } else if (Command == "PURGE") {
@@ -178,12 +171,8 @@ bool WCommand::Exec(iClient* theClient, const string& Message) {
                                  theClient->getNickName().c_str(), theClient->getAccount().c_str(),
                                  wClient->getNickName().c_str(), theChan->getName().c_str());
 
-        stringstream xQuery;
-        xQuery << bot->getCharYY() << " XQ " << wServer->getCharYY()
-               << " AnyCServiceRouting :PURGE " << theChan->getName() << " "
-               << theClient->getCharYYXXX() << endl;
-
-        bot->Write(xQuery);
+        bot->getUplink()->XQuery(wServer, "AnyCServiceRouting",
+                                 "PURGE " + theChan->getName() + " " + theClient->getCharYYXXX());
 
         return true;
     } else if (Command == "PART") {
@@ -216,11 +205,8 @@ bool WCommand::Exec(iClient* theClient, const string& Message) {
             bot->NoticeChannelOps(theChan->getName(), "%s has requested that %s parts the channel",
                                   wClient->getNickName().c_str(), theClient->getNickName().c_str());
 
-        stringstream xQuery;
-        xQuery << bot->getCharYY() << " XQ " << wServer->getCharYY() << " AnyCServiceRouting :PART "
-               << theChan->getName() << " " << theClient->getCharYYXXX() << endl;
-
-        bot->Write(xQuery);
+        bot->getUplink()->XQuery(wServer, "AnyCServiceRouting",
+                                 "PART " + theChan->getName() + " " + theClient->getCharYYXXX());
 
         return true;
     } else if (Command == "PURGE") {

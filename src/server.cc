@@ -2849,6 +2849,30 @@ bool xServer::serverMessage(Channel* theChan, const string& message) {
     return sendText(TextType::PRIVMSG, nullptr, theChan->getName(), message);
 }
 
+bool xServer::SendNumeric(unsigned int numeric, const iClient* to, const string& text) {
+    assert(to != 0);
+    return isConnected() && Write("{} {:03} {} {}", getCharYY(), numeric, to->getCharYYXXX(), text);
+}
+
+bool xServer::SetNetConf(const string& key, const string& value) {
+    if (key.empty() || !isConnected()) {
+        return false;
+    }
+    const time_t now = ::time(0);
+    Network->addNetConf(key, value, now);
+    return Write("{} CF {} {} :{}", getCharYY(), static_cast<long>(now), key, value);
+}
+
+void xServer::UpdateAccountFlags(iClient* theClient, iClient::flagType flags) {
+    assert(theClient != 0);
+
+    if (Uplink != 0 && Uplink->getProtocol() >= 11) {
+        Write("{} AC {} {} {} {}", getCharYY(), theClient->getCharYYXXX(), theClient->getAccount(),
+              theClient->getAccountID(), static_cast<unsigned int>(flags));
+    }
+    theClient->setAccountFlags(flags);
+}
+
 bool xServer::isOurClient(const iClient* theClient) const {
     if (0 == theClient) {
         return false;

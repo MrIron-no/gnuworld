@@ -107,7 +107,7 @@ class DockerStack:
             cwd=str(HARNESS_DIR),
             check=True,
         )
-        self._wait_healthy("postgres", timeout=60.0)
+        self._wait_healthy("postgres", timeout=120.0)
         self.started = True
 
     def down(self) -> None:
@@ -127,6 +127,10 @@ class DockerStack:
                     "-T",
                     "postgres",
                     "pg_isready",
+                    # Over TCP: while the init scripts run, a temporary server
+                    # answers on the socket alone, and is then shut down
+                    "-h",
+                    "127.0.0.1",
                     "-U",
                     DEFAULT_SQL_USER,
                     "-d",
@@ -255,6 +259,35 @@ class GnuworldProc:
         }
         for key, value in replacements.items():
             text = text.replace(key, value)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    @staticmethod
+    def write_cservice_config(
+        path: Path,
+        *,
+        sql_host: str = DEFAULT_SQL_HOST,
+        sql_port: str = DEFAULT_SQL_PORT,
+        sql_user: str = DEFAULT_SQL_USER,
+        sql_pass: str = DEFAULT_SQL_PASS,
+    ) -> Path:
+        """bin/cservice.example.conf, pointed at the harness's database (see
+        docker/initdb/04_cservice.sh)."""
+        text = (REPO_ROOT / "bin" / "cservice.example.conf").read_text(encoding="utf-8")
+        for key, value in (
+            ("sql_host", os.environ.get("CSERVICE_SQL_HOST", sql_host)),
+            ("sql_port", os.environ.get("CSERVICE_SQL_PORT", sql_port)),
+            ("sql_db", "cservice"),
+            ("sql_user", sql_user),
+            ("sql_pass", sql_pass),
+            # No waiting after a (re)connect before anybody may log in
+            ("login_delay", "0"),
+            # A test sends commands faster than X lets a user: no flood control
+            ("input_flood", "1000000"),
+            ("output_flood", "100000000"),
+        ):
+            text, count = re.subn(rf"(?m)^{key}\s*=.*$", f"{key} = {value}", text)
+            assert count == 1, f"{key} not found once in cservice.example.conf"
         path.write_text(text, encoding="utf-8")
         return path
 

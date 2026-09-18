@@ -498,20 +498,17 @@ void cservice::OnConnect() {
     if (MyUplink->getUplink()->getProtocol() >= 11) {
         auto saslServer = Network->findNetConf("sasl.server");
         if (!saslServer || saslServer->first != MyUplink->getName()) {
-            MyUplink->Write("%s CF %d sasl.server :%s", getCharYY().c_str(), time(nullptr),
-                            MyUplink->getName().c_str());
+            MyUplink->SetNetConf("sasl.server", MyUplink->getName());
         }
 
         auto saslMechanisms = Network->findNetConf("sasl.mechanisms");
         if (!saslMechanisms || saslMechanisms->first != saslMechsAdvertiseList()) {
-            MyUplink->Write("%s CF %d sasl.mechanisms :%s", getCharYY().c_str(), time(nullptr),
-                            saslMechsAdvertiseList().c_str());
+            MyUplink->SetNetConf("sasl.mechanisms", saslMechsAdvertiseList());
         }
 
         auto netSaslTimeout = Network->findNetConf("sasl.timeout");
         if (!netSaslTimeout || std::stoul(netSaslTimeout->first) != saslTimeout) {
-            MyUplink->Write("%s CF %d sasl.timeout :%d", getCharYY().c_str(), time(nullptr),
-                            saslTimeout);
+            MyUplink->SetNetConf("sasl.timeout", std::to_string(saslTimeout));
         }
     }
 
@@ -632,10 +629,7 @@ bool cservice::hasFlooded(iClient* theClient, const string& type) {
             // messages from this user.
             string silenceMask = createBanMask(theClient->getNickUserHost());
 
-            stringstream s;
-            s << getCharYYXXX() << " SILENCE " << theClient->getCharYYXXX() << " " << silenceMask
-              << ends;
-            Write(s);
+            Silence(theClient, silenceMask);
 
             time_t expireTime = currentTime() + 3600;
             silenceList.insert(silenceListType::value_type(
@@ -664,10 +658,7 @@ bool cservice::hasFlooded(iClient* theClient, const string& type) {
 
             string silenceMask = createBanMask(theClient->getNickUserHost());
 
-            stringstream s;
-            s << getCharYYXXX() << " SILENCE " << theClient->getCharYYXXX() << " " << silenceMask
-              << ends;
-            Write(s);
+            Silence(theClient, silenceMask);
 
             Notice(theClient, "Flood me will you? I'm not going to listen to "
                               "you or your friends anymore.");
@@ -762,10 +753,7 @@ bool cservice::hasOutputFlooded(iClient* theClient) {
             // messages from this user.
             string silenceMask = createBanMask(theClient->getNickUserHost());
 
-            stringstream s;
-            s << getCharYYXXX() << " SILENCE " << theClient->getCharYYXXX() << " " << silenceMask
-              << ends;
-            Write(s);
+            Silence(theClient, silenceMask);
 
             time_t expireTime = currentTime() + 3600;
 
@@ -2284,11 +2272,7 @@ void cservice::expireSilence() {
     while (ptr != silenceList.end()) {
         if (ptr->second.first < currentTime()) {
             string theMask = ptr->first;
-            stringstream s;
-            s << getCharYYXXX() << " SILENCE "
-              << "*"
-              << " -" << theMask << ends;
-            Write(s);
+            UnSilence(theMask);
 
             /*
              * Locate this user by numeric.
@@ -4900,13 +4884,7 @@ void cservice::doTheRightThing(Channel* tmpChan) {
         MyUplink->Mode(NULL, tmpChan, "+R", std::string());
 
         if (reggedChan->getInChan()) {
-            stringstream s;
-            s << MyUplink->getCharYY() << " M " << tmpChan->getName() << " +o " << getCharYYXXX()
-              << " " << tmpChan->getCreationTime() << ends;
-
-            Write(s);
-
-            tmpBotUser->setMode(ChannelUser::MODE_O);
+            MyUplink->Op(tmpChan, getInstance());
 
             if (reggedChan->getChannelMode() != "") {
                 MyUplink->Mode(this, tmpChan, reggedChan->getChannelMode().c_str(), std::string());
@@ -5224,16 +5202,8 @@ bool cservice::checkBansOnJoin(Channel* netChan, sqlChannel* theChan, iClient* t
     // TODO: Violation of rule of numbers
     /* If we found a matching ban */
     if (theBan && (theBan->getLevel() >= 75)) {
-        stringstream s;
-        s << getCharYYXXX() << " M " << theChan->getName() << " +b " << theBan->getBanMask() << ' '
-          << netChan->getCreationTime() << ends;
-
-        Write(s);
-
-        /* remove the ban (even if it doesnt exist, it will return false anyway) */
-        netChan->removeBan(theBan->getBanMask());
-        /* set the ban */
-        netChan->setBan(theBan->getBanMask());
+        // Sends the ban unless the channel has it, and records it
+        Ban(netChan, xServer::banVectorType{{true, theBan->getBanMask()}});
 
         /* Don't kick banned +k bots */
         if (!theClient->getMode(iClient::MODE_SERVICES)) {
@@ -5258,41 +5228,29 @@ void cservice::OnWhois(iClient* sourceClient, iClient* targetClient) {
     /*
      *  Return info about 'targetClient' to 'sourceClient'
      */
+    const string& nick = targetClient->getNickName();
 
-    stringstream s;
-    s << getCharYY() << " 311 " << sourceClient->getCharYYXXX() << " "
-      << targetClient->getNickName() << " " << targetClient->getUserName() << " "
-      << targetClient->getInsecureHost() << " * :" << targetClient->getDescription() << ends;
-    Write(s);
+    MyUplink->SendNumeric(311, sourceClient,
+                          nick + " " + targetClient->getUserName() + " " +
+                              targetClient->getInsecureHost() +
+                              " * :" + targetClient->getDescription());
 
     if (targetClient->isOper()) {
-        s.str("");
-        s << getCharYY() << " 313 " << sourceClient->getCharYYXXX() << " "
-          << targetClient->getNickName() << " :is an IRC Operator" << ends;
-        Write(s);
+        MyUplink->SendNumeric(313, sourceClient, nick + " :is an IRC Operator");
     }
 
     sqlUser* theUser = isAuthed(targetClient, false);
 
     if (theUser) {
-        s.str("");
-        s << getCharYY() << " 330 " << sourceClient->getCharYYXXX() << " "
-          << targetClient->getNickName() << " " << theUser->getUserName() << " :is logged in as"
-          << ends;
-        Write(s);
+        MyUplink->SendNumeric(330, sourceClient,
+                              nick + " " + theUser->getUserName() + " :is logged in as");
     }
 
     if (isIgnored(targetClient)) {
-        s.str("");
-        s << getCharYY() << " 316 " << sourceClient->getCharYYXXX() << " "
-          << targetClient->getNickName() << " :is currently being ignored." << ends;
-        Write(s);
+        MyUplink->SendNumeric(316, sourceClient, nick + " :is currently being ignored.");
     }
 
-    s.str("");
-    s << getCharYY() << " 318 " << sourceClient->getCharYYXXX() << " "
-      << targetClient->getNickName() << " :End of /WHOIS list." << ends;
-    Write(s);
+    MyUplink->SendNumeric(318, sourceClient, nick + " :End of /WHOIS list.");
 }
 
 bool cservice::Kick(Channel* theChan, iClient* theClient, const string& reason, bool modeAsServer) {
@@ -5412,49 +5370,15 @@ void cservice::undoJoinLimits(sqlChannel* reggedChan) {
     reggedChan->setLimitJoinTime(0);
     reggedChan->setLimitJoinCount(0);
 
+    // What doJoinLimit() set, as it remembered it: "<letters> [<args>]"
+    const std::string modeSet = reggedChan->getLimitJoinModeSet();
+    const std::string::size_type space = modeSet.find(' ');
+
     Channel* theChan = Network->findChannel(reggedChan->getName());
-    std::stringstream ss(reggedChan->getLimitJoinModeSet());
-    std::string parm;
-    std::vector<std::string> parms;
-
-    while (ss >> parm) { // Get array of parameters, first one is the modes
-        parms.push_back(parm);
+    if (theChan != nullptr && !modeSet.empty()) {
+        Mode(theChan, "-" + modeSet.substr(0, space),
+             (std::string::npos == space) ? std::string() : modeSet.substr(space + 1), false);
     }
-
-    unsigned int parmcount = 1;
-    for (char c : parms[0]) {
-        if (c == 'k') { // Key
-            theChan->removeMode(Channel::MODE_K);
-            theChan->setKey("");
-            parmcount++;
-        } else if (c == 'b') { // Ban
-            theChan->removeBan(parms[parmcount]);
-            parmcount++;
-        } else { // Normal mode
-            if (c == 'D')
-                theChan->removeMode(Channel::MODE_D);
-            if (c == 'c')
-                theChan->removeMode(Channel::MODE_C);
-            if (c == 'C')
-                theChan->removeMode(Channel::MODE_CTCP);
-            if (c == 'i')
-                theChan->removeMode(Channel::MODE_I);
-            if (c == 'm')
-                theChan->removeMode(Channel::MODE_M);
-            // if (c == 'M') theChan->removeMode(Channel::MODE_MNOREG);
-            // if (c == 'u') theChan->removeMode(Channel::MODE_PART);
-            if (c == 'r')
-                theChan->removeMode(Channel::MODE_R);
-            if (c == 's')
-                theChan->removeMode(Channel::MODE_S);
-        }
-    }
-
-    // Set the mode in channel
-    stringstream s;
-    s << getCharYYXXX() << " M " << reggedChan->getName() << " -"
-      << reggedChan->getLimitJoinModeSet() << " " << theChan->getCreationTime() << ends;
-    Write(s);
     incStat("CORE.JOINLIM.ALTER");
 
     reggedChan->setLimitJoinActive(false);
@@ -5495,63 +5419,42 @@ void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
         if (!tmpBotUser->getMode(ChannelUser::MODE_O))
             return;
 
-        // Filter out already set channel modes from the mode to set, to avoid removing them when
-        // the mode is lifted
-        std::string chanModes = theChan->getModeString();
-        std::string wantModes = reggedChan->getLimitJoinMode();
-        std::string resultModes = "";
-
-        bool doneparms = false;
-        for (char c : wantModes) {
-            if (c == ' ')
-                doneparms = true; // Done parsing modes, now we got to parameters
-            if (doneparms) {
-                resultModes += c;
-            } else {
-                if (chanModes.find(c) == std::string::npos ||
-                    c == 'b') { // If mode is not already set, and ignore bans
-                    resultModes += c;
-                }
-            }
-        }
-
-        std::stringstream ss(wantModes);
+        // Leave out the modes the channel has already, so that they are not
+        // taken off when ours are lifted.  The modes are "<letters> [<args>]",
+        // a key and a ban each with an argument of its own.
+        std::stringstream ss(reggedChan->getLimitJoinMode());
         std::string parm;
         std::vector<std::string> parms;
 
         while (ss >> parm) { // Get array of parameters, first one is the modes
             parms.push_back(parm);
         }
+        if (parms.empty())
+            return;
 
+        std::string letters;
+        std::string args;
         unsigned int parmcount = 1;
         for (char c : parms[0]) {
-            if (c == 'k') { // Key
-                theChan->setMode(Channel::MODE_K);
-                theChan->setKey(parms[parmcount]);
-                parmcount++;
-            } else if (c == 'b') { // Ban
-                std::string banMask = parms[parmcount];
-                theChan->setBan(banMask);
-                parmcount++;
-            } else { // Normal mode
-                if (c == 'D')
-                    theChan->setMode(Channel::MODE_D);
-                if (c == 'c')
-                    theChan->setMode(Channel::MODE_C);
-                if (c == 'C')
-                    theChan->setMode(Channel::MODE_CTCP);
-                if (c == 'i')
-                    theChan->setMode(Channel::MODE_I);
-                if (c == 'm')
-                    theChan->setMode(Channel::MODE_M);
-                // if (c == 'M') theChan->setMode(Channel::MODE_MNOREG);
-                // if (c == 'u') theChan->setMode(Channel::MODE_PART);
-                if (c == 'r')
-                    theChan->setMode(Channel::MODE_R);
-                if (c == 's')
-                    theChan->setMode(Channel::MODE_S);
+            const bool takesArg = ('k' == c || 'b' == c);
+            std::string arg;
+            if (takesArg) {
+                if (parmcount >= parms.size())
+                    continue; // no argument for it
+                arg = parms[parmcount++];
             }
+
+            const std::optional<Channel::ModeInfo> mode = Channel::findMode(c);
+            if (!mode)
+                continue;
+            if (c != 'b' && theChan->getMode(mode->flag))
+                continue; // set already, and not ours to lift
+
+            letters += c;
+            if (takesArg)
+                args += (args.empty() ? "" : " ") + arg;
         }
+        const std::string resultModes = args.empty() ? letters : letters + ' ' + args;
 
         // If no modes are set, because they are already set in the channel, abort.
         if (resultModes.empty())
@@ -5566,11 +5469,8 @@ void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
         reggedChan->setLimitJoinModeSet(resultModes);
         reggedChan->setLimitJoinActive(true);
 
-        // Set the mode in channel
-        stringstream s;
-        s << getCharYYXXX() << " M " << theChan->getName() << " +" << resultModes << " "
-          << theChan->getCreationTime() << ends;
-        Write(s);
+        // Set the modes: Mode() tells the network and keeps the channel's state
+        Mode(theChan, "+" + letters, args, false);
 
         // Register a timer to lift this
         time_t theTime = time(NULL) + reggedChan->getLimitJoinPeriod();
@@ -5618,19 +5518,15 @@ void cservice::doFloatingLimit(sqlChannel* reggedChan, Channel* theChan) {
     if (!tmpBotUser->getMode(ChannelUser::MODE_O))
         return;
 
-    theChan->setMode(Channel::MODE_L);
-    theChan->setLimit(newLimit);
     reggedChan->setLastLimitCheck(currentTime());
 
     incStat("CORE.FLOATLIM.ALTER");
 
-    stringstream s;
-    s << getCharYYXXX() << " M " << theChan->getName() << " +l " << newLimit << " "
-      << theChan->getCreationTime() << ends;
+    Mode(theChan, "+l", std::to_string(newLimit), false);
 
-    Write(s);
-
-    incStat("CORE.FLOATLIM.ALTER.BYTES", strlen(s.str().c_str()));
+    // About what the line comes to: "<numnick> M <#chan> +l <limit> <ts>"
+    incStat("CORE.FLOATLIM.ALTER.BYTES",
+            theChan->getName().size() + std::to_string(newLimit).size() + 25);
 }
 
 /*--doAutoTopic---------------------------------------------------------------
@@ -5647,11 +5543,9 @@ void cservice::doAutoTopic(sqlChannel* theChan) {
         extra = " ( " + theChan->getURL() + " )";
     }
 
-    stringstream s;
-    s << getCharYYXXX() << " T " << theChan->getName() << " :" << theChan->getDescription() << extra
-      << ends;
-
-    Write(s);
+    if (Channel* netChan = Network->findChannel(theChan->getName())) {
+        Topic(netChan, theChan->getDescription() + extra);
+    }
 
     theChan->setLastTopic(currentTime());
 }
@@ -5668,16 +5562,7 @@ bool cservice::doSingleBan(sqlChannel* theChan, const string& banMask, unsigned 
     Channel* netChan = Network->findChannel(theChan->getName());
 
     if (netChan) {
-        stringstream s;
-        s << getCharYYXXX() << " M " << netChan->getName() << " +b " << banMask << " "
-          << netChan->getCreationTime() << ends;
-
-        Write(s);
-
-        /* remove the ban (even if it doesnt exist, it will return false anyway) */
-        netChan->removeBan(banMask);
-        /* set the ban */
-        netChan->setBan(banMask);
+        Ban(netChan, xServer::banVectorType{{true, banMask}});
     }
 
     /*
@@ -5736,16 +5621,7 @@ bool cservice::doSingleBanAndKick(sqlChannel* theChan, iClient* theClient, unsig
     Channel* netChan = Network->findChannel(theChan->getName());
 
     if (netChan) {
-        stringstream s;
-        s << getCharYYXXX() << " M " << netChan->getName() << " +b " << banTarget << " "
-          << netChan->getCreationTime() << ends;
-
-        Write(s);
-
-        /* remove the ban (even if it doesnt exist, it will return false anyway) */
-        netChan->removeBan(banTarget);
-        /* set the ban */
-        netChan->setBan(banTarget);
+        Ban(netChan, xServer::banVectorType{{true, banTarget}});
     }
 
     /*
@@ -6194,31 +6070,15 @@ time_t cservice::currentTime() const {
 }
 
 bool cservice::Notice(const iClient* Target, const string& Message) {
-    bool returnMe = false;
-    if (Connected && MyUplink) {
-        setOutputTotal(Target, getOutputTotal(Target) + Message.size());
-        char buffer[512] = {0};
-        char* b = buffer;
-        const char* m = 0;
-
-        // TODO: This should be fixed.
-        // A walking timebomb.
-        for (m = Message.c_str(); *m != 0; m++) {
-            if (*m == '\n' || *m == '\r') {
-                *b = '\0';
-                MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                                Target->getCharYYXXX().c_str(), buffer);
-                b = buffer;
-            } else {
-                if (b < buffer + 509)
-                    *(b++) = *m;
-            }
-        }
-        *b = '\0';
-        returnMe = MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                                   Target->getCharYYXXX().c_str(), buffer);
+    if (!Connected || !MyUplink) {
+        return false;
     }
-    return returnMe;
+
+    // What we send a user counts towards the output flood control
+    setOutputTotal(Target, getOutputTotal(Target) + Message.size());
+
+    // Every line of the text is a notice of its own, which the core sees to
+    return xClient::Notice(Target, Message);
 }
 
 bool cservice::Topic(Channel* theChan, const string& Message) {
@@ -6866,8 +6726,7 @@ void cservice::noticeAllAuthedClients(sqlUser* theUser, const char* Message, ...
              ptr != theUser->networkClientList.end(); ++ptr) {
             iClient* Target = (*ptr);
             setOutputTotal(Target, getOutputTotal(Target) + strlen(buffer));
-            MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                            Target->getCharYYXXX().c_str(), buffer);
+            xClient::Notice(Target, std::string(buffer));
         }
     }
 }
@@ -6890,8 +6749,7 @@ void cservice::NoteAllAuthedClients(sqlUser* theUser, const char* Message, ...) 
                  ptr != theUser->networkClientList.end(); ++ptr) {
                 iClient* Target = (*ptr);
                 setOutputTotal(Target, getOutputTotal(Target) + strlen(buffer));
-                MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                                Target->getCharYYXXX().c_str(), buffer);
+                xClient::Notice(Target, std::string(buffer));
             }
             return;
         }
@@ -8529,8 +8387,7 @@ bool cservice::doXQOplist(const string& chanName) {
     string Message = "OPLIST " + chanName;
     // AB XQ Az iauth:15_d :OPLIST #empfoo
     // elog << "cservice::doXQOplist: Routing: " << Routing << " Message: " << Message << "\n";
-    return Write("%s XQ %s %s :%s", getCharYY().c_str(), chanfixServer->getCharYY().c_str(),
-                 "AnyCServiceRouting", Message.c_str());
+    return MyUplink->XQuery(chanfixServer, "AnyCServiceRouting", Message);
 }
 
 #ifdef THERETURN_ENABLED
@@ -8905,7 +8762,7 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
     /* Set remote +x if user has AUTOHIDE set (P11+ uplink only) */
     if (MyUplink->getUplink()->getProtocol() >= 11 && theUser->getFlag(sqlUser::F_AUTOHIDE) &&
         !theClient->isModeX())
-        MyUplink->Write("%s OM %s :+x", getCharYY().c_str(), theClient->getCharYYXXX().c_str());
+        MyUplink->OpMode(theClient, "+x");
     /*
      * If the user account has been suspended, make sure they don't get
      * auto-opped.
@@ -9200,8 +9057,8 @@ bool cservice::doXResponse(iServer* theServer, const string& Routing, const stri
         doKill = "OK";
     LOG(TRACE, "XQ-RESPONSE: {} XR {} {} :{} {}", getCharYY().c_str(),
         theServer->getCharYY().c_str(), Routing.c_str(), doKill.c_str(), Message.c_str());
-    return Write("%s XR %s %s :%s %s", getCharYY().c_str(), theServer->getCharYY().c_str(),
-                 Routing.c_str(), kill == false ? "OK" : "NO", Message.c_str());
+    return MyUplink->XReply(theServer, Routing,
+                            string(kill == false ? "OK" : "NO") + " " + Message);
 }
 
 /*
@@ -9476,11 +9333,7 @@ void cservice::sendAccountFlags(sqlUser* theUser, iClient* theClient) const {
     if (theClient->getAccountFlags() == newFlags)
         return;
 
-    if (MyUplink->getUplink()->getProtocol() >= 11)
-        MyUplink->Write("%s AC %s %s %u %u", getCharYY().c_str(), theClient->getCharYYXXX().c_str(),
-                        theClient->getAccount().c_str(), theClient->getAccountID(), newFlags);
-
-    theClient->setAccountFlags(newFlags);
+    MyUplink->UpdateAccountFlags(theClient, newFlags);
 
     MyUplink->PostEvent(EVT_ACCOUNT_FLAGS, static_cast<void*>(theClient), 0, 0, 0, this);
 }

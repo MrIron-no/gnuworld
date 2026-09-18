@@ -180,12 +180,7 @@ bool PURGECommand::Exec(iClient* theClient, const string& Message) {
                 if (tmpBotUser) {
                     if (!tmpBotUser->getMode(ChannelUser::MODE_O)) {
                         /* op ourselves so that we can do the reops */
-                        stringstream s;
-                        s << bot->getCharYY() << " M " << theChan->getName() << " +o "
-                          << bot->getCharYYXXX() << " " << tmpChan->getCreationTime() << ends;
-                        bot->Write(s);
-                        /* update the channel state */
-                        tmpBotUser->setMode(ChannelUser::MODE_O);
+                        bot->getUplink()->Op(tmpChan, bot->getInstance());
                     }
                 }
                 /* do the ops - if we were not in the channel before, this will

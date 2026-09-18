@@ -544,6 +544,26 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool serverMessage(Channel*, const std::string&);
 
     /**
+     * A numeric reply to a client, from this server: what a module answers
+     * a WHOIS of one of its clients with.  `text` is what follows the
+     * target: "<nick> <user> <host> * :<real name>" for a 311.
+     */
+    virtual bool SendNumeric(unsigned int numeric, const iClient* to, const std::string& text);
+
+    /**
+     * Set a network configuration value (CONFIG, P11): tells the network,
+     * and records it as our own msg_CF does for one that arrives.
+     */
+    virtual bool SetNetConf(const std::string& key, const std::string& value);
+
+    /**
+     * New account flags for a client that is logged in.  A P11 uplink is
+     * told, with the ACCOUNT the login itself was announced with; a P10
+     * uplink has no such update, and the flags are ours alone.
+     */
+    virtual void UpdateAccountFlags(iClient*, iClient::flagType flags);
+
+    /**
      * True for a client the network holds us responsible for: an xClient,
      * or a fake client, whether it sits on this server or on one a module
      * spawned.  Towards ircu we are the server of all of them.

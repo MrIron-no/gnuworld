@@ -55,7 +55,7 @@ bool REHASHCommand::Exec(iClient* theClient, const string& Message) {
         int lastupdate = bot->rehashMOTD();
         if (lastupdate > 0) {
             bot->Notice(theClient, "Done. Rehashed the MOTD, last updated %s ago.",
-                        prettyDuration(lastupdate).c_str(), lastupdate);
+                        prettyDuration(lastupdate).c_str());
             return true;
         } else {
             bot->Notice(theClient, "Couldn't update the MOTD.");

@@ -153,6 +153,38 @@ async def ccontrol_linked(docker_stack, fake_hub, tmp_path):
 
 
 @pytest_asyncio.fixture
+async def cservice_linked(docker_stack, fake_hub_p11, tmp_path):
+    """gnuworld with mod.cservice (X) and stealth mod.debug on a P11 link,
+    against the cservice database of the compose file's Postgres."""
+    require_module("cservice")
+    require_module("debug")
+    docker_stack.up()  # Postgres
+    hub = fake_hub_p11
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_cservice_config(conf_dir / "cservice.conf")
+    GnuworldProc.write_debug_config(conf_dir / "debug.conf")
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        module_lines=f"module = libcservice.la {root}/cservice.conf\n"
+        f"module = libdebug.la {root}/debug.conf",
+    )
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=90.0)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        assert hub.get_user_numnick("X"), "mod.cservice did not introduce X (module or database?)"
+        yield hub, proc
+    finally:
+        await proc.terminate()
+
+
+@pytest_asyncio.fixture
 async def debug_linked(docker_stack, fake_hub, tmp_path):
     """Dockerized gnuworld with stealth mod.debug (no DB required)."""
     hub = fake_hub
