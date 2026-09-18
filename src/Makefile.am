@@ -6,7 +6,9 @@ libgnuworldcore_la_SOURCES = \
 	src/Channel.cc \
 	src/Channel_modes.cc \
 	src/ChannelUser.cc \
+	src/IrcLogSink.cc \
 	src/LoadClientTimerHandler.cc \
+	src/LogExtractors.cc \
 	src/Network.cc \
 	src/ServerTimerHandlers.cc \
 	src/UnloadClientTimerHandler.cc \
@@ -24,6 +26,10 @@ libgnuworldcore_la_CXXFLAGS =   -I${top_srcdir}/include \
 				-I${top_srcdir}/libnotifier
 libgnuworldcore_la_LDFLAGS = -export-dynamic
 libgnuworldcore_la_LIBADD = libgnuworld.la libnotifier.la $(LIBLTDL)
+
+EXTRA_DIST += \
+	src/IrcLogSink.h \
+	src/LogExtractors.h
 
 bin_PROGRAMS = gnuworld
 gnuworld_SOURCES = src/main.cc
