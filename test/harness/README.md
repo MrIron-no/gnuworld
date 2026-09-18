@@ -1,22 +1,28 @@
 # GNUWorld integration tests (`test/harness`)
 
-Stand-alone pytest harness that:
+A pytest harness that tests gnuworld at the one seam it has: the
+server-to-server protocol.
 
-1. Listens as a fake ircu P10 hub **on the host**
-2. Runs **Postgres + gnuworld in Docker Compose**
-3. Lets tests assert on S2S lines the hub receives and on **gnuworld container stdout**
+1. `fake_hub.py` listens on the loopback as an ircu hub, P10 or P11
+2. gnuworld links to it, **run straight from the build tree**
+3. Tests assert on the lines the hub receives, on gnuworld's stdout, and on
+   gnuworld's own state as `mod.debug` reports it (`debugquery.py`);
+   `mod.gnutest` calls the core API from chat commands, so a test can trigger
+   an outbound operation and look at the line it produces (`gnutest_client.py`)
 
-Gnuworld is started with `docker compose run --rm -T` so its `-c` verbose
-output is piped into the test process (`wait_for_stdout`).
-
-C++ unit/load tools remain in `test/` (automake `test_*` binaries). This
-directory is the Python integration suite only.
+The C++ unit tests are separate: `make check`, from `test/*.cc`.
 
 ## Prerequisites
 
-- Docker + Docker Compose
-- A host build of gnuworld (`bin/gnuworld`, `lib/`, `share/gnuworld/`) — the
-  image copies these artifacts (it does not compile inside Docker)
+- A build of gnuworld: `./configure --enable-modules=debug,gnutest` and `make`.
+  Nothing has to be installed. The suite runs the `gnuworld` wrapper at the top
+  of the repository and loads the handlers and modules from there, so an edit
+  needs `make` and nothing else before the tests see it.
+- Python 3.11+ with `pytest`, `pytest-asyncio`, `pytest-timeout`.
+
+Docker is only needed for tests that want Postgres, which today is
+`mod.ccontrol`. A fixture whose module is not in the configured build skips,
+saying so.
 
 ## Setup
 
@@ -31,11 +37,16 @@ pip install pytest pytest-asyncio pytest-timeout
 
 ```bash
 cd test/harness
-pytest -v
+pytest -q                          # about 15 s; no Docker involved
+pytest -q test_p11_hidden.py       # one file
+pytest -q --durations=10           # where the time goes
+GNUWORLD_HARNESS=docker pytest -q  # the installed binaries, in the image
 ```
 
-The session fixture builds the image, starts Postgres, and tears the stack
-down at the end. First run is slower due to `docker compose build`.
+With `GNUWORLD_HARNESS=docker` gnuworld runs in a container built from the
+installed tree (`bin/`, `lib/`, `share/gnuworld/`), so that mode does need
+`make install` first. It is the way the harness always used to work, and is
+kept as a check that the installed layout works too.
 
 ## Writing tests
 

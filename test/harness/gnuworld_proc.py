@@ -1,12 +1,17 @@
-"""Spawn and supervise GNUWorld (Docker) for integration tests.
+"""Spawn and supervise GNUWorld for integration tests.
 
-Postgres and the gnuworld image run under docker compose. The FakeHub
-listens on the host; gnuworld uses host networking to reach it at
-``127.0.0.1``.
+By default gnuworld runs straight from the build tree: the ``gnuworld``
+libtool wrapper at the top of the repository, with the command handlers and
+modules loaded uninstalled from there. That needs no Docker, no image and no
+``make install``; a plain ``make`` is enough, and a test starts in a fraction
+of a second.
 
-Stdout from ``docker compose run -T gnuworld`` (gnuworld ``-c``) is
-piped into this process so tests can call ``wait_for_stdout`` exactly
-as they would with a local binary.
+Docker is still used where a test needs Postgres (mod.ccontrol), and for
+everything when ``GNUWORLD_HARNESS=docker`` is set, which runs the installed
+binaries (``make install``) in the image, as the harness always used to.
+
+Either way the FakeHub listens on the host loopback, and gnuworld's stdout
+(``-c``) is piped into this process for ``wait_for_stdout``.
 """
 
 from __future__ import annotations
@@ -40,6 +45,18 @@ RUN_DIR = HARNESS_DIR / "run"
 CONTAINER_CONF_DIR = "/etc/gnuworld"
 CONTAINER_COMMAND_MAP = "/opt/gnuworld/share/gnuworld/server_command_map"
 CONTAINER_LIBDIR = "/opt/gnuworld/lib"
+# The same three, for gnuworld run from the build tree. ltdl opens the
+# uninstalled .la files at the top of the tree, which point into .libs/.
+LOCAL_BINARY = REPO_ROOT / "gnuworld"
+LOCAL_COMMAND_MAP = REPO_ROOT / "bin" / "server_command_map"
+LOCAL_LIBDIR = REPO_ROOT
+
+
+def use_docker() -> bool:
+    """True if the whole suite was asked to run gnuworld in Docker."""
+    return os.environ.get("GNUWORLD_HARNESS", "").lower() == "docker"
+
+
 # host networking: FakeHub and published Postgres are on the host loopback
 CONTAINER_UPLINK = "127.0.0.1"
 
@@ -62,6 +79,8 @@ class DockerStack:
         self.started = False
 
     def up(self) -> None:
+        if self.started:
+            return
         RUN_DIR.mkdir(parents=True, exist_ok=True)
         logger.info("Building gnuworld image and starting Postgres...")
         subprocess.run(
@@ -120,13 +139,18 @@ class DockerStack:
 
 
 class GnuworldProc:
-    """Runs gnuworld via ``docker compose run`` and captures stdout."""
+    """Runs gnuworld, from the build tree or in Docker, and captures stdout."""
 
-    def __init__(self, conf_dir: Path, container_name: str | None = None):
-        """``conf_dir`` is a host directory bind-mounted at /etc/gnuworld.
+    def __init__(self, conf_dir: Path, container_name: str | None = None,
+                 local: bool | None = None):
+        """``conf_dir`` must contain ``GNUWorld.conf`` (and any module confs).
 
-        It must contain ``GNUWorld.conf`` (and optionally module confs).
+        Run locally it is used where it is, and is gnuworld's working directory
+        too, so debug.log and the pid file end up there. In Docker it is
+        bind-mounted at /etc/gnuworld. ``local`` defaults to what
+        ``GNUWORLD_HARNESS`` says.
         """
+        self.local = (not use_docker()) if local is None else local
         self.conf_dir = Path(conf_dir)
         self.container_name = container_name or f"gw-test-{uuid.uuid4().hex[:10]}"
         self.proc: asyncio.subprocess.Process | None = None
@@ -135,25 +159,38 @@ class GnuworldProc:
         self._line_event = asyncio.Event()
 
     @staticmethod
+    def conf_root(conf_dir: Path, local: bool | None = None) -> str:
+        """The directory ``conf_dir`` is for gnuworld: itself when gnuworld runs
+        locally, the bind mount in Docker. Module conf paths are built on it."""
+        local = (not use_docker()) if local is None else local
+        return str(Path(conf_dir).resolve()) if local else CONTAINER_CONF_DIR
+
+    @staticmethod
     def write_config(
         path: Path,
         *,
+        local: bool | None = None,
         uplink: str = CONTAINER_UPLINK,
         port: int,
         password: str = "testpass",
         name: str = "services.testnet",
         numeric: int = 51,
-        command_map: str = CONTAINER_COMMAND_MAP,
-        libdir: str = CONTAINER_LIBDIR,
+        command_map: str | None = None,
+        libdir: str | None = None,
         module_lines: str = "",
         tls: bool = False,
         tls_key_file: str | None = None,
         tls_cert_file: str | None = None,
     ) -> Path:
+        local = (not use_docker()) if local is None else local
+        command_map = command_map or str(LOCAL_COMMAND_MAP if local else CONTAINER_COMMAND_MAP)
+        libdir = libdir or str(LOCAL_LIBDIR if local else CONTAINER_LIBDIR)
+        conf_root = GnuworldProc.conf_root(path.parent, local)
+
         text = CONF_TEMPLATE.read_text(encoding="utf-8")
         if tls:
-            key = tls_key_file or f"{CONTAINER_CONF_DIR}/gnuworld.key"
-            cert = tls_cert_file or f"{CONTAINER_CONF_DIR}/gnuworld.crt"
+            key = tls_key_file or f"{conf_root}/gnuworld.key"
+            cert = tls_cert_file or f"{conf_root}/gnuworld.crt"
             tls_files = f"tlsKeyFile = {key}\ntlsCertFile = {cert}\n"
             tls_val = "yes"
         else:
@@ -248,6 +285,24 @@ class GnuworldProc:
         if not (self.conf_dir / "GNUWorld.conf").is_file():
             raise FileNotFoundError(f"Missing {self.conf_dir / 'GNUWorld.conf'}")
 
+        if self.local:
+            if not LOCAL_BINARY.is_file():
+                raise FileNotFoundError(
+                    f"{LOCAL_BINARY} is not built: run make at the top of the repository"
+                )
+            cmd = [str(LOCAL_BINARY), "-c", "-f", str(self.conf_dir.resolve() / "GNUWorld.conf"),
+                   "-L", "-D"]
+            logger.debug("Starting: %s", " ".join(cmd))
+            self.proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(self.conf_dir.resolve()),
+                start_new_session=True,
+            )
+            self._reader_task = asyncio.create_task(self._read_stdout())
+            return
+
         # Bind-mount this test's conf dir over /etc/gnuworld for the one-off run.
         cmd = _compose_cmd(
             "run",
@@ -324,13 +379,21 @@ class GnuworldProc:
                 await self._reader_task
             return
 
-        # Prefer docker stop so gnuworld can shut down cleanly
-        await asyncio.to_thread(
-            subprocess.run,
-            ["docker", "stop", "-t", "3", self.container_name],
-            capture_output=True,
-            check=False,
-        )
+        if self.local:
+            # SIGTERM lets gnuworld shut down cleanly; the wrapper script and
+            # the real binary are one process group
+            try:
+                os.killpg(self.proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        else:
+            # Prefer docker stop so gnuworld can shut down cleanly
+            await asyncio.to_thread(
+                subprocess.run,
+                ["docker", "stop", "-t", "3", self.container_name],
+                capture_output=True,
+                check=False,
+            )
 
         try:
             await asyncio.wait_for(self.proc.wait(), timeout=grace)

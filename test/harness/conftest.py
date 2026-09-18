@@ -11,10 +11,10 @@ import pytest_asyncio
 
 from fake_hub import FakeHub
 from gnuworld_proc import (
-    CONTAINER_CONF_DIR,
     CONTAINER_UPLINK,
     DockerStack,
     GnuworldProc,
+    use_docker,
 )
 
 
@@ -46,13 +46,21 @@ def require_module(name: str) -> None:
 
 @pytest.fixture(scope="session")
 def docker_stack():
-    """Build the gnuworld image and start Postgres for the test session."""
+    """The Docker side of the harness: the gnuworld image and Postgres.
+
+    Nothing is built or started here. gnuworld normally runs from the build
+    tree, which needs neither; a fixture that does need them calls ``up()``,
+    which is mod.ccontrol for its database, and every fixture when
+    GNUWORLD_HARNESS=docker. Most sessions therefore never touch Docker.
+    """
     stack = DockerStack()
-    stack.up()
+    if use_docker():
+        stack.up()
     try:
         yield stack
     finally:
-        stack.down()
+        if stack.started:
+            stack.down()
 
 
 @pytest_asyncio.fixture
@@ -115,18 +123,20 @@ async def linked(gnuworld):
 async def ccontrol_linked(docker_stack, fake_hub, tmp_path):
     """Dockerized gnuworld with libccontrol against compose Postgres."""
     require_module("ccontrol")
+    docker_stack.up()  # for Postgres; gnuworld runs in Docker here too
     hub = fake_hub
     conf_dir = _prepare_conf_dir(tmp_path)
     GnuworldProc.write_ccontrol_config(conf_dir / "ccontrol.conf")
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",
+        local=False,
         uplink=CONTAINER_UPLINK,
         port=hub.port,
         password=hub.password,
-        module_lines=f"module = libccontrol.la {CONTAINER_CONF_DIR}/ccontrol.conf",
+        module_lines=f"module = libccontrol.la {GnuworldProc.conf_root(conf_dir, local=False)}/ccontrol.conf",
     )
 
-    proc = GnuworldProc(conf_dir=conf_dir)
+    proc = GnuworldProc(conf_dir=conf_dir, local=False)
     await proc.start()
     try:
         await hub.accept_and_handshake(timeout=90.0)
@@ -150,7 +160,7 @@ async def debug_linked(docker_stack, fake_hub, tmp_path):
         uplink=CONTAINER_UPLINK,
         port=hub.port,
         password=hub.password,
-        module_lines=f"module = libdebug.la {CONTAINER_CONF_DIR}/debug.conf",
+        module_lines=f"module = libdebug.la {GnuworldProc.conf_root(conf_dir)}/debug.conf",
     )
 
     proc = GnuworldProc(conf_dir=conf_dir)
@@ -179,17 +189,18 @@ async def link_debug(
     ``gnutest`` also loads mod.gnutest, which calls the core API from chat
     commands (see gnutest_client.py); ``burstchannel`` makes it claim a channel
     with xServer::BurstChannel() during gnuworld's own burst.
-    Needs the docker_stack fixture to be active. Yields (hub, proc).
+    gnuworld runs from the build tree unless GNUWORLD_HARNESS=docker, in which
+    case the docker_stack fixture has to be active. Yields (hub, proc).
     """
     require_module("debug")
     if gnutest:
         require_module("gnutest")
     conf_dir = _prepare_conf_dir(tmp_path)
     GnuworldProc.write_debug_config(conf_dir / "debug.conf")
-    modules = [f"module = libdebug.la {CONTAINER_CONF_DIR}/debug.conf"]
+    modules = [f"module = libdebug.la {GnuworldProc.conf_root(conf_dir)}/debug.conf"]
     if gnutest:
         GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf", burstchannel=burstchannel)
-        modules.append(f"module = libgnutest.la {CONTAINER_CONF_DIR}/gnutest.conf")
+        modules.append(f"module = libgnutest.la {GnuworldProc.conf_root(conf_dir)}/gnutest.conf")
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",
         uplink=CONTAINER_UPLINK,
@@ -252,7 +263,7 @@ async def debug_linked_tls(docker_stack, tmp_path):
         uplink=CONTAINER_UPLINK,
         port=hub.port,
         password=hub.password,
-        module_lines=f"module = libdebug.la {CONTAINER_CONF_DIR}/debug.conf",
+        module_lines=f"module = libdebug.la {GnuworldProc.conf_root(conf_dir)}/debug.conf",
         tls=True,
     )
 
