@@ -225,11 +225,6 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
     // 0 = none (also P11 delayed join), 1 = op, 2 = voice, 3 = opvoice.
     unsigned short int mode_state = 0;
 
-    // True while the next oplevel digits seen are an absolute value
-    // rather than an increment on the previous one.  Absolute at the
-    // start of every B line and again after each 'v'.
-    bool oplevelAbsolute = true;
-
     // True while the current bucket is the P11 hidden (":d") group.
     bool bucketHidden = false;
 
@@ -250,11 +245,9 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         // Parse the suffix before looking the client up, as ircu does:
         // the bucket state must advance even if this member is skipped.
         if (string::npos != pos) {
-            // A suffix opens a new bucket.  Mirroring ircu's m_burst:
-            // the first 'o', 'v', 'd' or absolute oplevel in a suffix
-            // replaces the mode state for this client and for every
-            // suffix-less client that follows.  An oplevel *increment*
-            // keeps the current state, so ":v999" then ":5" stays +ov.
+            // A suffix opens a new bucket.  As in ircu's m_burst, the first
+            // 'o', 'v' or 'd' in it replaces the mode state for this client
+            // and for every suffix-less client that follows.
             bool needsReset = true;
 
             for (pos++; pos < (*ptr).size(); ++pos) {
@@ -267,8 +260,6 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
                     }
                     mode_state |= 1;
                     bucketHidden = false;
-                    // Pre-oplevel op: later digits are increments
-                    oplevelAbsolute = false;
                 } else if ('v' == flag) {
                     if (needsReset) {
                         mode_state = 0;
@@ -276,13 +267,11 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
                     }
                     mode_state |= 2;
                     bucketHidden = false;
-                    // Digits after a 'v' are an absolute oplevel
-                    oplevelAbsolute = true;
                 } else if ('d' == flag) {
                     /* P11: delayed join.  The client is on the channel
                      * but its JOIN has not been shown yet.  A hidden
                      * member never has status, so 'd' combined with
-                     * 'o', 'v' or an oplevel is just that status.
+                     * 'o' or 'v' is just that status.
                      */
                     if (needsReset) {
                         mode_state = 0;
@@ -290,18 +279,10 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
                     }
                     bucketHidden = (0 == mode_state);
                 } else if (flag >= '0' && flag <= '9') {
-                    /* An oplevel.  We do not track the level itself, but
-                     * carrying one means the client is a chanop.
+                    /* An oplevel, which ircu sends with OPLEVELS on.  We do
+                     * not support oplevels, and Undernet does not use them;
+                     * it is skipped so that it does not count as an error.
                      */
-                    if (oplevelAbsolute) {
-                        if (needsReset) {
-                            mode_state = 0;
-                            needsReset = false;
-                        }
-                        oplevelAbsolute = false;
-                    }
-                    mode_state |= 1;
-                    bucketHidden = false;
                 } else {
                     elog << "msg_B::parseBurstUsers> "
                          << "Unknown mode: " << flag << endl;

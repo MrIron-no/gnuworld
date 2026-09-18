@@ -62,5 +62,4 @@ unless `logrotate` is enabled in `gnuworld.conf`, in which case it is appended.
 Outbound lines are only on gnuworld's stdout, tagged `[OUT]`.
 
 `scenario.py` documents which channel exercises which part of the P11 BURST
-layout. `OPLEVELS` is off in the stock development environment, so ops are
-burst as `:o`; digit op levels need a capture with that feature enabled.
+layout.

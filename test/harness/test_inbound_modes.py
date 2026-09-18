@@ -72,18 +72,6 @@ async def test_timestamp_is_adopted_only_when_older(debug_linked_p11):
 
 
 @pytest.mark.asyncio
-async def test_op_with_an_oplevel_suffix(debug_linked_p11):
-    """With OPLEVELS the target is "<numeric>:<level>"; the lookup did not strip
-    the level, so the op was lost."""
-    hub, _proc = debug_linked_p11
-    asker, n, ts = await _setup(hub)
-
-    await hub.send_raw(f"{n['opped']} M {CHAN} +ov {n['plain']}:999 {n['other']} {ts}")
-    members = (await chaninfo(hub, asker, CHAN)).members
-    assert (members["plain"], members["other"]) == ("+o", "+v")
-
-
-@pytest.mark.asyncio
 async def test_bad_modes_are_skipped_and_the_rest_applied(debug_linked_p11):
     hub, _proc = debug_linked_p11
     asker, n, ts = await _setup(hub)

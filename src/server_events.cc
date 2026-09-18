@@ -654,10 +654,7 @@ void xServer::ApplyChannelModes(Channel* theChan, ChannelUser* sourceUser,
             break;
 
         case Channel::ModeKind::Member: {
-            // With oplevels the target is "<numeric>:<level>"; the level
-            // is not tracked.
-            const std::string numeric = change.arg.substr(0, change.arg.find(':'));
-            iClient* target = Network->findClient(numeric);
+            iClient* target = Network->findClient(change.arg);
             ChannelUser* member = (target != 0) ? theChan->findUser(target) : 0;
             if (0 == member) {
                 problems.push_back({Channel::ModeError::InvalidTarget, mode.letter, change.arg});

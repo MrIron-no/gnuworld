@@ -8,8 +8,7 @@ prefixed with the Unix time it was received. The `PASS` line is stripped.
 
 A full P11 net burst followed by a live reveal, as sent by a hub on ircu2
 `p11-integration` (9fe8642, the first with the REVEAL token) to a freshly linked
-gnuworld, after `p11-env/scenario.py` had built its channels. `OPLEVELS` was
-off, so ops are burst as `:o` and there are no digit op levels.
+gnuworld, after `p11-env/scenario.py` had built its channels.
 
 | Numeric | Nick | | Numeric | Nick |
 |---|---|---|---|---|

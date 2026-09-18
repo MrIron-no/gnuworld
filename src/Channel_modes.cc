@@ -72,8 +72,8 @@ std::optional<Channel::ModeError> validateModeArg(const Channel::ModeInfo& mode,
         }
         break;
     case Channel::ModeKind::Member:
-        // A numeric, a numeric with an oplevel ("ABAAA:999"), or a nick
-        // when the change comes from a module.
+        // A numeric from the network, or a nick when the change comes
+        // from a module.
         if (!isSingleToken(arg) || arg.find(',') != std::string_view::npos) {
             return Channel::ModeError::InvalidTarget;
         }

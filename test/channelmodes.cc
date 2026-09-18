@@ -196,8 +196,6 @@ void testParseValid() {
     // Members and bans, in the order given
     parsed = parseArgs("+ov-b", {"ABAAC", "ABAAD", "*!*@spam.example.net"});
     CHECK(parsed.ok() && flat(parsed) == "+o:ABAAC +v:ABAAD -b:*!*@spam.example.net");
-    parsed = parseArgs("+o", {"ABAAA:999"}); // with an oplevel
-    CHECK(parsed.ok() && flat(parsed) == "+o:ABAAA:999");
 
     CHECK(parseArgs("", {}).ok() && parseArgs("", {}).changes.empty());
     CHECK(parseArgs("+-+", {}).ok() && parseArgs("+-+", {}).changes.empty());
