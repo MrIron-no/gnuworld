@@ -138,7 +138,7 @@ void PrometheusClient::setGauge(const std::string& gaugeName, double value) {
 
 bool PrometheusClient::sendMessage(int level, const std::string) {
     // Use Logger's getLevelName to get consistent level names
-    std::string levelName = string_lower(Logger::levels[static_cast<Verbosity>(level)].name);
+    std::string levelName = string_lower(::gnuworld::levelName(static_cast<Verbosity>(level)));
 
     // Increment counter for this specific log level
     incrementCounter("log_" + levelName + "_total");

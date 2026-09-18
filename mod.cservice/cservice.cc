@@ -348,7 +348,7 @@ cservice::cservice(const string& args)
 #else
         pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys);
 #endif
-        logger->addNotifier(pushover, pushoverVerbosity);
+        logger->addSink(pushover, static_cast<Verbosity>(pushoverVerbosity));
         pushover->sendMessage("cmaster init", "cmaster connecting...");
     }
 
@@ -360,7 +360,7 @@ cservice::cservice(const string& args)
 
         try {
             prometheus = std::make_shared<PrometheusClient>(this, prometheusIP, prometheusPort);
-            logger->addNotifier(prometheus);
+            logger->addSink(prometheus);
         } catch (const std::exception& e) {
             elog << "*** [CMaster]: Unable to start Prometheus on " << prometheusIP << ":"
                  << prometheusPort << endl;
@@ -897,27 +897,21 @@ void cservice::OnPrivateMessage(iClient* theClient, const string& Message, bool 
 
             /* Log command to logfile here, if command logging enabled */
             if (commandLog) {
-                std::string jsonMessage;
-                std::string jsonParams = "\"command\":\"" + Command + "\"";
-                /*if( secure )
-                        jsonParams += ",\"secure\":true" ;
-                else
-                        jsonParams += ",\"secure\":false" ;*/
-
-                if (theClient->isModeR())
-                    jsonParams += ",\"user_id\":" + std::to_string(theClient->getAccountID()) +
-                                  ",\"user_name\":\"" + theClient->getAccount() + "\"";
-
-                jsonParams += ",\"client_nick\":\"" + escapeJsonString(theClient->getNickName()) +
-                              "\",\"client_userhost\":\"" +
-                              escapeJsonString(theClient->getRealUserHost()) + "\"";
-
-                jsonMessage = Command;
+                std::string commandLine = Command;
                 if (Command != "NEWPASS" && Command != "SUSPENDME" && Command != "LOGIN" &&
                     st.size() > 0)
-                    jsonMessage += " " + escapeJsonString(st.assemble(1));
+                    commandLine += " " + st.assemble(1);
 
-                logger->writeLog(INFO, "cservice::OnPrivateMessage", jsonParams, jsonMessage);
+                Logger::MessageTemplate record = LOG_MSG(INFO, "{command_line}");
+
+                record.with("command", Command).with("command_line", commandLine);
+                /*record.with( "secure", secure ) ;*/
+
+                if (theClient->isModeR())
+                    record.with("user_id", static_cast<std::uint64_t>(theClient->getAccountID()))
+                        .with("user_name", theClient->getAccount());
+
+                record.with("client", theClient).log();
             }
         }
     }
@@ -3186,49 +3180,43 @@ void cservice::OnJoin(const std::string& chanName) {
  * Register log handlers for custom objects.
  */
 void cservice::registerLogHandlers() {
-    // Register sqlUser* handler
-    logger->registerObjectHandler<sqlUser>([](std::map<std::string, std::string>& fields,
-                                              const std::string& key, sqlUser* user) -> bool {
-        if (!user) {
-            fields[key + "_name"] = "nullptr";
-            return true;
-        }
+    // Register sqlUser* extractor
+    registerLogExtractor<sqlUser>([](const sqlUser* user) {
+        LogObject object;
 
-        fields[key + "_id"] = std::to_string(user->getID());
-        fields[key + "_name"] = user->getUserName();
-        // fields[key + "_is_authed"] = user->isAuthed() ? "true" : "false";
+        object.display = user->getUserName();
 
-        return true;
+        object.fields.emplace_back("id", static_cast<std::uint64_t>(user->getID()));
+        object.fields.emplace_back("name", user->getUserName());
+        // object.fields.emplace_back("is_authed", user->isAuthed());
+
+        return object;
     });
 
-    // Register sqlChannel* handler
-    logger->registerObjectHandler<sqlChannel>([](std::map<std::string, std::string>& fields,
-                                                 const std::string& key,
-                                                 sqlChannel* channel) -> bool {
-        if (!channel) {
-            fields[key + "_name"] = "nullptr";
-            return true;
-        }
+    // Register sqlChannel* extractor
+    registerLogExtractor<sqlChannel>([](const sqlChannel* channel) {
+        LogObject object;
 
-        fields[key + "_id"] = std::to_string(channel->getID());
-        fields[key + "_name"] = channel->getName();
-        // fields[key + "_ts"] = std::to_string(channel->getRegisteredTS());
+        object.display = channel->getName();
 
-        return true;
+        object.fields.emplace_back("id", static_cast<std::uint64_t>(channel->getID()));
+        object.fields.emplace_back("name", channel->getName());
+        // object.fields.emplace_back("ts", static_cast<std::uint64_t>(
+        //                                      channel->getRegisteredTS()));
+
+        return object;
     });
 
-    // Register sqlBan* handler
-    logger->registerObjectHandler<sqlBan>([](std::map<std::string, std::string>& fields,
-                                             const std::string& key, sqlBan* ban) -> bool {
-        if (!ban) {
-            fields[key + "_id"] = "nullptr";
-            return true;
-        }
+    // Register sqlBan* extractor
+    registerLogExtractor<sqlBan>([](const sqlBan* ban) {
+        LogObject object;
 
-        fields[key + "_id"] = std::to_string(ban->getID());
-        fields[key + "_mask"] = ban->getBanMask();
+        object.display = ban->getBanMask();
 
-        return true;
+        object.fields.emplace_back("id", static_cast<std::uint64_t>(ban->getID()));
+        object.fields.emplace_back("mask", ban->getBanMask());
+
+        return object;
     });
 }
 
@@ -7196,14 +7184,14 @@ void cservice::rehashConfigVariables() {
     if (prometheusEnable && !prometheus) {
         try {
             prometheus = std::make_shared<PrometheusClient>(this, prometheusIP, prometheusPort);
-            logger->addNotifier(prometheus);
+            logger->addSink(prometheus);
         } catch (const std::exception& e) {
             LOG(ERROR, "Unable to start Prometheus on {}:{} - {}", prometheusIP, prometheusPort,
                 e.what());
             prometheus.reset();
         }
     } else if (!prometheusEnable && prometheus) {
-        logger->removeNotifier(prometheus);
+        logger->removeSink(prometheus);
         prometheus.reset();
     }
 #endif
@@ -7214,7 +7202,7 @@ void cservice::rehashConfigVariables() {
         if (pushover) {
             pushover->setUserKeys(pushoverUserKeys);
             pushover->setToken(pushoverToken);
-            logger->updateNotifierVerbosity(pushover, pushoverVerbosity);
+            logger->setSinkThreshold(pushover, static_cast<Verbosity>(pushoverVerbosity));
         } else {
             /* Pushover is enabled in config, but not in gnuworld. Enable. */
 #ifdef USE_THREAD
@@ -7223,12 +7211,12 @@ void cservice::rehashConfigVariables() {
 #else
             pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys);
 #endif
-            logger->addNotifier(pushover, pushoverVerbosity);
+            logger->addSink(pushover, static_cast<Verbosity>(pushoverVerbosity));
         }
     } else {
         /* Pushover is disabled in config, but still enabled in gnuworld. Disable. */
         if (pushover) {
-            logger->removeNotifier(pushover);
+            logger->removeSink(pushover);
             pushover.reset();
         }
     }

@@ -988,6 +988,30 @@ class xClient : public TimerHandler, public NetworkTarget {
     std::unique_ptr<Logger> logger;
 
     /**
+     * The sinks this client attached to its own logger: a JSON log file, the
+     * console, and - once the client has an uplink - the debug channel.  They
+     * are held here so that the destructor can take them off again.
+     */
+    std::shared_ptr<LogSink> fileLogSink;
+    std::shared_ptr<LogSink> consoleLogSink;
+    std::shared_ptr<LogSink> ircLogSink;
+
+    /**
+     * Attaches the sink that mirrors this client's log to its debug channel.
+     * Called by xServer::AttachClient() as soon as the uplink is known, which
+     * is what such a sink needs; calling it again does nothing.
+     */
+    void attachIrcLogSink(xServer* server);
+
+    /**
+     * Teaches the logging system how to show one of this module's own object
+     * types in a log message, for as long as the module is loaded.
+     */
+    template <class T> void registerLogExtractor(std::function<LogObject(const T*)> f) {
+        Logger::registerExtractor<T>(this, std::move(f));
+    }
+
+    /**
      * Flag to track whether migrations have been checked for this module.
      * Prevents repeated checks on the same instance.
      */

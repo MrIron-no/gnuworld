@@ -23,6 +23,7 @@
 #include <atomic>
 #include <cstddef>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -127,27 +128,29 @@ void IrcLogSink::flush() {
 }
 
 void IrcLogSink::flushAll() {
-    std::vector<IrcLogSink*> sinks;
+    std::vector<std::shared_ptr<IrcLogSink>> sinks;
 
     {
         const std::lock_guard<std::mutex> guard(registryLock());
 
-        sinks = registry();
-    }
+        const std::vector<IrcLogSink*>& live = registry();
 
-    for (IrcLogSink* const sink : sinks) {
-        {
-            // A notice of an earlier sink may have destroyed this one
-            const std::lock_guard<std::mutex> guard(registryLock());
+        sinks.reserve(live.size());
 
-            const std::vector<IrcLogSink*>& live = registry();
+        for (IrcLogSink* const sink : live) {
+            // A sink whose last owner is gone is on its way out: taking a
+            // share of it now would resurrect it
+            std::shared_ptr<IrcLogSink> owned = sink->weak_from_this().lock();
 
-            if (live.end() == std::find(live.begin(), live.end(), sink))
-                continue;
+            if (nullptr != owned)
+                sinks.push_back(std::move(owned));
         }
-
-        sink->flush();
     }
+
+    // The registry lock is gone, and every sink below is held for the whole of
+    // its flush: a notice of one of them may destroy anything but these
+    for (const std::shared_ptr<IrcLogSink>& sink : sinks)
+        sink->flush();
 }
 
 void IrcLogSink::deliver(const LogRecord& record) {

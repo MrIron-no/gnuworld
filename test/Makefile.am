@@ -20,7 +20,8 @@ noinst_PROGRAMS = test_burst \
 	test_numbers \
 	test_logger_render \
 	test_logger_format \
-	test_logger_sinks
+	test_logger_sinks \
+	test_logger_basic
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
@@ -129,7 +130,13 @@ test_logger_sinks_SOURCES = test/logger_sinks.cc
 test_logger_sinks_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_logger_sinks_LDADD = libgnuworld.la $(threadLib)
 
+# libgnuworld.la and nothing else: the proof that the logger has no dependency
+# on the core any more.
+test_logger_basic_SOURCES = test/logger_basic.cc
+test_logger_basic_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_basic_LDADD = libgnuworld.la $(threadLib)
+
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
 TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
-	test_logger_format test_logger_sinks
+	test_logger_format test_logger_sinks test_logger_basic

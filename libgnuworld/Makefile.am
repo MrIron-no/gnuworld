@@ -15,6 +15,7 @@ libgnuworld_la_SOURCES = \
 	libgnuworld/Signal.cc \
 	libgnuworld/StringTokenizer.cc \
 	libgnuworld/gThread.cc \
+	libgnuworld/logger.cc \
 	libgnuworld/match.cc \
 	libgnuworld/md5hash.cc \
 	libgnuworld/threadworker.cc \
@@ -47,6 +48,7 @@ EXTRA_DIST += \
 	libgnuworld/MigrationChecker.h \
 	libgnuworld/gThread.h \
 	libgnuworld/ircd_chattr.h \
+	libgnuworld/logger.h \
 	libgnuworld/match.h \
 	libgnuworld/match_table.h \
 	libgnuworld/md5hash.h \

@@ -48,6 +48,8 @@
 #include "EConfig.h"
 #include "StringTokenizer.h"
 #include "ELog.h"
+#include "IrcLogSink.h"
+#include "LogSinks.h"
 #ifdef HAVE_PGSQL
 #include "MigrationChecker.h"
 #endif
@@ -76,10 +78,73 @@ xClient::xClient(const string& fileName) : configFileName(fileName) {
     }
 
     /* Initialize logger */
-    logger = std::make_unique<Logger>(this);
+    logger = std::make_unique<Logger>(nickName);
+
+    /* The log file is the config file name up to its first '.', plus ".log" */
+    string logFilePath;
+    const string::size_type dotPos = getConfigFileName().find('.');
+    if (dotPos != string::npos)
+        logFilePath = getConfigFileName().substr(0, dotPos) + ".log";
+    else
+        logFilePath = getConfigFileName() + ".log";
+
+    std::shared_ptr<FileSink> fileSink = std::make_shared<FileSink>(logFilePath, true);
+    if (!fileSink->isOpen())
+        elog << "Warning: Could not open logfile " << logFilePath << endl;
+
+    fileLogSink = fileSink;
+    logger->addSink(fileSink, TRACE);
+    logger->setLegacyFileSink(fileSink);
+
+    std::shared_ptr<ConsoleSink> consoleSink =
+        std::make_shared<ConsoleSink>(ConsoleSink::Colour::Auto, true);
+
+    consoleLogSink = consoleSink;
+    logger->addSink(consoleSink, TRACE);
+    logger->setLegacyConsoleSink(consoleSink);
+
+    logger->setContext("bot", nickName);
 }
 
-xClient::~xClient() {}
+xClient::~xClient() {
+    // Whatever this module taught the logging system about its own types goes
+    // with the module itself
+    Logger::removeExtractors(this);
+
+    if (logger) {
+        if (ircLogSink)
+            logger->removeSink(ircLogSink);
+        if (consoleLogSink)
+            logger->removeSink(consoleLogSink);
+        if (fileLogSink)
+            logger->removeSink(fileLogSink);
+    }
+}
+
+/**
+ * Attaches the sink that mirrors this client's log to its debug channel.  The
+ * channel is whatever the module's configuration has asked for so far, and the
+ * compatibility setters change it afterwards through the setter installed here.
+ */
+void xClient::attachIrcLogSink(xServer* server) {
+    // A module that is attached a second time keeps the sink it has
+    if (ircLogSink)
+        return;
+
+    std::shared_ptr<IrcLogSink> sink =
+        std::make_shared<IrcLogSink>(server, logger->getChannel(), true);
+
+    ircLogSink = sink;
+
+    // INFO is the default the legacy chanVerbosity key had
+    logger->addSink(sink, INFO);
+    logger->setLegacyIrcSink(sink);
+    logger->setLegacyChanSetter(
+        [weak = std::weak_ptr<IrcLogSink>(sink)](const string& channelName) {
+            if (const std::shared_ptr<IrcLogSink> live = weak.lock())
+                live->setChannel(channelName);
+        });
+}
 
 void xClient::BurstChannels() {}
 

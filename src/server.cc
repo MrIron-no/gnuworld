@@ -65,6 +65,7 @@
 #include "EConfig.h"
 #include "match.h"
 #include "ELog.h"
+#include "LogSinks.h"
 #include "StringTokenizer.h"
 #include "xparameters.h"
 #include "moduleLoader.h"
@@ -880,6 +881,11 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
 
     Client->MyUplink = this;
 
+    // The uplink is what a channel log sink needs, and this is the first
+    // moment the client has one.  Not in OnAttach(): a module may override it
+    // without calling the base class.
+    Client->attachIrcLogSink(this);
+
     // Let the client know it has been added to
     // the server and its tables.
     Client->OnAttach();
@@ -1676,6 +1682,10 @@ void xServer::startLogging(bool logrotate) {
         elog.setStream(&clog);
         elog << "*** Running in verbose mode..." << endl;
     }
+
+    // The logging system writes to the console under the same condition the
+    // old logger did: only when the process was asked to be verbose.
+    ConsoleSink::setEnabled(verbose);
 
     if (logSocket) {
         if (logrotate)

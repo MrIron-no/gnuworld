@@ -29,6 +29,7 @@
 #include "iClient.h"
 #include "iServer.h"
 #include "ip.h"
+#include "logger.h"
 
 namespace gnuworld {
 
@@ -110,13 +111,11 @@ LogObject logObjectFor(const ChannelUser* theUser) {
 }
 
 void registerCoreLogExtractors() {
-#if 0 // enabled in logger-flip
     Logger::registerExtractor<iClient>(nullptr, [](const iClient* c) { return logObjectFor(c); });
     Logger::registerExtractor<iServer>(nullptr, [](const iServer* s) { return logObjectFor(s); });
     Logger::registerExtractor<Channel>(nullptr, [](const Channel* c) { return logObjectFor(c); });
     Logger::registerExtractor<ChannelUser>(nullptr,
                                            [](const ChannelUser* u) { return logObjectFor(u); });
-#endif
 }
 
 } // namespace gnuworld

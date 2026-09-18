@@ -24,6 +24,7 @@
 
 #include <cstddef>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -53,14 +54,18 @@ class xServer;
  * channel and the highlight flag are copied the same way, so that a rehash may
  * change them while records are on their way out.
  *
+ * An instance of this class is always owned by a std::shared_ptr, which is how
+ * a logger holds a sink: the logger keeps one alive for the whole of its own
+ * emit(), and flushAll() does the same for the whole of its flush.
+ *
  * Instances register themselves in a process-wide list, which is what
  * flushAll() walks.  Sinks are created and destroyed on the main thread, and
- * that is the only concurrency flushAll() is safe against: a sink destroyed
- * from underneath it, by something a notice of this very flush led to, is
- * skipped rather than dereferenced.  Creating or destroying one from a worker
- * thread is not supported.
+ * that is the only concurrency flushAll() is safe against: a sink whose last
+ * owner is already gone, or one that goes while an earlier sink's notice is
+ * being sent, is skipped rather than dereferenced.  Creating or destroying one
+ * from a worker thread is not supported.
  */
-class IrcLogSink : public LogSink {
+class IrcLogSink : public LogSink, public std::enable_shared_from_this<IrcLogSink> {
   public:
     /// How many records one sink queues for the main loop before dropping them
     static constexpr std::size_t maxQueuedRecords = 1000;

@@ -42,6 +42,8 @@
 */
 
 #include "ELog.h"
+#include "IrcLogSink.h"
+#include "LogExtractors.h"
 #include "server.h"
 #include "moduleLoader.h"
 #include "md5hash.h"
@@ -248,6 +250,12 @@ xServer::xServer(bool verbose_arg, bool doDebug_arg, bool logSocket_arg,
     log4cplus::PropertyConfigurator::doConfigure("logging.properties");
 #endif
 
+    // The logging system, before initializeSystem() loads the first module:
+    // that is where the clients are created and attached, and so where the
+    // first log record of a module is written.
+    IrcLogSink::setMainThread();
+    registerCoreLogExtractors();
+
     startLogging(false);
     // Sets up the server internals
     initializeSystem();
@@ -261,6 +269,10 @@ void xServer::mainLoop() {
 
     // When this method is first invoked, the server is not connected
     while (keepRunning) {
+        // Records logged from a worker thread wait for the main thread, which
+        // is the only one that may write to the network
+        IrcLogSink::flushAll();
+
         // Check if a reconnection is necessary
         // Do not reconnect if the server is in the process of
         // shutting down.

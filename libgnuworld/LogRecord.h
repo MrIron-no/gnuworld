@@ -162,6 +162,8 @@ inline const char* levelColumn(Verbosity level) {
         return "DEBUG";
     case TRACE:
         return "TRACE";
+    case SQL:
+        return "SQL  ";
     default:
         return "     ";
     }

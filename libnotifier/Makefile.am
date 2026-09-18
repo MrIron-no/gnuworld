@@ -3,7 +3,6 @@
 
 noinst_LTLIBRARIES += libnotifier.la
 libnotifier_la_SOURCES = \
-	libnotifier/logger.cc \
 	libnotifier/pushover.cc
 
 if COND_PROMETHEUS
@@ -30,7 +29,6 @@ endif
 endif
 
 EXTRA_DIST += \
-	libnotifier/logger.h \
 	libnotifier/notifier.h \
 	libnotifier/prometheus.h \
 	libnotifier/pushover.h

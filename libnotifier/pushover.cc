@@ -60,8 +60,9 @@ void PushoverClient::initialise_curl() {
 #endif
 
 bool PushoverClient::sendMessage(int level, const std::string message) {
-    return sendMessage(std::format("[{}] {}", bot->getNickName(), Logger::levels[level].name),
-                       message);
+    return sendMessage(
+        std::format("[{}] {}", bot->getNickName(), levelName(static_cast<Verbosity>(level))),
+        message);
 }
 
 bool PushoverClient::sendMessage(const std::string title, const std::string message) {
