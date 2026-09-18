@@ -121,13 +121,13 @@ bool msg_B::Execute(const xParameters& Param) {
     // True if we already know this channel with an older timestamp, in
     // which case the incoming channel lost and its members are fresh
     // joins to ours.  Decides how hidden members are interpreted.
-    const bool incomingIsNewer =
-        (theChan != NULL) && (theChan->getCreationTime() < static_cast<time_t>(::atoi(Param[2])));
+    const time_t burstTS = theServer->RequireTimestamp("msg_B>", "channel timestamp", Param[2]);
+    const bool incomingIsNewer = (theChan != NULL) && (theChan->getCreationTime() < burstTS);
 
     // Was the channel found?
     if (NULL == theChan) {
         // The channel does not yet exist, go ahead and create it.
-        theChan = new (std::nothrow) Channel(Param[1], atoi(Param[2]));
+        theChan = new (std::nothrow) Channel(Param[1], burstTS);
         assert(theChan != 0);
 
         // Add the new Channel to the network channel table
@@ -146,7 +146,7 @@ bool msg_B::Execute(const xParameters& Param) {
     else {
         // The channel was already found.
         // Make sure the timestamp is accurate, this is an oddity imho.
-        time_t newCreationTime = static_cast<time_t>(::atoi(Param[2]));
+        const time_t newCreationTime = burstTS;
 
         // Is the old TS greater than the new TS?
         if (theChan->getCreationTime() > newCreationTime) {

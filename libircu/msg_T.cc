@@ -70,7 +70,7 @@ bool msg_T::Execute(const xParameters& Param) {
         newTopic = Param[5];
 #ifdef TOPIC_TRACK
         theChan->setTopic(Param[5]);
-        theChan->setTopicTS(atoi(Param[3]));
+        theChan->setTopicTS(theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
         theChan->setTopicWhoSet(Param[4]);
         hasWhoSet = true;
 #endif // TOPIC_TRACK
@@ -80,7 +80,7 @@ bool msg_T::Execute(const xParameters& Param) {
         newTopic = Param[4];
 #ifdef TOPIC_TRACK
         theChan->setTopic(Param[4]);
-        theChan->setTopicTS(atoi(Param[3]));
+        theChan->setTopicTS(theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
 #endif // TOPIC_TRACK
     } else {
         /* this is a .11 hub! (3 arguments) */

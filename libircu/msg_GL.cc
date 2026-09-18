@@ -74,8 +74,13 @@ bool msg_GL::Execute(const xParameters& Params) {
         return false;
     }
 
-    Gline* newGline = new (std::nothrow) Gline(Params[0], Params[2] + 1, Params[Params.size() - 1],
-                                               atoi(Params[3]), atoi(Params[4]));
+    // <source> GL <target> +<mask> <expire> [<lastmod> [<lifetime>]] :<reason>
+    const time_t expires = theServer->RequireTimestamp("msg_GL>", "expire time", Params[3]);
+    const time_t lastmod =
+        (Params.size() > 5) ? theServer->RequireTimestamp("msg_GL>", "lastmod", Params[4]) : 0;
+
+    Gline* newGline = new (std::nothrow)
+        Gline(Params[0], Params[2] + 1, Params[Params.size() - 1], expires, lastmod);
     assert(newGline != 0);
 
     // Temporary variable

@@ -64,7 +64,8 @@ bool msg_JU::Execute(const xParameters& Param) {
             Reason = Reason.substr(1);
         };
         iServer* jupeServer = new (std::nothrow)
-            iServer(base64toint(Param[0]), temp2, SName, atoi(CTime.c_str()), Reason);
+            iServer(base64toint(Param[0]), temp2, SName,
+                    theServer->RequireTimestamp("msg_JU>", "lastmod", CTime), Reason);
         assert(jupeServer != 0);
         jupeServer->setJupe();
         if (!Network->addServer(jupeServer)) {

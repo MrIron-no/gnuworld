@@ -102,7 +102,7 @@ bool msg_J::Execute(const xParameters& Param) {
     if (Param.size() < 3)
         joinTs = ::time(NULL);
     else
-        joinTs = atoi(Param[2]);
+        joinTs = theServer->RequireTimestamp("msg_J>", "channel timestamp", Param[2]);
     for (StringTokenizer::size_type i = 0; i < st.size(); i++) {
         // Is it a modeless channel?
         if ('+' == st[i][0]) {

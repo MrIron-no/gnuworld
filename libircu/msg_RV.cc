@@ -80,7 +80,7 @@ bool msg_RV::Execute(const xParameters& Param) {
 
     // A reveal for a newer incarnation of the channel lost the timestamp
     // race: it is not about the channel we know.
-    const time_t chanTS = static_cast<time_t>(::strtoul(Param[2], 0, 10));
+    const time_t chanTS = theServer->RequireTimestamp("msg_RV>", "channel timestamp", Param[2]);
     if (chanTS > theChan->getCreationTime()) {
         return true;
     }

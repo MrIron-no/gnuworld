@@ -72,19 +72,29 @@ bool msg_AC::Execute(const xParameters& Param) {
                 account_id_s.erase(0, pos + 1);
                 account.erase(pos);
 
-                account_id = atoi(account_id_s.c_str());
+                // The account is passed on as the login server wrote it
+                if (const std::optional<unsigned int> id =
+                        parseNumber<unsigned int>(account_id_s)) {
+                    account_id = *id;
+                } else {
+                    elog << "msg_AC> Invalid account id: " << account_id_s << std::endl;
+                }
             }
         }
         if (Param.size() > 3) {
             std::string account_id_s = Param[3];
             if (!account_id_s.empty()) {
-                account_id = atoi(account_id_s);
+                // ircu keeps both as 64 bit numbers and writes them itself
+                account_id = static_cast<unsigned int>(
+                    theServer->RequireNumber<std::uint64_t>("msg_AC>", "account id", account_id_s));
             }
         }
         if (Param.size() > 4) {
             std::string account_flags_s = Param[4];
             if (!account_flags_s.empty()) {
-                account_flags = atoi(account_flags_s);
+                account_flags =
+                    static_cast<iClient::flagType>(theServer->RequireNumber<std::uint64_t>(
+                        "msg_AC>", "account flags", account_flags_s));
             }
         }
     }

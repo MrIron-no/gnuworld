@@ -100,9 +100,14 @@ bool msg_N::Execute(const xParameters& params) {
     } else
         nickUplink = Network->findServer(params[0]);
 
+    // <numeric> N <new nick> <nick ts>, or
+    // <server> N <nick> <hops> <nick ts> <user> <host> ...
+    const time_t nickTS =
+        theServer->RequireTimestamp("msg_N>", "nick timestamp", params[3 == params.size() ? 2 : 3]);
+
     if (!nickUplink->isBursting()) {
         // Set the server's lag time
-        time_t nick_ts = atoi(params[2]);
+        time_t nick_ts = nickTS;
         time_t lag = 0;
         if (::time(0) > nick_ts)
             lag = ::time(0) - nick_ts;
@@ -118,7 +123,7 @@ bool msg_N::Execute(const xParameters& params) {
         //		<< params
         //		<< endl ;
 
-        Network->rehashNick(params[0], params[1], atoi(params[2]));
+        Network->rehashNick(params[0], params[1], nickTS);
         return true;
     }
 
@@ -192,21 +197,14 @@ bool msg_N::Execute(const xParameters& params) {
         account = st[0];
         if (2 <= st.size()) {
             // id present
-            std::stringstream ss;
-            ss << st[1];
-            if (!(ss >> account_id)) {
-                elog << "msg_N> Invalid account id: " << st[1] << endl;
-                // non-fatal error
-            }
+            // ircu writes the id and the flags itself, from 64 bit numbers
+            account_id = static_cast<unsigned int>(
+                theServer->RequireNumber<std::uint64_t>("msg_N>", "account id", st[1]));
         } // if( 2 <= st.size() )
         if (3 == st.size()) {
             // flags present
-            std::stringstream ss;
-            ss << st[2];
-            if (!(ss >> account_flags)) {
-                elog << "msg_N> Invalid account flags: " << st[2] << endl;
-                // non-fatal error
-            }
+            account_flags = static_cast<unsigned short int>(
+                theServer->RequireNumber<std::uint64_t>("msg_N>", "account flags", st[2]));
         } // if( 3 == st.size() )
     } // if( !account.empty() )
 
@@ -238,7 +236,7 @@ bool msg_N::Execute(const xParameters& params) {
                                                     sethost,        // asuka sethost
                                                     fakehost,       // srvx fakehost
                                                     description,    // real name / infoline
-                                                    atoi(params[3]) // nick timestamp
+                                                    nickTS          // nick timestamp
     );
     assert(newClient != 0);
 

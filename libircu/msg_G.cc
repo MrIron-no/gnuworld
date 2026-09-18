@@ -119,7 +119,14 @@ bool msg_G::Execute(const xParameters& params) {
             elog << "msg_G> Error in Remote TS" << endl;
             return false;
         }
-        int tsDiff = (now.tv_sec - atoi(st[0])) * 1000 + (now.tv_usec - atoi(st[1])) / 1000;
+        // Only used to measure the lag: nothing to abort for
+        const std::optional<long> remoteSec = parseNumber<long>(st[0]);
+        const std::optional<long> remoteUsec = parseNumber<long>(st[1]);
+        if (!remoteSec || !remoteUsec) {
+            elog << "msg_G> Error in Remote TS: " << params[1] << endl;
+            return false;
+        }
+        int tsDiff = (now.tv_sec - *remoteSec) * 1000 + (now.tv_usec - *remoteUsec) / 1000;
         // elog << "msg_G> tsDiff = " << tsDiff << endl;
 
         stringstream theStream;

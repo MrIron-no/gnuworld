@@ -81,7 +81,7 @@ bool msg_S::Execute(const xParameters& params) {
     const string serverName(params[1]);
     // Don't care about hop count
     // Don't care about start time
-    time_t connectTime = static_cast<time_t>(atoi(params[4]));
+    const time_t connectTime = theServer->RequireTimestamp("msg_S>", "link time", params[4]);
     // params[ 5 ] is the protocol token: P10/J10/P11/J11
 
     int serverIntYY = base64toint(params[6], 2);

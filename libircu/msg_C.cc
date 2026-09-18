@@ -78,7 +78,8 @@ bool msg_C::Execute(const xParameters& Param) {
     }
 
     // Grab the creation time.
-    time_t creationTime = static_cast<time_t>(atoi(Param[Param.size() - 1]));
+    const time_t creationTime =
+        theServer->RequireTimestamp("msg_C>", "channel timestamp", Param[Param.size() - 1]);
 
     iServer* nickUplink = 0;
     char serverYY[3];
@@ -186,7 +187,6 @@ bool msg_C::Execute(const xParameters& Param) {
             }
         }
 
-        int creationTime = atoi(Param[2]);
         // The user who created the channel is automatically +o
         if (creationTime == theChan->getCreationTime()) {
             theUser->setModeO();

@@ -1117,6 +1117,27 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
                                     std::span<const std::string> problems) const;
 
     /**
+     * A number the uplink itself writes into the line, such as a timestamp
+     * or a count: if it is not one, that is a protocol error.  `what` names
+     * it in the log: "channel timestamp".  Text the uplink only passes on
+     * for somebody else is not for these: parseNumber() it, and cope.
+     */
+    template <std::integral T>
+    T RequireNumber(std::string_view where, std::string_view what, std::string_view text) const {
+        if (const std::optional<T> value = parseNumber<T>(text)) {
+            return *value;
+        }
+        const std::string problem = std::format("invalid {}: {}", what, text);
+        ProtocolError(where, std::span(&problem, 1));
+    }
+
+    /// RequireNumber() for a time.  ircu writes them unsigned.
+    time_t RequireTimestamp(std::string_view where, std::string_view what,
+                            std::string_view text) const {
+        return static_cast<time_t>(RequireNumber<std::uint64_t>(where, what, text));
+    }
+
+    /**
      * Check the list of glines for any that are about to
      * expire.
      */
