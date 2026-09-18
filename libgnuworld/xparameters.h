@@ -31,6 +31,8 @@
 #include <vector>
 
 #include <cassert>
+#include <cstdlib>
+#include <iostream>
 
 #include "ELog.h"
 
@@ -113,24 +115,18 @@ class xParameters {
     }
 
     /**
-     * Return a pointer to a mutable character array token.
-     * The tokens are indexed beginning at zero.
-     * This method will assert false if the requested index
-     * is out of bounds, according to validSubscript.
-     */
-    /**
-     * The parameter at `pos`, or an empty string if there is none.
+     * The parameter at `pos`.  The tokens are indexed beginning at zero.
      *
-     * A line from the network may have fewer parameters than its handler
-     * expects, and a handler may have forgotten to check the count.  It then
-     * sees an empty parameter.  Use has() to tell the two apart.
+     * Asking for one that is not there aborts, as a failed assert() does
+     * but in every build, after logging the line: either the uplink sent
+     * fewer parameters than the protocol has, or the handler did not check
+     * how many there are.  Both leave us not knowing the state of the
+     * network.  A parameter that may be absent is asked for with has() or
+     * view().
      */
     inline char* operator[](const size_type& pos) const {
         if (!validSubscript(pos)) {
-            // Shared, and never to be written to; nothing writes through
-            // this pointer, setValue() replaces the pointer itself.
-            static char empty[1] = {0};
-            return empty;
+            outOfRange(pos);
         }
         return myVector[pos];
     }
@@ -193,6 +189,17 @@ class xParameters {
      * Return false otherwise.
      */
     inline bool validSubscript(const size_type& i) const { return (i < myVector.size()); }
+
+    /// Say which parameter of which line was asked for, and abort.
+    [[noreturn]] void outOfRange(const size_type& pos) const {
+        elog << "xParameters> PROTOCOL ERROR, parameter " << pos << " of a line that has "
+             << myVector.size() << ": " << *this << std::endl;
+        if (0 == elog.getStream()) {
+            std::cerr << "xParameters> PROTOCOL ERROR, parameter " << pos << " of a line that has "
+                      << myVector.size() << std::endl;
+        }
+        ::abort();
+    }
 
     /**
      * Return a string containing all tokens beginning

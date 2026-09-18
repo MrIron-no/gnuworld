@@ -11,6 +11,10 @@
 #include <limits>
 #include <string>
 
+#include <csignal>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include "misc.h"
 #include "xparameters.h"
 
@@ -58,6 +62,21 @@ void testParseNumber() {
     CHECK(!parseNumber<std::uint8_t>("256"));
 }
 
+/// True if asking for params[pos] kills the process with SIGABRT.  Asked in
+/// a child, so that the test survives it.
+bool abortsOn(const xParameters& params, xParameters::size_type pos) {
+    const pid_t child = ::fork();
+    if (0 == child) {
+        // The message about the line goes to elog, which is not open here
+        ::close(STDERR_FILENO);
+        const char* value = params[pos];
+        ::_exit(value != nullptr ? 0 : 1);
+    }
+    int status = 0;
+    ::waitpid(child, &status, 0);
+    return WIFSIGNALED(status) && SIGABRT == WTERMSIG(status);
+}
+
 void testParameters() {
     char source[] = "AB";
     char channel[] = "#chan";
@@ -74,16 +93,20 @@ void testParameters() {
     CHECK(!parseNumber<std::time_t>(params.view(3))); // there, but not a number
     CHECK(!parseNumber<std::time_t>(params.view(9))); // not there
 
-    // Past the end: an empty parameter, where this used to abort the process
-    CHECK(params[4] != nullptr && params[4][0] == '\0');
-    CHECK(params[1000][0] == '\0');
+    // A parameter that may be absent is asked for with has() or view()
     CHECK(params.view(4).empty());
-    CHECK(std::string(params[9]).empty());
     CHECK(params.assemble(9).empty());
     CHECK(params.assemble(2) == "1789637405 stray");
 
     const xParameters none;
-    CHECK(none[0][0] == '\0' && none.view(0).empty() && none.assemble(0).empty());
+    CHECK(none.view(0).empty() && none.assemble(0).empty());
+
+    // operator[] past the end is a line shorter than the protocol has it,
+    // or a handler that did not count: the process aborts
+    CHECK(abortsOn(params, 4));
+    CHECK(abortsOn(params, 1000));
+    CHECK(abortsOn(none, 0));
+    CHECK(!abortsOn(params, 3));
 }
 
 } // namespace
