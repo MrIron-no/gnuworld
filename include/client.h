@@ -854,7 +854,7 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Returns a pointer to the logger object of this client.
      */
-    inline Logger* getLogger() { return logger.get(); }
+    inline Logger* getLogger() { return logger; }
 
     /**
      * Return true if the server is connected to a network.
@@ -983,9 +983,11 @@ class xClient : public TimerHandler, public NetworkTarget {
     std::string configFileName;
 
     /**
-     * Logger instance.
+     * The logger of this module, which is the one the registry keeps under the
+     * module's name: it is not owned here and it outlives this client, so that a
+     * module which is unloaded and loaded again writes to the same logger.
      */
-    std::unique_ptr<Logger> logger;
+    Logger* logger = nullptr;
 
     /**
      * The sinks this client attached to its own logger: a JSON log file, the

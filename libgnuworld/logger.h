@@ -26,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -63,6 +64,8 @@
 
 namespace gnuworld {
 
+class LogManager;
+
 /**
  * Main logging system for GNUWorld services.
  * A logger has a name, a level and a list of sinks with a threshold each; a log
@@ -72,28 +75,41 @@ namespace gnuworld {
  * sink's business and none of the logger's, so nothing here knows anything
  * about IRC.
  *
+ * Loggers are not created here but asked of LogManager, which puts each of them
+ * in its place in the dotted hierarchy: a record logged on "cservice.sql" goes
+ * to the sinks of that logger, then of "cservice", then of the root, and the
+ * level of "cservice" is the level of "cservice.sql" unless that one has a level
+ * of its own.  A logger lives for as long as the process does.
+ *
  * Objects of other layers reach a log message through an extractor, registered
  * process-wide for their type: it says how the object shows in a sentence and
  * what fields it contributes to a JSON record.
  */
 class Logger {
+    /// Only the registry creates loggers, and nothing ever destroys one
+    friend class LogManager;
+
   public:
-    /**
-     * A logger writing under this name.  It starts with no sinks at all and at
-     * the most verbose level; whoever creates it attaches what it writes to.
-     */
-    explicit Logger(std::string name);
-
-    /**
-     * Destructor - the sinks are shared and outlive the logger if anything
-     * else still holds them.
-     */
-    ~Logger();
-
     /**
      * The name this logger writes under, which every record carries.
      */
     const std::string& getName() const { return name; }
+
+    /**
+     * The logger this one hangs under, and whose sinks and level it shares
+     * unless it says otherwise; null for the root.
+     */
+    Logger* getParent() const { return parent; }
+
+    /**
+     * The level this logger logs at: its own configured level, else the level
+     * its legacy module keys asked for, else the default its code supplied,
+     * else whatever its parent logs at, and INFO when nothing at all was said.
+     *
+     * The legacy level and the code default are properties of this logger only:
+     * a child inherits the effective level of its parent, not the reason for it.
+     */
+    Verbosity effectiveLevel() const;
 
     /**
      * Whether a record of this level is worth building at all.  A call site
@@ -103,16 +119,71 @@ class Logger {
     bool shouldLog(Verbosity v) const;
 
     /**
-     * Sets the most verbose level this logger accepts.
+     * Sets the most verbose level this logger accepts, which is what a
+     * configuration file asks for and what beats everything else.
      */
     void setLevel(Verbosity);
+
+    /**
+     * The level of the configuration file, or nothing when the file says
+     * nothing about this logger: the highest precedence there is.
+     */
+    void setConfigLevel(std::optional<Verbosity>);
+
+    /**
+     * The level the legacy per-module configuration keys asked for, which a
+     * configured level beats and which beats the default of the code.
+     */
+    void setLegacyLevel(std::optional<Verbosity>);
+
+    /**
+     * The level this logger has unless something above says otherwise, as in
+     * child("sql", ERROR).  The first caller decides: asking again changes
+     * nothing, so that one module cannot move another's default.
+     */
+    void setCodeDefault(Verbosity);
+
+    /**
+     * Whether a record of this logger also reaches the sinks of its ancestors.
+     * True unless it is set otherwise.
+     */
+    void setAdditive(bool);
+
+    /// Whether the records of this logger walk up to the sinks of its parent
+    bool isAdditive() const;
+
+    /**
+     * The logger of this name below this one, created if it does not exist:
+     * root()->child("cservice")->child("sql") is the logger "cservice.sql".
+     */
+    Logger* child(const std::string& sub);
+
+    /**
+     * The same, giving the child the level it logs at unless a configuration
+     * file or a legacy key says otherwise.
+     */
+    Logger* child(const std::string& sub, Verbosity codeDefault);
 
     /**
      * Adds a destination, which receives every record of this logger at or
      * below the threshold.  A sink is always held by shared_ptr: the logger
      * keeps it alive for as long as one of its records is on its way there.
+     *
+     * This is the list of the code, which a configuration reload leaves alone.
      */
     void addSink(std::shared_ptr<LogSink>, Verbosity threshold = TRACE);
+
+    /**
+     * Adds a destination the configuration file asked for.  These are the
+     * sinks clearConfigSinks() takes away again when the file is read anew.
+     */
+    void addConfigSink(std::shared_ptr<LogSink>, Verbosity threshold);
+
+    /**
+     * Forgets every destination the configuration file asked for, leaving the
+     * ones the code attached.
+     */
+    void clearConfigSinks();
 
     /**
      * Removes a destination.  A record already on its way there is delivered.
@@ -487,16 +558,75 @@ class Logger {
     void rotateLogs();
 
   private:
+    /**
+     * A logger writing under this name, below this parent.  It starts with no
+     * sinks at all and no level of its own; the registry creates it, whoever
+     * asked for it attaches what it writes to.
+     */
+    Logger(std::string name, Logger* parent);
+
+    /**
+     * Destructor - private, because a logger lives for as long as the process
+     * does: code anywhere holds its address, and a module that is loaded again
+     * finds the logger it had before.  The sinks are shared and outlive the
+     * logger if anything else still holds them.
+     */
+    ~Logger();
+
+    /// One destination of a record: where it goes and how much of it goes there
+    using SinkEntry = std::pair<std::shared_ptr<LogSink>, Verbosity>;
+
     /// The extractor of this type, or an empty one when there is none
     static Extractor findExtractor(std::type_index);
 
     /// Registers or replaces the extractor of one type
     static void setExtractor(std::type_index, const void* owner, Extractor);
 
-    std::string name;
-    Verbosity level = TRACE;
+    /**
+     * What one record of the walk up the hierarchy is delivered to: the sink,
+     * the threshold of the attachment that allows the most, and which of the
+     * legacy slots of the logger the record was logged on it is, if any.
+     */
+    enum class LegacySlot { None, File, Console };
 
-    std::vector<std::pair<std::shared_ptr<LogSink>, Verbosity>> sinks;
+    struct Target {
+        std::shared_ptr<LogSink> sink;
+        Verbosity threshold;
+        LegacySlot slot;
+    };
+
+    /**
+     * Adds this logger's sinks to the list of a dispatch that is on its way up,
+     * with the legacy slots tagged when the record was logged on this very
+     * logger.  A sink already in the list stays where it is and keeps the most
+     * permissive of its thresholds: it hears the record once.  The logger's
+     * mutex is held by the caller.
+     */
+    void appendTargetsLocked(std::vector<Target>& targets, bool tagLegacySlots) const;
+
+    /// Adds every sink of this logger to the list, for LogManager::reopenAll()
+    void appendSinks(std::vector<std::shared_ptr<LogSink>>&) const;
+
+    std::string name;
+
+    /// Immutable, so that walking up the hierarchy needs no lock of its own
+    Logger* const parent;
+
+    /**
+     * The three levels this logger may have, highest precedence first, and
+     * whether its records also reach the sinks of its ancestors.
+     */
+    std::optional<Verbosity> configLevel;
+    std::optional<Verbosity> legacyLevel;
+    std::optional<Verbosity> codeDefault;
+    bool additive = true;
+
+    /**
+     * The destinations: what a configuration file asked for, which is replaced
+     * when the file is read anew, and what the code attached, which is not.
+     */
+    std::vector<SinkEntry> configSinks;
+    std::vector<SinkEntry> codeSinks;
     std::vector<LogField> context;
 
     /**

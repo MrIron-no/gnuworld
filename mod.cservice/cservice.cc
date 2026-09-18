@@ -101,7 +101,7 @@ bool cservice::UnRegisterCommand(const string& commName) {
 void cservice::OnAttach() {
     for (commandMapType::iterator ptr = commandMap.begin(); ptr != commandMap.end(); ++ptr) {
         ptr->second->setServer(MyUplink);
-        ptr->second->setLogger(logger.get());
+        ptr->second->setLogger(logger);
     }
 
     // Start the Db checker timer rolling.

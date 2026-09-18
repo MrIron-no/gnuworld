@@ -49,6 +49,7 @@
 #include "StringTokenizer.h"
 #include "ELog.h"
 #include "IrcLogSink.h"
+#include "LogManager.h"
 #include "LogSinks.h"
 #ifdef HAVE_PGSQL
 #include "MigrationChecker.h"
@@ -77,8 +78,30 @@ xClient::xClient(const string& fileName) : configFileName(fileName) {
         stealth = conf.Require<bool>("stealth");
     }
 
-    /* Initialize logger */
-    logger = std::make_unique<Logger>(nickName);
+    /* The logger of this module is the one the registry keeps under the module's
+     * name, which the loader left behind for us; a module that was not loaded
+     * through xServer::AttachClient() is named after its configuration file */
+    string loggerName = LogManager::takeLoadingModule();
+
+    if (loggerName.empty()) {
+        const string::size_type slash = getConfigFileName().find_last_of('/');
+        const string baseName =
+            string::npos == slash ? getConfigFileName() : getConfigFileName().substr(slash + 1);
+        const string::size_type baseDot = baseName.find('.');
+
+        loggerName = string::npos == baseDot ? baseName : baseName.substr(0, baseDot);
+    }
+
+    // Nothing named the module at all: its nick is the last thing left, and is
+    // in any case better than the root logger
+    if (loggerName.empty())
+        loggerName = nickName;
+
+    logger = LogManager::get(loggerName);
+
+    /* The records of a module go to the sinks below and nowhere else: until
+     * logging.conf is read, the root is not to receive them as well */
+    logger->setAdditive(false);
 
     /* The log file is the config file name up to its first '.', plus ".log" */
     string logFilePath;
@@ -111,6 +134,9 @@ xClient::~xClient() {
     // with the module itself
     Logger::removeExtractors(this);
 
+    // The logger itself stays: it is the registry's and a module that is loaded
+    // again finds it.  What this instance put on it goes, so that the next one
+    // attaches its own file, console and channel sink to a logger with none
     if (logger) {
         if (ircLogSink)
             logger->removeSink(ircLogSink);
@@ -118,6 +144,12 @@ xClient::~xClient() {
             logger->removeSink(consoleLogSink);
         if (fileLogSink)
             logger->removeSink(fileLogSink);
+
+        // With no sinks of its own left, the logger is additive again: whatever
+        // still logs to it is better heard on the root than nowhere
+        logger->setAdditive(true);
+
+        logger = nullptr;
     }
 }
 
@@ -928,7 +960,7 @@ bool xClient::checkMigrationsAfterDBConnect(const std::string& moduleName, dbHan
     }
 
     // Create MigrationChecker and run check
-    MigrationChecker checker(moduleName, db, logger.get(), migrationsDir);
+    MigrationChecker checker(moduleName, db, logger, migrationsDir);
     return checker.check();
 #else
     return true;

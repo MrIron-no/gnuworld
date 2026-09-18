@@ -23,12 +23,14 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <typeindex>
 #include <utility>
 #include <vector>
 
 #include "LogFormat.h"
+#include "LogManager.h"
 #include "LogRecord.h"
 #include "LogRender.h"
 #include "LogSink.h"
@@ -97,27 +99,100 @@ class ReentryGuard {
 } // namespace
 
 /**
- * Logger constructor - a logger with a name, no sinks and no filtering of its
- * own.  Whoever creates it decides where its records go.
+ * Logger constructor - a logger with a name, a place in the hierarchy, no sinks
+ * and no level of its own.  Only LogManager calls this; whoever asked it for the
+ * logger decides where its records go.
  */
-Logger::Logger(std::string loggerName) : name(std::move(loggerName)) {}
+Logger::Logger(std::string loggerName, Logger* theParent)
+    : name(std::move(loggerName)), parent(theParent) {}
 
 /**
- * Logger destructor - the sinks are shared, so they go when the last holder of
- * them does, which may well be later than this.
+ * Logger destructor - never called: a logger lives as long as the process does.
+ * The sinks are shared, so they go when the last holder of them does.
  */
 Logger::~Logger() {}
 
-bool Logger::shouldLog(Verbosity v) const {
-    const std::lock_guard<std::mutex> guard(logMutex);
+/**
+ * The level this logger logs at.
+ *
+ * The walk up the hierarchy takes the mutex of one logger at a time and has let
+ * it go again before it takes the next: no thread ever holds two of them, and
+ * the parent pointers cannot change under it.
+ */
+Verbosity Logger::effectiveLevel() const {
+    for (const Logger* step = this; nullptr != step; step = step->parent) {
+        std::optional<Verbosity> own;
 
-    return v <= level;
+        {
+            const std::lock_guard<std::mutex> guard(step->logMutex);
+
+            if (step->configLevel)
+                own = step->configLevel;
+            else if (step->legacyLevel)
+                own = step->legacyLevel;
+            else if (step->codeDefault)
+                own = step->codeDefault;
+        }
+
+        if (own)
+            return *own;
+    }
+
+    // The root of a hierarchy nobody has configured
+    return INFO;
 }
 
-void Logger::setLevel(Verbosity newLevel) {
+bool Logger::shouldLog(Verbosity v) const { return v <= effectiveLevel(); }
+
+void Logger::setLevel(Verbosity newLevel) { setConfigLevel(newLevel); }
+
+void Logger::setConfigLevel(std::optional<Verbosity> newLevel) {
     const std::lock_guard<std::mutex> guard(logMutex);
 
-    level = newLevel;
+    configLevel = newLevel;
+}
+
+void Logger::setLegacyLevel(std::optional<Verbosity> newLevel) {
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    legacyLevel = newLevel;
+}
+
+void Logger::setCodeDefault(Verbosity newLevel) {
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    // The first caller decides: a module that asks for a default twice, or two
+    // modules sharing a logger, do not move each other's
+    if (!codeDefault)
+        codeDefault = newLevel;
+}
+
+void Logger::setAdditive(bool newAdditive) {
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    additive = newAdditive;
+}
+
+bool Logger::isAdditive() const {
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    return additive;
+}
+
+/**
+ * The logger of this name below this one.  The name of a logger never changes,
+ * so it is read here without the mutex; the registry does the rest.
+ */
+Logger* Logger::child(const std::string& sub) {
+    return LogManager::get(name.empty() ? sub : name + '.' + sub);
+}
+
+Logger* Logger::child(const std::string& sub, Verbosity theCodeDefault) {
+    Logger* const theChild = child(sub);
+
+    theChild->setCodeDefault(theCodeDefault);
+
+    return theChild;
 }
 
 void Logger::addSink(std::shared_ptr<LogSink> sink, Verbosity threshold) {
@@ -126,18 +201,39 @@ void Logger::addSink(std::shared_ptr<LogSink> sink, Verbosity threshold) {
 
     const std::lock_guard<std::mutex> guard(logMutex);
 
-    sinks.emplace_back(std::move(sink), threshold);
+    codeSinks.emplace_back(std::move(sink), threshold);
+}
+
+void Logger::addConfigSink(std::shared_ptr<LogSink> sink, Verbosity threshold) {
+    if (nullptr == sink)
+        return;
+
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    configSinks.emplace_back(std::move(sink), threshold);
+}
+
+void Logger::clearConfigSinks() {
+    std::vector<SinkEntry> gone;
+
+    {
+        const std::lock_guard<std::mutex> guard(logMutex);
+
+        gone.swap(configSinks);
+    }
+
+    // The sinks go, if nothing else holds them, outside the lock
+    gone.clear();
 }
 
 void Logger::removeSink(const std::shared_ptr<LogSink>& sink) {
     const std::lock_guard<std::mutex> guard(logMutex);
 
-    sinks.erase(
-        std::remove_if(sinks.begin(), sinks.end(),
-                       [&sink](const std::pair<std::shared_ptr<LogSink>, Verbosity>& entry) {
-                           return entry.first == sink;
-                       }),
-        sinks.end());
+    const auto isSink = [&sink](const SinkEntry& entry) { return entry.first == sink; };
+
+    configSinks.erase(std::remove_if(configSinks.begin(), configSinks.end(), isSink),
+                      configSinks.end());
+    codeSinks.erase(std::remove_if(codeSinks.begin(), codeSinks.end(), isSink), codeSinks.end());
 
     if (legacyFileSink == sink)
         legacyFileSink.reset();
@@ -152,7 +248,11 @@ void Logger::removeSink(const std::shared_ptr<LogSink>& sink) {
 void Logger::setSinkThreshold(const std::shared_ptr<LogSink>& sink, Verbosity threshold) {
     const std::lock_guard<std::mutex> guard(logMutex);
 
-    for (std::pair<std::shared_ptr<LogSink>, Verbosity>& entry : sinks)
+    for (SinkEntry& entry : configSinks)
+        if (entry.first == sink)
+            entry.second = threshold;
+
+    for (SinkEntry& entry : codeSinks)
         if (entry.first == sink)
             entry.second = threshold;
 }
@@ -170,34 +270,85 @@ void Logger::setContext(const std::string& key, LogValue value) {
 }
 
 /**
- * Hands one record to every sink that wants it.
+ * Adds this logger's sinks to a dispatch, the configured ones before the ones
+ * the code attached.  The caller holds this logger's mutex.
+ */
+void Logger::appendTargetsLocked(std::vector<Target>& targets, bool tagLegacySlots) const {
+    const std::vector<SinkEntry>* const lists[] = {&configSinks, &codeSinks};
+
+    for (const std::vector<SinkEntry>* const list : lists)
+        for (const SinkEntry& entry : *list) {
+            LegacySlot slot = LegacySlot::None;
+
+            // Only the logger the record was logged on routes SQL records to
+            // the two slots the legacy keys configure
+            if (tagLegacySlots) {
+                if (entry.first == legacyFileSink)
+                    slot = LegacySlot::File;
+                else if (entry.first == legacyConsoleSink)
+                    slot = LegacySlot::Console;
+            }
+
+            bool known = false;
+
+            for (Target& target : targets)
+                if (target.sink == entry.first) {
+                    // The same sink on two loggers of the path hears the record
+                    // once, and hears it if either attachment lets it through
+                    if (entry.second > target.threshold)
+                        target.threshold = entry.second;
+
+                    known = true;
+                    break;
+                }
+
+            if (!known)
+                targets.push_back(Target{entry.first, entry.second, slot});
+        }
+}
+
+/**
+ * Hands one record to every sink that wants it, walking up the hierarchy.
  *
- * The list of sinks is copied under the logger's mutex and the mutex is
- * released before the first emit(): no lock of this logger is ever held while a
- * sink writes a file, a terminal or the network, and the copy keeps a sink alive
- * for the whole of its own emit() even if something removes it meanwhile.
+ * The record goes to the sinks of this logger, then, while a logger of the path
+ * is additive, to those of its parent, and so on to the root; a sink attached
+ * more than once along the way hears the record once.  The whole list is
+ * collected first, taking the mutex of one logger at a time, and every mutex is
+ * released before the first emit(): no lock of a logger is ever held while a
+ * sink writes a file, a terminal or the network, or while another logger's mutex
+ * is taken, and the copy keeps a sink alive for the whole of its own emit() even
+ * if something removes it meanwhile.
  *
  * A record logged from inside a sink's emit() - on this thread, by this very
  * dispatch - goes only to the sinks that put up with that.
  */
 void Logger::log(LogRecord&& record) {
-    std::vector<std::pair<std::shared_ptr<LogSink>, Verbosity>> targets;
-    std::shared_ptr<LogSink> fileSlot;
-    std::shared_ptr<LogSink> consoleSlot;
+    std::vector<Target> targets;
     bool wantLogSQL = false;
     bool wantConsoleSQL = false;
 
-    {
-        const std::lock_guard<std::mutex> guard(logMutex);
+    for (Logger* step = this; nullptr != step;) {
+        bool walkOn = false;
 
-        record.logger = name;
-        record.context = context;
+        {
+            const std::lock_guard<std::mutex> guard(step->logMutex);
 
-        targets = sinks;
-        fileSlot = legacyFileSink;
-        consoleSlot = legacyConsoleSink;
-        wantLogSQL = logSQL;
-        wantConsoleSQL = consoleSQL;
+            if (this == step) {
+                record.logger = step->name;
+                record.context = step->context;
+
+                wantLogSQL = step->logSQL;
+                wantConsoleSQL = step->consoleSQL;
+            }
+
+            step->appendTargetsLocked(targets, this == step);
+            walkOn = step->additive;
+        }
+
+        if (!walkOn)
+            break;
+
+        step = step->parent;
     }
 
     if (std::chrono::system_clock::time_point() == record.time)
@@ -205,26 +356,26 @@ void Logger::log(LogRecord&& record) {
 
     const ReentryGuard guard;
 
-    for (const std::pair<std::shared_ptr<LogSink>, Verbosity>& target : targets) {
+    for (const Target& target : targets) {
         if (SQL == record.level) {
             // Today's routing, until the <module>.sql logger replaces it: the
             // legacy file and console slots if they have been asked for SQL,
             // whatever their threshold, and no other sink at all
-            if (target.first == fileSlot) {
+            if (LegacySlot::File == target.slot) {
                 if (!wantLogSQL)
                     continue;
-            } else if (target.first == consoleSlot) {
+            } else if (LegacySlot::Console == target.slot) {
                 if (!wantConsoleSQL)
                     continue;
             } else
                 continue;
-        } else if (record.level > target.second)
+        } else if (record.level > target.threshold)
             continue;
 
-        if (guard.wasInside() && target.first->suppressOnReentry())
+        if (guard.wasInside() && target.sink->suppressOnReentry())
             continue;
 
-        target.first->emit(record);
+        target.sink->emit(record);
     }
 }
 
@@ -422,16 +573,27 @@ void Logger::setLegacyChanSetter(std::function<void(const std::string&)> setter)
 void Logger::rotateLogs() {
     std::vector<std::shared_ptr<LogSink>> targets;
 
-    {
-        const std::lock_guard<std::mutex> guard(logMutex);
-
-        targets.reserve(sinks.size());
-        for (const std::pair<std::shared_ptr<LogSink>, Verbosity>& entry : sinks)
-            targets.push_back(entry.first);
-    }
+    appendSinks(targets);
 
     for (const std::shared_ptr<LogSink>& sink : targets)
         sink->reopen();
+}
+
+/**
+ * Adds every sink of this logger to the list, under the logger's mutex and
+ * without touching any of them: what the caller does with them, it does on its
+ * own time.
+ */
+void Logger::appendSinks(std::vector<std::shared_ptr<LogSink>>& targets) const {
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    targets.reserve(targets.size() + configSinks.size() + codeSinks.size());
+
+    for (const SinkEntry& entry : configSinks)
+        targets.push_back(entry.first);
+
+    for (const SinkEntry& entry : codeSinks)
+        targets.push_back(entry.first);
 }
 
 } // namespace gnuworld

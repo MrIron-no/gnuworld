@@ -65,6 +65,7 @@
 #include "EConfig.h"
 #include "match.h"
 #include "ELog.h"
+#include "LogManager.h"
 #include "LogSinks.h"
 #include "StringTokenizer.h"
 #include "xparameters.h"
@@ -953,11 +954,19 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
     moduleLoader<xClient*>* ml = new (std::nothrow) moduleLoader<xClient*>(moduleName);
     assert(ml != 0);
     xClient* clientPtr = NULL;
+
+    // The module's logger is named after its library file, and the xClient the
+    // module creates picks the name up from here
+    LogManager::setLoadingModule(LogManager::moduleNameFromLibrary(moduleName));
+
     try {
         // Attempt to instantiate an xClient instance from the module
         clientPtr = ml->loadObject(configFileName);
     } catch (...) {
     }
+
+    // Whether the module took the name or not, it is not the next one's
+    LogManager::takeLoadingModule();
 
     // Check if the object was loaded successfully
     if (NULL == clientPtr) {

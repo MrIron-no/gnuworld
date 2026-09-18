@@ -10,6 +10,7 @@ libgnuworld_la_SOURCES = \
 	libgnuworld/EConfig.cc \
 	libgnuworld/ELog.cc \
 	libgnuworld/LogFormat.cc \
+	libgnuworld/LogManager.cc \
 	libgnuworld/LogRender.cc \
 	libgnuworld/LogSinks.cc \
 	libgnuworld/Signal.cc \
@@ -41,6 +42,7 @@ EXTRA_DIST += \
 	libgnuworld/EConfig.h \
 	libgnuworld/ELog.h \
 	libgnuworld/LogFormat.h \
+	libgnuworld/LogManager.h \
 	libgnuworld/LogRecord.h \
 	libgnuworld/LogRender.h \
 	libgnuworld/LogSink.h \

@@ -14,6 +14,7 @@
 #include <variant>
 #include <vector>
 
+#include "LogManager.h"
 #include "LogRecord.h"
 #include "LogSink.h"
 #include "LogSinks.h"
@@ -47,10 +48,12 @@ int failures = 0;
 
 /* ------------------------------------------------------------------ *
  * The logger the LOG macros write to: they expand to "logger->", so the
- * name is part of their contract and the test has to use it too.
+ * name is part of their contract and the test has to use it too.  The
+ * loggers belong to the registry, which keeps each of them for the life of
+ * the process, so every test asks for one of its own.
  * ------------------------------------------------------------------ */
 
-std::unique_ptr<Logger> logger;
+Logger* logger = nullptr;
 
 /* ------------------------------------------------------------------ *
  * Two objects of our own, so that the extractor registry can be tested
@@ -123,9 +126,9 @@ std::string spanText(const LogRecord& record, std::size_t which) {
     return record.message.substr(span.begin, span.end - span.begin);
 }
 
-/// A fresh logger with one capture sink on it, which the caller keeps
-std::shared_ptr<CaptureSink> freshLogger(const std::string& name = "test") {
-    logger = std::make_unique<Logger>(name);
+/// A logger of this test's own, with one capture sink on it
+std::shared_ptr<CaptureSink> freshLogger(const std::string& name) {
+    logger = LogManager::get(name);
 
     std::shared_ptr<CaptureSink> sink = std::make_shared<CaptureSink>();
     logger->addSink(sink);
@@ -244,7 +247,7 @@ void testStructuredRecord() {
  * a null-valued field under the bare key, so that JSON says "nick":null.
  */
 void testNullObject() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.null");
 
     FakeUser* const nobody = nullptr;
 
@@ -278,7 +281,7 @@ void testNullObject() {
  * constness of the pointee is not part of what the registry is keyed on.
  */
 void testConstPointer() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.const");
 
     const FakeUser user{"A", 1};
     const FakeUser* const pointer = &user;
@@ -295,7 +298,7 @@ void testConstPointer() {
  * pointer again, and shows as one.
  */
 void testFallbackWithoutExtractor() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.fallback");
 
     Logger::removeExtractors(&owner);
 
@@ -326,7 +329,7 @@ void testFallbackWithoutExtractor() {
  * A record passes a sink's own threshold, not the logger's alone.
  */
 void testSinkThresholds() {
-    logger = std::make_unique<Logger>("test");
+    logger = LogManager::get("basic.thresholds");
 
     const std::shared_ptr<CaptureSink> loud = std::make_shared<CaptureSink>();
     const std::shared_ptr<CaptureSink> quiet = std::make_shared<CaptureSink>();
@@ -363,7 +366,7 @@ void testSinkThresholds() {
  * with it and no others, and nothing deadlocks on the way.
  */
 void testReentrancy() {
-    logger = std::make_unique<Logger>("test");
+    logger = LogManager::get("basic.reentrancy");
 
     const std::shared_ptr<CaptureSink> normal = std::make_shared<CaptureSink>();
     const std::shared_ptr<SuppressingCaptureSink> suppressing =
@@ -395,7 +398,7 @@ void testReentrancy() {
  * The stream API MigrationChecker uses: one record per std::endl.
  */
 void testStreamApi() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.stream");
 
     logger->write(INFO) << "a" << 1 << std::endl;
 
@@ -411,7 +414,7 @@ void testStreamApi() {
  * each of them.
  */
 void testLogMacro() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.macro");
 
     LOG(INFO, "x {} {:>3}", "y", 7);
 
@@ -433,7 +436,7 @@ void testLogMacro() {
  * no sink is troubled.
  */
 void testLazyRecord() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.lazy");
     logger->setLevel(INFO);
 
     FakeUser user{"A", 1};
@@ -458,7 +461,7 @@ void testLazyRecord() {
  * sink ever does.
  */
 void testLegacySqlRouting() {
-    logger = std::make_unique<Logger>("test");
+    logger = LogManager::get("basic.sql");
 
     const std::shared_ptr<CaptureSink> file = std::make_shared<CaptureSink>();
     const std::shared_ptr<CaptureSink> console = std::make_shared<CaptureSink>();
@@ -505,7 +508,7 @@ void testLegacySqlRouting() {
  * second entry under it.
  */
 void testContextReplacement() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.context");
 
     logger->setContext("bot", std::string("first"));
     logger->setContext("bot", std::string("second"));
@@ -530,7 +533,7 @@ void testContextReplacement() {
  * The plain values of with(): the type of the field is the type of the value.
  */
 void testTypedFields() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger();
+    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.typed");
 
     LOG_MSG(INFO, "{name} {count} {offset} {ratio} {ok}")
         .with("name", std::string("MrIron"))
@@ -567,6 +570,10 @@ void testTypedFields() {
 } // namespace
 
 int main() {
+    // Every logger of this test is a child of the root, whose console sink
+    // would print each of their records; the test reads its own sinks
+    LogManager::root()->removeSink(LogManager::bootstrapConsoleSink());
+
     testStructuredRecord();
     testNullObject();
     testConstPointer();
@@ -581,7 +588,7 @@ int main() {
     testTypedFields();
 
     Logger::removeExtractors(&owner);
-    logger.reset();
+    logger = nullptr;
 
     if (failures != 0) {
         std::cerr << failures << " check(s) failed\n";
