@@ -2093,19 +2093,6 @@ bool xServer::sendText(const char* token, const iClient* from, std::string_view 
     return sent;
 }
 
-bool xServer::SendMessage(const iClient* from, std::string_view target, std::string_view text) {
-    return sendText("P", from, target, text);
-}
-
-bool xServer::SendNotice(const iClient* from, std::string_view target, std::string_view text) {
-    return sendText("O", from, target, text);
-}
-
-bool xServer::SendWallchops(const iClient* from, const Channel* theChan, std::string_view text) {
-    assert(theChan != 0);
-    return sendText("WC", from, theChan->getName(), text);
-}
-
 bool xServer::Topic(Channel* theChan, const std::string& newTopic, const iClient* from) {
     assert(theChan != 0);
 
@@ -2919,7 +2906,7 @@ bool xServer::Notice(iClient* theClient, const string& message) {
         return false;
     }
 
-    return SendNotice(nullptr, theClient->getCharYYXXX(), message);
+    return sendText("O", nullptr, theClient->getCharYYXXX(), message);
 }
 
 bool xServer::serverNotice(Channel* theChan, const string& Message) {
@@ -2929,7 +2916,7 @@ bool xServer::serverNotice(Channel* theChan, const string& Message) {
         return false;
     }
 
-    return SendNotice(nullptr, theChan->getName(), Message);
+    return sendText("O", nullptr, theChan->getName(), Message);
 }
 
 bool xServer::XReply(iServer* theServer, const string& Routing, const string& Message) {

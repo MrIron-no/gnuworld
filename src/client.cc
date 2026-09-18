@@ -262,16 +262,16 @@ string channelName(const string& name) {
 } // namespace
 
 /*
- * Every message below is sent by xServer::SendMessage(), SendNotice() or
- * SendWallchops(), from getInstance(): this client, or the server if it is a
- * stealth module with no client on the network.
+ * Every message below is sent by xServer::sendText(), from getInstance():
+ * this client, or the server if it is a stealth module with no client on the
+ * network.
  */
 
 bool xClient::DoCTCP(iClient* Target, const string& CTCP, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(getInstance(), Target->getCharYYXXX(), ctcpText(CTCP, Message));
+    return MyUplink->sendText("O", getInstance(), Target->getCharYYXXX(), ctcpText(CTCP, Message));
 }
 
 bool xClient::DoFakeCTCP(const iClient* destClient, const iClient* srcClient, const string& CTCP,
@@ -282,7 +282,7 @@ bool xClient::DoFakeCTCP(const iClient* destClient, const iClient* srcClient, co
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(srcClient, destClient->getCharYYXXX(), ctcpText(CTCP, Message));
+    return MyUplink->sendText("O", srcClient, destClient->getCharYYXXX(), ctcpText(CTCP, Message));
 }
 
 bool xClient::FakeMessage(const iClient* destClient, const iClient* srcClient,
@@ -290,7 +290,7 @@ bool xClient::FakeMessage(const iClient* destClient, const iClient* srcClient,
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(srcClient, destClient->getCharYYXXX(), Message);
+    return MyUplink->sendText("P", srcClient, destClient->getCharYYXXX(), Message);
 }
 
 bool xClient::FakeNotice(const iClient* destClient, const iClient* srcClient,
@@ -298,28 +298,28 @@ bool xClient::FakeNotice(const iClient* destClient, const iClient* srcClient,
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(srcClient, destClient->getCharYYXXX(), Message);
+    return MyUplink->sendText("O", srcClient, destClient->getCharYYXXX(), Message);
 }
 
 bool xClient::FakeMessage(const Channel* theChan, const iClient* srcClient, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(srcClient, theChan->getName(), Message);
+    return MyUplink->sendText("P", srcClient, theChan->getName(), Message);
 }
 
 bool xClient::FakeNotice(const Channel* theChan, const iClient* srcClient, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(srcClient, theChan->getName(), Message);
+    return MyUplink->sendText("O", srcClient, theChan->getName(), Message);
 }
 
 bool xClient::Message(const iClient* Target, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(getInstance(), Target->getCharYYXXX(), Message);
+    return MyUplink->sendText("P", getInstance(), Target->getCharYYXXX(), Message);
 }
 
 bool xClient::Message(const Channel* theChan, const string& Message) {
@@ -328,28 +328,28 @@ bool xClient::Message(const Channel* theChan, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(getInstance(), theChan->getName(), Message);
+    return MyUplink->sendText("P", getInstance(), theChan->getName(), Message);
 }
 
 bool xClient::Message(const string& chanName, const string& Message) {
     if (chanName.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(getInstance(), channelName(chanName), Message);
+    return MyUplink->sendText("P", getInstance(), channelName(chanName), Message);
 }
 
 bool xClient::Notice(const iClient* Target, const string& Message) {
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(getInstance(), Target->getCharYYXXX(), Message);
+    return MyUplink->sendText("O", getInstance(), Target->getCharYYXXX(), Message);
 }
 
 bool xClient::Notice(const string& Channel, const string& Message) {
     if (Channel.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(getInstance(), channelName(Channel), Message);
+    return MyUplink->sendText("O", getInstance(), channelName(Channel), Message);
 }
 
 bool xClient::Notice(const Channel* theChan, const string& Message) {
@@ -358,7 +358,7 @@ bool xClient::Notice(const Channel* theChan, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(getInstance(), theChan->getName(), Message);
+    return MyUplink->sendText("O", getInstance(), theChan->getName(), Message);
 }
 
 bool xClient::NoticeChannelOps(const Channel* theChan, const string& Message) {
@@ -368,7 +368,7 @@ bool xClient::NoticeChannelOps(const Channel* theChan, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return true;
     }
-    return MyUplink->SendWallchops(getInstance(), theChan, Message);
+    return MyUplink->sendText("WC", getInstance(), theChan->getName(), Message);
 }
 
 bool xClient::NoticeChannelOps(const string& chanName, const string& Message) {

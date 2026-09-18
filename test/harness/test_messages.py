@@ -1,8 +1,8 @@
-"""PRIVMSG, NOTICE and WALLCHOPS: xServer::SendMessage() and friends.
+"""PRIVMSG, NOTICE and WALLCHOPS: Message(), Notice() and the Fake forms of xClient.
 
-Every message gnuworld sends is put together in one place. A line break in the
-text starts another message, and a line too long for one message is continued
-in the next, where the uplink would otherwise truncate it.
+Every message gnuworld sends is put together in one place, xServer::sendText().
+A line break in the text starts another message, and a line too long for one
+message is continued in the next, where the uplink would otherwise truncate it.
 """
 
 from __future__ import annotations

@@ -613,22 +613,6 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     /// protocol violation, so `from` has no default here and must be one.
     virtual bool Invite(iClient* target, Channel*, const iClient* from);
 
-    /*
-     * Messages.  These only write, there being no state to keep.  `target`
-     * is a numnick or a channel name.  A line break in the text starts
-     * another message, and a line too long for one message is continued in
-     * the next.  The source comes first here: there is no obvious default.
-     */
-
-    /// PRIVMSG
-    virtual bool SendMessage(const iClient* from, std::string_view target, std::string_view text);
-
-    /// NOTICE
-    virtual bool SendNotice(const iClient* from, std::string_view target, std::string_view text);
-
-    /// WALLCHOPS: a notice to the ops of a channel
-    virtual bool SendWallchops(const iClient* from, const Channel*, std::string_view text);
-
     /**
      * Send channel mode changes to the network, as `source` (a server or
      * client numeric).  This only writes: it does not check the changes
@@ -1224,6 +1208,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     void commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
                     std::span<iClient* const> targets, const std::string& reason);
 
+    /**
+     * What Message(), Notice() and Wallchops() of xClient, and our own
+     * Notice(), are sent with.  `token` is "P", "O" or "WC"; `from` is null
+     * for the server; `target` is a numnick or a channel name.  A line break
+     * in the text starts another message, and a line too long for one
+     * message is continued in the next.
+     */
     bool sendText(const char* token, const iClient* from, std::string_view target,
                   std::string_view text);
 
