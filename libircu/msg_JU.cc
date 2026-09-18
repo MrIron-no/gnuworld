@@ -38,10 +38,7 @@ CREATE_HANDLER(msg_JU)
  */
 bool msg_JU::Execute(const xParameters& Param) {
 
-    if (Param.size() < 6) {
-        elog << "msg_JU: Invalid number of arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_JU>", Param, 6);
     if (Param[2][0] == '+') {
         /*
          * A new jupe is interduced, need to create an iServer for it

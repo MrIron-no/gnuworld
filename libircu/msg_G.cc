@@ -63,10 +63,7 @@ CREATE_HANDLER(msg_G)
 // The format of <remotets> = <seconds>.<useconds>
 //
 bool msg_G::Execute(const xParameters& params) {
-    if (params.size() < 2) {
-        elog << "msg_G> Invalid number of parameters" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_G>", params, 2);
 
     string s(theServer->getCharYY());
     s += " Z ";

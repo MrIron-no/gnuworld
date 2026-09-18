@@ -38,11 +38,7 @@ using std::string;
 CREATE_HANDLER(msg_M351)
 
 bool msg_M351::Execute(const xParameters& Param) {
-    if (Param.empty()) {
-        elog << "msg_M351> Invalid number of "
-             << "arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_M351>", Param, 2);
 
     xClient* theClient = Network->findLocalClient(Param[1]);
     if (NULL == theClient) {

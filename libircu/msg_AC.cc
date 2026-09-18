@@ -43,10 +43,7 @@ CREATE_HANDLER(msg_AC)
  * Note: ACCOUNT_ID and ACCOUNT_FLAGS are optional
  */
 bool msg_AC::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_AC> Invalid number of parameters" << std::endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_AC>", Param, 3);
 
     // Find the target user
     iClient* theClient = Network->findClient(Param[1]);

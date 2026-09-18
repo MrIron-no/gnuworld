@@ -110,10 +110,7 @@ CREATE_LOADER(msg_B)
 bool msg_B::Execute(const xParameters& Param) {
     // Make sure there are at least four arguments supplied:
     // servernumeric #channel time_stamp arguments
-    if (Param.size() < 3) {
-        elog << "msg_B> Invalid number of arguments: " << Param << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_B>", Param, 3);
 
     // Attempt to find the channel in the network channel table
     Channel* theChan = Network->findChannel(Param[1]);

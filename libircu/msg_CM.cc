@@ -51,10 +51,7 @@ CREATE_HANDLER(msg_CM)
  *  from channel #channel.
  */
 bool msg_CM::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_CM> Invalid number of parameters" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_CM>", Param, 3);
 
     Channel* tmpChan = Network->findChannel(Param[1]);
     if (!tmpChan) {

@@ -47,10 +47,7 @@ CREATE_HANDLER(msg_V)
 
 bool msg_V::Execute(const xParameters& Param) {
     /* We should have exactly two parameters - source and destination */
-    if (Param.size() != 2) {
-        elog << "msg_V> Invalid number of parameters received." << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_V>", Param, 2);
 
     /* The destination numeric should always match us exactly */
     if (strncmp(Param[1], theServer->getCharYY().c_str(), 2) != 0) {

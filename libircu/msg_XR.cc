@@ -52,10 +52,7 @@ CREATE_HANDLER(msg_XR)
  * [IN ]: AB XR Az tokengoeshere :message goes here :)
  */
 bool msg_XR::Execute(const xParameters& Param) {
-    if (Param.size() < 4) {
-        elog << "msg_XR> Invalid number of arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_XR>", Param, 4);
 
     iServer* serverSource = Network->findServer(Param[0]);
 

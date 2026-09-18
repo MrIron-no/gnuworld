@@ -1090,6 +1090,21 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
                                     std::span<const std::string> problems) const;
 
     /**
+     * A line has at least as many parameters as the shortest form the
+     * protocol has for its command, the source counted: fewer is a protocol
+     * error.  A form that is legal but of no use to us is not: the handler
+     * leaves that one alone.
+     */
+    void RequireParameters(std::string_view where, const xParameters& line,
+                           xParameters::size_type minimum) const {
+        if (line.size() < minimum) {
+            const std::string problem =
+                std::format("{} parameters, where the shortest form has {}", line.size(), minimum);
+            ProtocolError(where, std::span(&problem, 1));
+        }
+    }
+
+    /**
      * A number the uplink itself writes into the line, such as a timestamp
      * or a count: if it is not one, that is a protocol error.  `what` names
      * it in the log: "channel timestamp".  Text the uplink only passes on

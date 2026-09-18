@@ -45,12 +45,11 @@ CREATE_HANDLER(msg_GL)
  *  test.. 	[0])
  */
 bool msg_GL::Execute(const xParameters& Params) {
+    // <source> GL <target> <+|-><mask> ...: ircu's ms_gline() takes three
+    theServer->RequireParameters("msg_GL>", Params, 3);
+
     if ('-' == Params[2][0]) {
         // Removing a gline
-        if (Params.size() < 3) {
-            elog << "msg_GL> Invalid number of arguments" << endl;
-            return false;
-        }
 
         xServer::glineIterator gItr = theServer->findGlineIterator(Params[2] + 1);
         if (gItr == theServer->glines_end()) {
@@ -70,8 +69,10 @@ bool msg_GL::Execute(const xParameters& Params) {
 
     // Else, adding a gline
     if (Params.size() < 5) {
-        elog << "msg_GL> Invalid number of arguments" << endl;
-        return false;
+        // "GL * +<mask> <lastmod>": the activation of a G-line the sender
+        // does not have either.  A legal form, but with no expiry and no
+        // reason there is nothing here to add.
+        return true;
     }
 
     // <source> GL <target> +<mask> <expire> [<lastmod> [<lifetime>]] :<reason>

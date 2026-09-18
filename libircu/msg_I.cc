@@ -40,13 +40,7 @@ CREATE_HANDLER(msg_I)
 // ABAHo I X :#lksdlkj                           (non-ts)
 // ABAHo I X :#lksdlkj 1234567890                (ts)
 bool msg_I::Execute(const xParameters& Param) {
-    if ((Param.size() < 3) || (Param.size() > 4)) {
-        elog << "msg_I> Invalid number of arguments (" << Param.size() << ")" << endl;
-        int i;
-        for (i = 0; i < (int)Param.size(); i++)
-            elog << "msg_I>   arg" << i << " = '" << Param[i] << "'" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_I>", Param, 3);
 
     iClient* srcClient = Network->findClient(Param[0]);
     if (NULL == srcClient) {

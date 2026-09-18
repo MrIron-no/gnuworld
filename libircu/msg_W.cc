@@ -39,9 +39,11 @@ CREATE_HANDLER(msg_W)
 
 // ABAG7 W Az :Gte-
 bool msg_W::Execute(const xParameters& Param) {
+    // <source> W <server> :<nick>[,<nick>...]; ircu's ms_whois() also takes
+    // "W :<nick>", which names no server and so is not for us to answer
+    theServer->RequireParameters("msg_W>", Param, 2);
     if (Param.size() != 3) {
-        elog << "msg_W> Invalid number of parameters" << endl;
-        return false;
+        return true;
     }
 
     iClient* sourceClient = Network->findClient(Param[0]);

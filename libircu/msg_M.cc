@@ -68,10 +68,7 @@ CREATE_LOADER(msg_M)
 // i M #3dx +o eAA
 // J[K M DEMET_33 :+i
 bool msg_M::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_M> Invalid number of arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_M>", Param, 3);
 
     // This source stuff really isn't used here, but it's here for
     // debugging and validation.

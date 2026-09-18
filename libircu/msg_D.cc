@@ -49,10 +49,7 @@ CREATE_HANDLER(msg_D)
  * The source of the kill could be a server or a client.
  */
 bool msg_D::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_D> Invalid number of parameters" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_D>", Param, 3);
 
     // <source> D <victim> :<path> <reason>     P10
     // <source> D <victim> <path> :<reason>     P11

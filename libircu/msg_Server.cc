@@ -71,10 +71,7 @@ bool msg_Server::Execute(const xParameters& Param) {
         //		<< endl ;
 
         // It's our uplink
-        if (Param.size() < 6) {
-            elog << "msg_Server> Invalid number of parameters" << endl;
-            return false;
-        }
+        theServer->RequireParameters("msg_Server>", Param, 6);
 
         // Here's the deal:
         // We are just connecting to the network

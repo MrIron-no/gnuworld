@@ -58,9 +58,13 @@ bool msg_RI::Execute(const xParameters& params) {
 
     // return true;
 
+    // From a server: <server> RI <target> <requester> <sec> <usec> :<remark>
+    // From an oper:   <oper> RI <target mask> <start server> :<remark>
+    theServer->RequireParameters("msg_RI>", params, 3);
     if (params.size() < 5) {
-        elog << "msg_RI> Invalid number of arguments." << endl;
-        return false;
+        // The oper's form, which asks the start server to do the pinging.
+        // Legal, and not something we do.
+        return true;
     }
 
     if (params[1] != theServer->getCharYY()) {

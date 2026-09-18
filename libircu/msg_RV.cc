@@ -53,10 +53,7 @@ CREATE_HANDLER(msg_RV)
  * We are a leaf, so there is nothing to relay.
  */
 bool msg_RV::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_RV> Invalid number of arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_RV>", Param, 3);
 
     iClient* theClient = Network->findClient(Param[0]);
     if (0 == theClient) {

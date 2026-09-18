@@ -65,10 +65,8 @@ CREATE_HANDLER(msg_S)
  */
 bool msg_S::Execute(const xParameters& params) {
     // We need at least 9 tokens
-    if (params.size() < 9) {
-        elog << "msg_S> Not enough parameters" << endl;
-        return false;
-    }
+    // <uplink> S <name> <hops> <start> <link> <proto> <numeric> [+<flags>] :<description>
+    theServer->RequireParameters("msg_S>", params, 8);
 
     int uplinkIntYY = base64toint(params[0]);
     iServer* uplinkServer = Network->findServer(uplinkIntYY);

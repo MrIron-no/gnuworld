@@ -84,17 +84,3 @@ async def test_the_same_lines_with_numbers_are_fine(debug_linked_p11):
     await hub.send_raw(f"{hub.server_numnick} GL * +*@old.example 3600 :an old style reason")
     await chaninfo(hub, asker, CHAN)
     assert proc.proc.returncode is None
-
-
-@pytest.mark.asyncio
-async def test_a_line_shorter_than_its_handler_reads_aborts(debug_linked_p11):
-    """xParameters::operator[] past the end names the line and aborts, in every
-    build: a handler that did not count must not carry on with nothing."""
-    hub, proc = debug_linked_p11
-    await _setup(hub)
-
-    await hub.send_raw(f"{hub.server_numnick} RO")
-    await proc.wait_for_stdout("xParameters> PROTOCOL ERROR, parameter")
-    assert proc.proc is not None
-    returncode = await asyncio.wait_for(proc.proc.wait(), timeout=10)
-    assert returncode in (-signal.SIGABRT, 128 + signal.SIGABRT), returncode

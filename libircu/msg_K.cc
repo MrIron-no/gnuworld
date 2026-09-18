@@ -70,13 +70,7 @@ CREATE_HANDLER(msg_K)
 bool msg_K::Execute(const xParameters& Param) {
     // Verify that there are at least three arguments provided
     // client_source_numeric #channel client_target_numeric
-    if (Param.size() < 3) {
-        // Invalid number of arguments
-        elog << "msg_K> Invalid number of arguments" << endl;
-
-        // Return error
-        return false;
-    }
+    theServer->RequireParameters("msg_K>", Param, 3);
 
     // Is this a modeless channel?
     // Can there even be kicks on modeless channels?

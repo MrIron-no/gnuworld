@@ -64,24 +64,10 @@ CREATE_LOADER(msg_J)
 bool msg_J::Execute(const xParameters& Param) {
     // Verify that sufficient arguments have been provided
     // client_numeric #channel[,#channel2,...]
-    if (Param.size() < 2) {
-        // Insufficient arguments provided, log the error
-        elog << "msg_J> Invalid number of arguments" << endl;
+    theServer->RequireParameters("msg_J>", Param, 2);
 
-        int i;
-        for (i = 0; i < (int)Param.size(); i++)
-            elog << "msg_J>   arg" << i << " = '" << Param[i] << "'" << endl;
-
-        // Return error
-        return false;
-    }
-
-    /* a join to '0' may not have a timestamp, but all others should */
-    if ((Param[1][0] != '0') && Param.size() < 3) {
-        elog << "msg_J> Invalid number of arguments" << endl;
-        // Return error
-        return false;
-    }
+    // A JOIN may come without a timestamp, as ircu's ms_join() takes it: the
+    // time of the join is then the time it is now, below.
 
     // Find the client in question.
     iClient* Target = Network->findClient(Param[0]);

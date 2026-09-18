@@ -42,10 +42,7 @@ CREATE_HANDLER(msg_T)
 // kAI T #omniplex :-=[ Washington.DC.US.Krushnet.Org / Luxembourg.
 // LU.EU.KrushNet.Org Admin Channel ]=-
 bool msg_T::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_T> Invalid number of arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_T>", Param, 3);
 
     Channel* theChan = Network->findChannel(Param[1]);
     if (0 == theChan) {

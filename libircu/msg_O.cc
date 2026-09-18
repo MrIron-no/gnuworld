@@ -88,10 +88,7 @@ void channelNotice(iClient* srcClient, Channel* theChan, const string& message) 
  * abcDE O #chanName :testing 12 3
  */
 bool msg_O::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_O> Invalid number of arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_O>", Param, 3);
 
     Channel* theChan = 0;
     if ('#' == Param[1][0]) {

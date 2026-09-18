@@ -85,11 +85,7 @@ CREATE_HANDLER(msg_N)
  * :Generic Client - description
  */
 bool msg_N::Execute(const xParameters& params) {
-    if (params.size() < 3) {
-        // Error
-        elog << "msg_N> Invalid format: " << params << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_N>", params, 3);
 
     iServer* nickUplink = 0;
     if (3 == params.size()) {

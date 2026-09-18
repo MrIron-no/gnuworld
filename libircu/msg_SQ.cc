@@ -56,10 +56,7 @@ CREATE_HANDLER(msg_SQ)
  */
 bool msg_SQ::Execute(const xParameters& Param) {
 
-    if (Param.size() < 2) {
-        elog << "msg_SQ> Invalid number of parameters" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_SQ>", Param, 2);
 
     iServer* squitServer = 0;
     if (strchr(Param[1], '.') != NULL) {

@@ -57,13 +57,7 @@ bool msg_C::Execute(const xParameters& Param) {
     // Verify that there exist sufficient arguments to successfully
     // handle this command
     // client_numeric #channel[,#channel2,...] timestamp
-    if (Param.size() < 3) {
-        // Insufficient arguments provided
-        elog << "msg_C> Invalid number of parameters" << endl;
-
-        // Return error
-        return false;
-    }
+    theServer->RequireParameters("msg_C>", Param, 3);
 
     // Find the client in question.
     iClient* theClient = Network->findClient(Param[0]);

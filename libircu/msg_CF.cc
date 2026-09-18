@@ -41,10 +41,7 @@ CREATE_HANDLER(msg_CF)
  * source CF <timestamp> <key> :<value>
  */
 bool msg_CF::Execute(const xParameters& Param) {
-    if (Param.size() < 3) {
-        elog << "msg_CF> Invalid number of parameters" << std::endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_CF>", Param, 3);
 
     iServer* sourceServer = Network->findServer(Param[0]);
     if (NULL == sourceServer) {

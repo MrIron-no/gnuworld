@@ -44,10 +44,7 @@ CREATE_HANDLER(msg_Q)
  */
 bool msg_Q::Execute(const xParameters& Param) {
 
-    if (Param.size() < 1) {
-        elog << "msg_Q> Invalid number of parameters" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_Q>", Param, 1);
 
     iClient* theClient = Network->findClient(Param[0]);
     if (NULL == theClient) {
@@ -59,8 +56,7 @@ bool msg_Q::Execute(const xParameters& Param) {
 
     // Post the event before removing the client so that listeners still see
     // it fully attached (channel membership, numeric, nick all valid).
-    theServer->PostEvent(EVT_QUIT, static_cast<void*>(theClient),
-                         static_cast<void*>(&quitReason));
+    theServer->PostEvent(EVT_QUIT, static_cast<void*>(theClient), static_cast<void*>(&quitReason));
 
     // xNetwork::removeClient will remove user<->channel associations
     Network->removeClient(Param[0]);

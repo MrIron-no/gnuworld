@@ -52,10 +52,7 @@ CREATE_HANDLER(msg_XQ)
  * [IN ]: ABAAA XQ Az tokengoeshere :message goes here :)
  */
 bool msg_XQ::Execute(const xParameters& Param) {
-    if (Param.size() < 4) {
-        elog << "msg_XQ> Invalid number of arguments" << endl;
-        return false;
-    }
+    theServer->RequireParameters("msg_XQ>", Param, 4);
 
     iServer* serverSource = 0;
     iClient* clientSource = 0;
