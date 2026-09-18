@@ -956,8 +956,7 @@ void ccontrol::OnServerMessage(iServer* Server, const string& Message, bool) {
         if ((lagTime < MAX_LAG_TIME_FOR_SETTIME) && (timeDiff > MAX_TIME_DIFF_FOR_SETTIME) &&
             ((::time(0) - timediffServersMap[Server->getName() + "$td"]) >
              TIMEDIFF_SETTIME_INTERVAL)) {
-            Write("%s SE %d %s", getCharYYXXX().c_str(), ::time(0),
-                  tmpServer->getNetServer()->getCharYY().c_str());
+            SetTime(tmpServer->getNetServer());
             timediffServersMap[Server->getName() + "$td"] = ::time(0);
         }
     }
@@ -1329,8 +1328,7 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
         for (serversconstiterator ptr = serversMap_begin(); ptr != serversMap_end(); ++ptr) {
             TmpServer = ptr->second;
             if (TmpServer->getNetServer()) {
-                Write("%s TI :%s", getCharYYXXX().c_str(),
-                      TmpServer->getNetServer()->getCharYY().c_str());
+                QueryTime(TmpServer->getNetServer());
             }
         }
         timeCheck = MyUplink->RegisterTimer(::time(0) + 7200, this, NULL);
@@ -1339,15 +1337,6 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
             rpingCheck = MyUplink->RegisterTimer(::time(0) + 60, this, NULL);
             return;
         }
-        timeval now = {0, 0};
-        if (::gettimeofday(&now, 0) < 0) {
-            elog << "ccontrol(rpingCheck)> gettimeofday() failed: " << strerror(errno) << endl;
-            return;
-        }
-
-        stringstream s;
-        s << now.tv_usec;
-
         static int tID = 19;
         tID++;
         if (tID == 20)
@@ -1400,9 +1389,7 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
                 if ((TmpServer->getNetServer()->getIntYY() == myHub->getIntYY()) &&
                     ((!ccHub || (::time(0) - ccHub->getLastLagSent()) < 30)))
                     continue;
-                Write("%s RI %s %s %d %s :%d %s", getCharYY().c_str(),
-                      TmpServer->getNetServer()->getCharYY().c_str(), getCharYYXXX().c_str(),
-                      ::time(0), s.str().c_str(), ::time(0), s.str().c_str());
+                RPing(TmpServer->getNetServer());
                 TmpServer->setLastLagSent(::time(0));
             }
             // BG RI C] BGAAA 1246224483 960943 :1246224474
@@ -1423,7 +1410,7 @@ void ccontrol::OnConnect() {
 
     if (tServer) {
         tServer->setNetServer(tmpServer);
-        Write("%s V :%s\n", getCharYYXXX().c_str(), tmpServer->getCharYY().c_str());
+        QueryVersion(tmpServer);
     }
 
     xClient::OnConnect();
@@ -1635,8 +1622,7 @@ void ccontrol::OkAuthUser(iClient* theClient, ccUser* theUser) {
         theUser->setLastAuthNumeric(theClient->getCharYYXXX());
     }
     if ((!theClient->isOper()) && (theUser->getAutoOp()) && (!isSuspended(theUser))) {
-        std::string Numeric = getUplink()->getCharYY();
-        Write("%s OM %s :+o", Numeric.c_str(), theClient->getCharYYXXX().c_str());
+        MyUplink->OpMode(theClient, "+o");
         MsgChanLog("(%s) - %s - REMOTE OPER (+o)\n", theUser->getUserName().c_str(),
                    theClient->getRealNickUserHost().c_str(), targetServer->getName().c_str());
     }
@@ -3361,7 +3347,7 @@ bool ccontrol::refreshVersions() {
         curServer = ptr->second;
         curNetServer = curServer->getNetServer();
         if (curNetServer) {
-            Write("%s V :%s\n", getCharYYXXX().c_str(), curNetServer->getCharYY().c_str());
+            QueryVersion(curNetServer);
         }
     }
     return true;
@@ -4034,11 +4020,7 @@ int ccontrol::removeIgnore(const string& Host) {
     for (ignoreIterator ptr = ignore_begin(); ptr != ignore_end();) {
         tempLogin = *ptr;
         if (tempLogin->getIgnoredHost() == Host) {
-            stringstream s;
-            s << getCharYYXXX() << " SILENCE "
-              << "*"
-              << " -" << tempLogin->getIgnoredHost() << ends;
-            Write(s);
+            UnSilence(tempLogin->getIgnoredHost());
 
             tempLogin->resetIgnore();
             tempLogin->resetLogins();
@@ -4071,10 +4053,7 @@ void ccontrol::ignoreUser(ccFloodData* Flood) {
     string silenceMask =
         string("*!*") + theClient->getUserName() + "@" + theClient->getRealNickUserHost();
 
-    stringstream s;
-    s << getCharYYXXX() << " SILENCE " << theClient->getCharYYXXX() << " " << silenceMask << ends;
-
-    Write(s);
+    Silence(theClient, silenceMask);
     Flood->setIgnoreExpires(::time(0) + flood::IGNORE_TIME);
     Flood->setIgnoredHost(silenceMask);
 
@@ -4103,12 +4082,7 @@ bool ccontrol::refreshIgnores() {
         tempLogin = *ptr;
         if ((tempLogin) && (tempLogin->getIgnoreExpires() <= ::time(0))) {
             tempLogin->setIgnoreExpires(0);
-            stringstream s;
-            s << getCharYYXXX() << " SILENCE "
-              << "*"
-              << " -" << tempLogin->getIgnoredHost() << ends;
-
-            Write(s);
+            UnSilence(tempLogin->getIgnoredHost());
 
             tempLogin->setIgnoredHost("");
             if (tempLogin->getNumeric() == "0") {

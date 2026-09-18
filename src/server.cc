@@ -2835,6 +2835,15 @@ bool xServer::serverMessage(Channel* theChan, const string& message) {
     return sendText(TextType::PRIVMSG, nullptr, theChan->getName(), message);
 }
 
+bool xServer::OpMode(iClient* target, const string& userModes) {
+    assert(target != 0);
+
+    if (userModes.empty() || !isConnected()) {
+        return false;
+    }
+    return Write("{} OM {} :{}", getCharYY(), target->getCharYYXXX(), userModes);
+}
+
 bool xServer::GlobalNotice(const string& text, const iClient* from) {
     if (text.empty() || !isConnected()) {
         return false;

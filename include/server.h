@@ -544,6 +544,12 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool serverMessage(Channel*, const std::string&);
 
     /**
+     * OPMODE on a client: change its user modes, as the server.  "+o" makes
+     * it an oper.  Its own server tells the network, and us, what came of it.
+     */
+    virtual bool OpMode(iClient* target, const std::string& userModes);
+
+    /**
      * A notice to every user on the network, from the server or from a
      * client of ours: NOTICE $*, which only an oper or a server may send.
      */

@@ -89,7 +89,7 @@ bool ADDSERVERCommand::Exec(iClient* theClient, const string& Message) {
         NewServer->setLastConnected(CurServer->getConnectTime());
         NewServer->setUplink((Network->findServer(CurServer->getIntYY()))->getName());
         NewServer->setNetServer(CurServer);
-        bot->Write("%s V :%s\n", bot->getCharYYXXX().c_str(), CurServer->getCharYY().c_str());
+        bot->QueryVersion(CurServer);
     }
     NewServer->setReportMissing(Report);
     if (!Report) {
