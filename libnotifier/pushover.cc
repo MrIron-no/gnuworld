@@ -60,12 +60,8 @@ void PushoverClient::initialise_curl() {
 #endif
 
 bool PushoverClient::sendMessage(int level, const std::string message) {
-#ifdef HAVE_FORMAT
     return sendMessage(std::format("[{}] {}", bot->getNickName(), Logger::levels[level].name),
                        message);
-#else
-    return false;
-#endif
 }
 
 bool PushoverClient::sendMessage(const std::string title, const std::string message) {

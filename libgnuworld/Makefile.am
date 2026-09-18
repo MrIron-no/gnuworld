@@ -9,6 +9,7 @@ libgnuworld_la_SOURCES = \
 	libgnuworld/ConnectionManager.cc \
 	libgnuworld/EConfig.cc \
 	libgnuworld/ELog.cc \
+	libgnuworld/LogRender.cc \
 	libgnuworld/Signal.cc \
 	libgnuworld/StringTokenizer.cc \
 	libgnuworld/gThread.cc \
@@ -36,6 +37,8 @@ EXTRA_DIST += \
 	libgnuworld/ConnectionManager.h \
 	libgnuworld/EConfig.h \
 	libgnuworld/ELog.h \
+	libgnuworld/LogRecord.h \
+	libgnuworld/LogRender.h \
 	libgnuworld/MigrationChecker.h \
 	libgnuworld/gThread.h \
 	libgnuworld/ircd_chattr.h \

@@ -24,9 +24,7 @@
 #include <fstream>
 #include <functional>
 #include <typeindex>
-#ifdef HAVE_FORMAT
 #include <format>
-#endif
 #ifdef USE_THREAD
 #include <mutex>
 #endif
@@ -36,13 +34,13 @@
 
 #include "notifier.h"
 #include "ip.h"
+#include "LogRecord.h"
 
 /**
  * Main logging macro for simple formatted messages.
  * Automatically passes the current function name and supports format strings.
  * Usage: LOG(INFO, "User {} connected", username);
  */
-#ifdef HAVE_FORMAT
 #define LOG(x, ...) logger->writeFunc(x, __PRETTY_FUNCTION__, "", __VA_ARGS__)
 
 /**
@@ -51,12 +49,6 @@
  */
 #define LOGSQL_ERROR(x)                                                                            \
     logger->writeFunc(ERROR, __PRETTY_FUNCTION__, "", "SQL Error: {}", x->ErrorMessage())
-#else
-#define LOG(x, ...)                                                                                \
-    do {                                                                                           \
-    } while (0)
-#define LOGSQL_ERROR(x) elog << "SQL Error: " << x->ErrorMessage() << std::endl;
-#endif
 
 /**
  * Structured logging macro with template support and field extraction.
@@ -70,21 +62,6 @@
 namespace gnuworld {
 
 class xClient;
-
-/**
- * Verbosity levels for logging system.
- * Higher numbers indicate more verbose logging.
- * SQL is a special category for database query logging.
- */
-enum Verbosity {
-    TRACE = 6, // Most verbose - detailed execution traces
-    DEBUG = 5, // Debug information for development
-    INFO = 4,  // General informational messages
-    WARN = 3,  // Warning messages for potential issues
-    ERROR = 2, // Error messages for failures
-    FATAL = 1, // Critical errors that may cause shutdown
-    SQL = 99   // Special category for SQL query logging
-};
 
 /**
  * Main logging system for GNUWorld services.
@@ -588,10 +565,8 @@ class Logger {
      */
     template <typename Format, typename... Args>
     void write(Verbosity v, const Format& format, Args&&... args) {
-#ifdef HAVE_FORMAT
         std::string fmtString = std::vformat(format, std::make_format_args(args...));
         writeFunc(v, "", string(), fmtString);
-#endif
     }
 
     /**
@@ -602,10 +577,8 @@ class Logger {
     template <typename Format, typename... Args>
     void writeFunc(Verbosity v, const char* func, const std::string& jsonParams,
                    const Format& format, Args&&... args) {
-#ifdef HAVE_FORMAT
         std::string fmtString = std::vformat(format, std::make_format_args(args...));
         writeFunc(v, func, jsonParams, fmtString);
-#endif
     }
 
     /**

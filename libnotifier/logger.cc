@@ -23,9 +23,7 @@
 #include <iomanip>
 #include <sstream>
 
-#ifdef HAVE_FORMAT
 #include <format>
-#endif
 
 #include "Channel.h"
 #include "Network.h"
@@ -132,7 +130,6 @@ void Logger::writeFunc(Verbosity v, const char* func, const string& jsonParams,
         }
     }
 
-#ifdef HAVE_FORMAT
     if (v <= chanVerbosity && bot->isConnected() && !debugChan.empty()) {
         /* Try to locate the channel. */
         Channel* theChan = Network->findChannel(debugChan);
@@ -151,7 +148,6 @@ void Logger::writeFunc(Verbosity v, const char* func, const string& jsonParams,
                                              levels[v].tag, line, getColourReset(v)));
         }
     }
-#endif
 }
 
 /**
