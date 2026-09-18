@@ -145,6 +145,11 @@ xClient::~xClient() {
         if (fileLogSink)
             logger->removeSink(fileLogSink);
 
+        /* And what the module's own configuration keys left on it goes with the
+         * sinks they configured: the channel, the verbosities and the level they
+         * asked for are this instance's, not the next one's */
+        logger->resetLegacyState();
+
         // With no sinks of its own left, the logger is additive again: whatever
         // still logs to it is better heard on the root than nowhere
         logger->setAdditive(true);

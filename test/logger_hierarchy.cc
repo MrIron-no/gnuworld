@@ -181,6 +181,118 @@ void testCodeDefault() {
 }
 
 /**
+ * The legacy per-module verbosities are a level of the logger as well as a
+ * threshold of a sink: what the three keys ask for together is what the logger
+ * logs, which is what they asked for before a logger had a hierarchy to inherit
+ * a level from.  A slot that is not installed has no say, and what it was asked
+ * for in the meantime is applied when it arrives.
+ */
+void testLegacyVerbosityLevel() {
+    Logger* const logger = LogManager::get("legacy.mod");
+
+    // With no slot installed the logger has nothing of its own to say: the
+    // level is the root's, and a debug record is not built at all
+    CHECK(INFO == logger->effectiveLevel());
+    CHECK(!logger->shouldLog(DEBUG));
+
+    const std::shared_ptr<CaptureSink> file = std::make_shared<CaptureSink>();
+    const std::shared_ptr<CaptureSink> console = std::make_shared<CaptureSink>();
+    const std::shared_ptr<CaptureSink> irc = std::make_shared<CaptureSink>();
+
+    // The file slot arrives with the default log verbosity, which is TRACE
+    logger->addSink(file, TRACE);
+    logger->setLegacyFileSink(file);
+
+    CHECK(TRACE == logger->effectiveLevel());
+
+    emit(logger, DEBUG, "kept");
+    CHECK(1 == file->size());
+
+    // What the only slot installed asks for is what the logger logs
+    logger->setLogVerbosity(4);
+
+    CHECK(INFO == logger->effectiveLevel());
+
+    emit(logger, DEBUG, "dropped");
+    CHECK(1 == file->size());
+
+    // A verbosity out of the range there is asks for the most there is
+    logger->setLogVerbosity(99);
+    CHECK(TRACE == logger->effectiveLevel());
+    logger->setLogVerbosity(4);
+    CHECK(INFO == logger->effectiveLevel());
+
+    /* The most of what the installed slots ask for: the console wants debug
+     * records, the file still only informational ones, and the threshold of the
+     * file sink is what keeps this one from it */
+    logger->addSink(console, TRACE);
+    logger->setLegacyConsoleSink(console);
+    logger->setConsoleVerbosity(5);
+
+    CHECK(DEBUG == logger->effectiveLevel());
+
+    emit(logger, DEBUG, "the console only");
+    CHECK(1 == file->size());
+    CHECK(1 == console->size());
+
+    // A channel verbosity with no channel sink is remembered, not applied: the
+    // slot that arrives later is what makes it a level
+    logger->setChanVerbosity(6);
+    CHECK(DEBUG == logger->effectiveLevel());
+
+    logger->addSink(irc, INFO);
+    logger->setLegacyIrcSink(irc);
+    CHECK(TRACE == logger->effectiveLevel());
+
+    // The configuration file beats every one of them, and says nothing again
+    logger->setConfigLevel(WARN);
+    CHECK(WARN == logger->effectiveLevel());
+    logger->setConfigLevel(std::nullopt);
+    CHECK(TRACE == logger->effectiveLevel());
+
+    // The channel is asked for less, so the console is the loudest left, and
+    // taking the console sink away leaves the file and the channel
+    logger->setChanVerbosity(4);
+    CHECK(DEBUG == logger->effectiveLevel());
+
+    logger->removeSink(console);
+    CHECK(INFO == logger->effectiveLevel());
+
+    /* An unloaded module leaves nothing of itself on the logger, which is the
+     * registry's and which the next instance of the module finds */
+    logger->setChannel("#log");
+    logger->setLogSQL(true);
+    logger->setConsoleSQL(true);
+
+    CHECK_EQ(logger->getChannel(), "#log");
+
+    logger->removeSink(file);
+    logger->removeSink(irc);
+    logger->resetLegacyState();
+
+    CHECK(INFO == logger->effectiveLevel());
+    CHECK_EQ(logger->getChannel(), "");
+
+    // A file slot installed again starts from the default verbosity, and the
+    // SQL keys are off as they are at the outset
+    const std::shared_ptr<CaptureSink> second = std::make_shared<CaptureSink>();
+
+    logger->addSink(second, TRACE);
+    logger->setLegacyFileSink(second);
+
+    CHECK(TRACE == logger->effectiveLevel());
+
+    logger->write(SQL, std::string("select 1"));
+    CHECK(0 == second->size());
+
+    emit(logger, TRACE, "verbose again");
+    CHECK(1 == second->size());
+
+    logger->removeSink(second);
+    logger->resetLegacyState();
+}
+
+/**
  * What a child inherits is the effective level of its parent, whichever of the
  * parent's own levels that came from: a code default is not itself inherited,
  * but the level it gives the parent is.
@@ -286,6 +398,48 @@ void testThresholdsAlongThePath() {
 
     child->removeSink(loud);
     parent->removeSink(quiet);
+}
+
+/**
+ * One sink attached twice along the path with two thresholds hears a record if
+ * either of its attachments lets it through, and hears it once: the dispatch
+ * keeps the most permissive of the thresholds of a sink it already has.  A
+ * logger that is not additive is left with the threshold it gave the sink
+ * itself, which is the only attachment the record still passes by.
+ */
+void testSharedSinkKeepsTheLoosestThreshold() {
+    Logger* const child = LogManager::get("merge.child");
+    Logger* const parent = LogManager::get("merge");
+
+    child->setLevel(TRACE);
+
+    const std::shared_ptr<CaptureSink> shared = std::make_shared<CaptureSink>();
+
+    child->addSink(shared, ERROR);
+    parent->addSink(shared, TRACE);
+
+    // The child asked for errors only; the parent's attachment is what lets
+    // this one through, and the sink still hears it a single time
+    emit(child, INFO, "through the parent");
+
+    CHECK(1 == shared->records.size());
+    if (1 == shared->records.size())
+        CHECK_EQ(shared->records[0].message, "through the parent");
+
+    child->setAdditive(false);
+
+    emit(child, INFO, "nowhere");
+    CHECK(1 == shared->records.size());
+
+    emit(child, ERROR, "trouble");
+    CHECK(2 == shared->records.size());
+    if (2 == shared->records.size())
+        CHECK_EQ(shared->records[1].message, "trouble");
+
+    child->setAdditive(true);
+    child->setConfigLevel(std::nullopt);
+    child->removeSink(shared);
+    parent->removeSink(shared);
 }
 
 /**
@@ -429,9 +583,11 @@ int main() {
     testTree();
     testInheritance();
     testCodeDefault();
+    testLegacyVerbosityLevel();
     testInheritEffectiveLevel();
     testAdditiveDispatch();
     testThresholdsAlongThePath();
+    testSharedSinkKeepsTheLoosestThreshold();
     testConfigAndCodeSinks();
     testModuleNameFromLibrary();
     testLoadingModule();

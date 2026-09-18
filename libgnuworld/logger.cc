@@ -71,6 +71,13 @@ std::map<std::type_index, ExtractorEntry>& extractorRegistry() {
 }
 
 /**
+ * One legacy verbosity as a level of the logger.  The value comes from a module's
+ * configuration file as a number, so it is whatever was written there: anything
+ * past the most verbose level there is asks for that one.
+ */
+Verbosity legacyLevelOf(Verbosity verbosity) { return verbosity > TRACE ? TRACE : verbosity; }
+
+/**
  * True while this thread is inside a sink's emit().  A record logged from there
  * is kept away from the sinks that would feed themselves with it.
  */
@@ -243,6 +250,9 @@ void Logger::removeSink(const std::shared_ptr<LogSink>& sink) {
         legacyIrcSink.reset();
         legacyChanSetter = nullptr;
     }
+
+    // A slot that is gone no longer asks for anything
+    recomputeLegacyLevelLocked();
 }
 
 void Logger::setSinkThreshold(const std::shared_ptr<LogSink>& sink, Verbosity threshold) {
@@ -460,6 +470,37 @@ std::string Logger::getChannel() const {
     return legacyChanName;
 }
 
+/**
+ * The level the legacy keys ask for: the most of what the installed slots want.
+ *
+ * A verbosity is kept whether its slot is installed or not, because a module
+ * reads its configuration before it has an uplink, but only an installed slot
+ * has a say in the level: a channel verbosity of a channel nobody logs to would
+ * otherwise make the module build records for a sink that does not exist.  With
+ * no slot at all there is nothing legacy about this logger and the level is
+ * whatever the hierarchy says.
+ */
+void Logger::recomputeLegacyLevelLocked() {
+    std::optional<Verbosity> wanted;
+
+    const std::pair<const std::shared_ptr<LogSink>&, Verbosity> slots[] = {
+        {legacyFileSink, legacyLogVerbosity},
+        {legacyConsoleSink, legacyConsoleVerbosity},
+        {legacyIrcSink, legacyChanVerbosity}};
+
+    for (const std::pair<const std::shared_ptr<LogSink>&, Verbosity>& slot : slots) {
+        if (nullptr == slot.first)
+            continue;
+
+        const Verbosity asked = legacyLevelOf(slot.second);
+
+        if (!wanted || asked > *wanted)
+            wanted = asked;
+    }
+
+    legacyLevel = wanted;
+}
+
 void Logger::setChanVerbosity(unsigned short verbosity) {
     std::shared_ptr<LogSink> sink;
 
@@ -468,6 +509,8 @@ void Logger::setChanVerbosity(unsigned short verbosity) {
 
         legacyChanVerbosity = static_cast<Verbosity>(verbosity);
         sink = legacyIrcSink;
+
+        recomputeLegacyLevelLocked();
     }
 
     if (nullptr != sink)
@@ -482,6 +525,8 @@ void Logger::setLogVerbosity(unsigned short verbosity) {
 
         legacyLogVerbosity = static_cast<Verbosity>(verbosity);
         sink = legacyFileSink;
+
+        recomputeLegacyLevelLocked();
     }
 
     if (nullptr != sink)
@@ -496,6 +541,8 @@ void Logger::setConsoleVerbosity(unsigned short verbosity) {
 
         legacyConsoleVerbosity = static_cast<Verbosity>(verbosity);
         sink = legacyConsoleSink;
+
+        recomputeLegacyLevelLocked();
     }
 
     if (nullptr != sink)
@@ -522,6 +569,8 @@ void Logger::setLegacyFileSink(std::shared_ptr<LogSink> sink) {
 
         legacyFileSink = sink;
         threshold = legacyLogVerbosity;
+
+        recomputeLegacyLevelLocked();
     }
 
     // A module reads its configuration before its sinks exist, so the slot
@@ -538,6 +587,8 @@ void Logger::setLegacyConsoleSink(std::shared_ptr<LogSink> sink) {
 
         legacyConsoleSink = sink;
         threshold = legacyConsoleVerbosity;
+
+        recomputeLegacyLevelLocked();
     }
 
     if (nullptr != sink)
@@ -552,6 +603,8 @@ void Logger::setLegacyIrcSink(std::shared_ptr<LogSink> sink) {
 
         legacyIrcSink = sink;
         threshold = legacyChanVerbosity;
+
+        recomputeLegacyLevelLocked();
     }
 
     if (nullptr != sink)
@@ -562,6 +615,36 @@ void Logger::setLegacyChanSetter(std::function<void(const std::string&)> setter)
     const std::lock_guard<std::mutex> guard(logMutex);
 
     legacyChanSetter = std::move(setter);
+}
+
+/**
+ * Leaves the legacy state as it is on a logger nobody has configured yet.  The
+ * slots and the setter are handed out of the lock and let go of there: what a
+ * sink does as the last holder of it lets go is none of the logger's business,
+ * and no mutex of the logger is held while it happens.
+ */
+void Logger::resetLegacyState() {
+    std::shared_ptr<LogSink> file;
+    std::shared_ptr<LogSink> console;
+    std::shared_ptr<LogSink> irc;
+    std::function<void(const std::string&)> setter;
+
+    {
+        const std::lock_guard<std::mutex> guard(logMutex);
+
+        file.swap(legacyFileSink);
+        console.swap(legacyConsoleSink);
+        irc.swap(legacyIrcSink);
+        setter.swap(legacyChanSetter);
+
+        legacyChanName.clear();
+        legacyLogVerbosity = TRACE;
+        legacyConsoleVerbosity = TRACE;
+        legacyChanVerbosity = INFO;
+        logSQL = false;
+        consoleSQL = false;
+        legacyLevel = std::nullopt;
+    }
 }
 
 /**

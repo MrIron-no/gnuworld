@@ -169,6 +169,10 @@ class Logger {
      * below the threshold.  A sink is always held by shared_ptr: the logger
      * keeps it alive for as long as one of its records is on its way there.
      *
+     * A sink attached to more than one logger of a dispatch path hears each
+     * record once, and hears it if any one of those attachments lets it
+     * through: the most permissive threshold of them is the one that counts.
+     *
      * This is the list of the code, which a configuration reload leaves alone.
      */
     void addSink(std::shared_ptr<LogSink>, Verbosity threshold = TRACE);
@@ -551,6 +555,18 @@ class Logger {
     void setLegacyChanSetter(std::function<void(const std::string&)>);
 
     /**
+     * Forgets everything the legacy per-module keys left here: the three slots,
+     * the channel setter, the channel name, the verbosities, the SQL keys and
+     * the level they asked for, all of them as they are on a logger nobody has
+     * said anything to yet.  Takes no sink out of the lists: the module that
+     * attached them removes its own.
+     *
+     * A module calls this as it goes, because the logger of its name is the
+     * registry's and a module that is loaded again finds that very logger.
+     */
+    void resetLegacyState();
+
+    /**
      * Closes and reopens every destination that has anything to reopen, for
      * external log rotation support.
      * Called from xServer::rotateLogs() when a SIGHUP is received.
@@ -603,6 +619,15 @@ class Logger {
      * mutex is held by the caller.
      */
     void appendTargetsLocked(std::vector<Target>& targets, bool tagLegacySlots) const;
+
+    /**
+     * Works out the level the legacy per-module keys ask for: the most of what
+     * the slots that are installed want, and nothing at all when none is.  This
+     * is what a module logged at before its logger had a hierarchy to inherit a
+     * level from, where a record was written if it passed any of the three
+     * verbosities.  The logger's mutex is held by the caller.
+     */
+    void recomputeLegacyLevelLocked();
 
     /// Adds every sink of this logger to the list, for LogManager::reopenAll()
     void appendSinks(std::vector<std::shared_ptr<LogSink>>&) const;

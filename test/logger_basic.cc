@@ -504,6 +504,47 @@ void testLegacySqlRouting() {
 }
 
 /**
+ * An SQL record stays with the logger it was logged on: it reaches the two
+ * legacy slots of that logger, whatever their threshold, and no sink of an
+ * ancestor, however additive the logger is.  An ordinary record of the same
+ * logger does walk up.
+ */
+void testLegacySqlDoesNotWalkUp() {
+    logger = LogManager::get("basic.sqlup.child");
+    Logger* const parent = LogManager::get("basic.sqlup");
+
+    const std::shared_ptr<CaptureSink> file = std::make_shared<CaptureSink>();
+    const std::shared_ptr<CaptureSink> console = std::make_shared<CaptureSink>();
+    const std::shared_ptr<CaptureSink> onParent = std::make_shared<CaptureSink>();
+
+    logger->addSink(file, TRACE);
+    logger->setLegacyFileSink(file);
+    logger->addSink(console, TRACE);
+    logger->setLegacyConsoleSink(console);
+    logger->setLogSQL(true);
+    logger->setConsoleSQL(true);
+    logger->setAdditive(true);
+
+    parent->addSink(onParent, TRACE);
+
+    logger->write(SQL, std::string("select 1"));
+
+    CHECK(1 == file->records.size());
+    CHECK(1 == console->records.size());
+    CHECK(0 == onParent->records.size());
+
+    // The parent hears everything else of its child
+    logger->write(INFO, std::string("hello"));
+
+    CHECK(1 == onParent->records.size());
+
+    logger->removeSink(file);
+    logger->removeSink(console);
+    logger->resetLegacyState();
+    parent->removeSink(onParent);
+}
+
+/**
  * setContext replaces the value of a key it already has, rather than adding a
  * second entry under it.
  */
@@ -584,6 +625,7 @@ int main() {
     testLogMacro();
     testLazyRecord();
     testLegacySqlRouting();
+    testLegacySqlDoesNotWalkUp();
     testContextReplacement();
     testTypedFields();
 
