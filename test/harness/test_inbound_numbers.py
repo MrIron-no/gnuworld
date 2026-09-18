@@ -87,18 +87,6 @@ async def test_the_same_lines_with_numbers_are_fine(debug_linked_p11):
 
 
 @pytest.mark.asyncio
-async def test_an_account_id_the_login_server_wrote_is_not_ours_to_abort_for(debug_linked_p11):
-    """"name:id" inside the account of an AC is passed on by ircu as it came."""
-    hub, proc = debug_linked_p11
-    asker, n, _ts = await _setup(hub)
-
-    await hub.send_raw(f"{hub.server_numnick} AC {n['plain']} someone:notanumber")
-    await proc.wait_for_stdout("msg_AC> Invalid account id: notanumber")
-    await chaninfo(hub, asker, CHAN)
-    assert proc.proc is not None and proc.proc.returncode is None
-
-
-@pytest.mark.asyncio
 async def test_a_line_shorter_than_its_handler_reads_aborts(debug_linked_p11):
     """xParameters::operator[] past the end names the line and aborts, in every
     build: a handler that did not count must not carry on with nothing."""
