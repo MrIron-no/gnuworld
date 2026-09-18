@@ -282,8 +282,7 @@ bool xClient::DoFakeCTCP(const iClient* destClient, const iClient* srcClient, co
     if (!isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(Source(srcClient), destClient->getCharYYXXX(),
-                                ctcpText(CTCP, Message));
+    return MyUplink->SendNotice(srcClient, destClient->getCharYYXXX(), ctcpText(CTCP, Message));
 }
 
 bool xClient::FakeMessage(const iClient* destClient, const iClient* srcClient,
@@ -291,7 +290,7 @@ bool xClient::FakeMessage(const iClient* destClient, const iClient* srcClient,
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(Source(srcClient), destClient->getCharYYXXX(), Message);
+    return MyUplink->SendMessage(srcClient, destClient->getCharYYXXX(), Message);
 }
 
 bool xClient::FakeNotice(const iClient* destClient, const iClient* srcClient,
@@ -299,21 +298,21 @@ bool xClient::FakeNotice(const iClient* destClient, const iClient* srcClient,
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(Source(srcClient), destClient->getCharYYXXX(), Message);
+    return MyUplink->SendNotice(srcClient, destClient->getCharYYXXX(), Message);
 }
 
 bool xClient::FakeMessage(const Channel* theChan, const iClient* srcClient, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendMessage(Source(srcClient), theChan->getName(), Message);
+    return MyUplink->SendMessage(srcClient, theChan->getName(), Message);
 }
 
 bool xClient::FakeNotice(const Channel* theChan, const iClient* srcClient, const string& Message) {
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->SendNotice(Source(srcClient), theChan->getName(), Message);
+    return MyUplink->SendNotice(srcClient, theChan->getName(), Message);
 }
 
 bool xClient::Message(const iClient* Target, const string& Message) {
@@ -486,11 +485,11 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
     return true;
 }
 
-Source xClient::source() const {
+const iClient* xClient::source() const {
     // A stealth module has no iClient on the network, so there is no
     // numeric of its own to send from.  The server is the only source it
     // has, and whatever it does goes out as the server's doing.
-    return IsStealth() ? Source() : Source(me);
+    return IsStealth() ? nullptr : me;
 }
 
 bool xClient::enterToChange(Channel* theChan, bool& joined) {

@@ -1809,7 +1809,7 @@ int xServer::Wallops(const string& msg) {
     return Write(s);
 }
 
-bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source& from) {
+bool xServer::ClearMode(Channel* theChan, const std::string& modes, const iClient* from) {
     assert(theChan != 0);
 
     if (modes.empty()) {
@@ -1874,7 +1874,7 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source
     // other client has to be opped, and takes the modes off one by one,
     // each with its argument: a bare "-b" removes nothing.
     bool sent = true;
-    if (!from.isClient() || from.client()->isOper()) {
+    if ((0 == from) || from->isOper()) {
         sent = Write("{} CM {} :{}\r\n", numericOf(from), theChan->getName(), letters);
     } else if (canChangeChannel(from, theChan)) {
         sent = SendChannelModes(numericOf(from), theChan, changes);
@@ -1888,19 +1888,16 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const Source
     return sent;
 }
 
-std::string xServer::numericOf(const Source& from) const {
-    if (from.isClient()) {
-        return from.client()->getCharYYXXX();
-    }
-    return (from.server() != 0) ? from.server()->getCharYY() : string(getCharYY());
+std::string xServer::numericOf(const iClient* from) const {
+    return (from != 0) ? from->getCharYYXXX() : string(getCharYY());
 }
 
-bool xServer::canChangeChannel(const Source& from, const Channel* theChan) const {
-    if (!from.isClient()) {
+bool xServer::canChangeChannel(const iClient* from, const Channel* theChan) const {
+    if ((0 == from)) {
         // The network applies a server's change without asking who is opped
         return true;
     }
-    const ChannelUser* member = theChan->findUser(from.client());
+    const ChannelUser* member = theChan->findUser(from);
     return (member != 0) && member->isModeO();
 }
 
@@ -2027,7 +2024,7 @@ void xServer::commitBans(const std::string& sourceNumeric, ChannelUser* eventSou
 }
 
 bool xServer::changeMembers(Channel* theChan, char letter, bool set,
-                            std::span<iClient* const> targets, const Source& from) {
+                            std::span<iClient* const> targets, const iClient* from) {
     const std::optional<opVectorType> members = planMemberModes(theChan, letter, set, targets);
     if (!members) {
         return false;
@@ -2038,24 +2035,24 @@ bool xServer::changeMembers(Channel* theChan, char letter, bool set,
     if (!canChangeChannel(from, theChan)) {
         return false;
     }
-    commitMemberModes(numericOf(from), from.isClient() ? theChan->findUser(from.client()) : 0,
-                      theChan, letter, *members);
+    commitMemberModes(numericOf(from), (from != 0) ? theChan->findUser(from) : 0, theChan, letter,
+                      *members);
     return true;
 }
 
-bool xServer::changeBans(Channel* theChan, banVectorType bans, const Source& from) {
+bool xServer::changeBans(Channel* theChan, banVectorType bans, const iClient* from) {
     if (bans.empty()) {
         return true;
     }
     if (!canChangeChannel(from, theChan)) {
         return false;
     }
-    commitBans(numericOf(from), from.isClient() ? theChan->findUser(from.client()) : 0, theChan,
+    commitBans(numericOf(from), (from != 0) ? theChan->findUser(from) : 0, theChan,
                std::move(bans));
     return true;
 }
 
-bool xServer::sendText(const char* token, const Source& from, std::string_view target,
+bool xServer::sendText(const char* token, const iClient* from, std::string_view target,
                        std::string_view text) {
     if (target.empty()) {
         return false;
@@ -2096,26 +2093,26 @@ bool xServer::sendText(const char* token, const Source& from, std::string_view t
     return sent;
 }
 
-bool xServer::SendMessage(const Source& from, std::string_view target, std::string_view text) {
+bool xServer::SendMessage(const iClient* from, std::string_view target, std::string_view text) {
     return sendText("P", from, target, text);
 }
 
-bool xServer::SendNotice(const Source& from, std::string_view target, std::string_view text) {
+bool xServer::SendNotice(const iClient* from, std::string_view target, std::string_view text) {
     return sendText("O", from, target, text);
 }
 
-bool xServer::SendWallchops(const Source& from, const Channel* theChan, std::string_view text) {
+bool xServer::SendWallchops(const iClient* from, const Channel* theChan, std::string_view text) {
     assert(theChan != 0);
     return sendText("WC", from, theChan->getName(), text);
 }
 
-bool xServer::Topic(Channel* theChan, const std::string& newTopic, const Source& from) {
+bool xServer::Topic(Channel* theChan, const std::string& newTopic, const iClient* from) {
     assert(theChan != 0);
 
     // A client has to be on the channel, and opped if it is +t.  A server
     // is not asked.
-    if (from.isClient()) {
-        const ChannelUser* member = theChan->findUser(from.client());
+    if ((from != 0)) {
+        const ChannelUser* member = theChan->findUser(from);
         if (0 == member || (theChan->getMode(Channel::MODE_T) && !member->isModeO())) {
             return false;
         }
@@ -2136,23 +2133,21 @@ bool xServer::Topic(Channel* theChan, const std::string& newTopic, const Source&
 #ifdef TOPIC_TRACK
     theChan->setTopic(newTopic);
     theChan->setTopicTS(now);
-    theChan->setTopicWhoSet(from.isClient()        ? from.client()->getNickName()
-                            : (from.server() != 0) ? from.server()->getName()
-                                                   : getName());
+    theChan->setTopicWhoSet((from != 0) ? from->getNickName() : getName());
 #endif
 
     // Setting the topic reveals a delayed-join member
-    if (from.isClient()) {
-        theChan->revealUser(from.client());
+    if ((from != 0)) {
+        theChan->revealUser(from);
     }
     return sent;
 }
 
-bool xServer::Invite(iClient* target, Channel* theChan, const Source& from) {
+bool xServer::Invite(iClient* target, Channel* theChan, const iClient* from) {
     assert(target != 0 && theChan != 0);
 
     // An INVITE from a server is a protocol violation (ircu doc/P11.md 8.11)
-    if (!from.isClient()) {
+    if ((0 == from)) {
         elog << "xServer::Invite> (" << theChan->getName() << "): only a client can invite" << endl;
         return false;
     }
@@ -2216,14 +2211,14 @@ void xServer::commitKick(const std::string& sourceNumeric, iClient* kicker, Chan
 }
 
 bool xServer::Kick(Channel* theChan, iClient* target, const std::string& reason,
-                   const Source& from) {
+                   const iClient* from) {
     assert(theChan != 0 && target != 0);
     iClient* const targets[] = {target};
     return Kick(theChan, std::vector<iClient*>(targets, targets + 1), reason, from);
 }
 
 bool xServer::Kick(Channel* theChan, const std::vector<iClient*>& targets,
-                   const std::string& reason, const Source& from) {
+                   const std::string& reason, const iClient* from) {
     assert(theChan != 0);
 
     const std::vector<iClient*> kicked = planKick(theChan, targets);
@@ -2236,7 +2231,7 @@ bool xServer::Kick(Channel* theChan, const std::vector<iClient*>& targets,
     }
 
     // As with the inbound KICK, the kicker is null when a server did it
-    commitKick(numericOf(from), const_cast<iClient*>(from.client()), theChan, kicked, reason);
+    commitKick(numericOf(from), const_cast<iClient*>(from), theChan, kicked, reason);
 
     if (theChan->empty()) {
         delete Network->removeChannel(theChan->getName());
@@ -2244,43 +2239,43 @@ bool xServer::Kick(Channel* theChan, const std::vector<iClient*>& targets,
     return true;
 }
 
-bool xServer::Op(Channel* theChan, iClient* target, const Source& from) {
+bool xServer::Op(Channel* theChan, iClient* target, const iClient* from) {
     iClient* const targets[] = {target};
     return changeMembers(theChan, 'o', true, targets, from);
 }
 
-bool xServer::Op(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+bool xServer::Op(Channel* theChan, const std::vector<iClient*>& targets, const iClient* from) {
     return changeMembers(theChan, 'o', true, targets, from);
 }
 
-bool xServer::DeOp(Channel* theChan, iClient* target, const Source& from) {
+bool xServer::DeOp(Channel* theChan, iClient* target, const iClient* from) {
     iClient* const targets[] = {target};
     return changeMembers(theChan, 'o', false, targets, from);
 }
 
-bool xServer::DeOp(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+bool xServer::DeOp(Channel* theChan, const std::vector<iClient*>& targets, const iClient* from) {
     return changeMembers(theChan, 'o', false, targets, from);
 }
 
-bool xServer::Voice(Channel* theChan, iClient* target, const Source& from) {
+bool xServer::Voice(Channel* theChan, iClient* target, const iClient* from) {
     iClient* const targets[] = {target};
     return changeMembers(theChan, 'v', true, targets, from);
 }
 
-bool xServer::Voice(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+bool xServer::Voice(Channel* theChan, const std::vector<iClient*>& targets, const iClient* from) {
     return changeMembers(theChan, 'v', true, targets, from);
 }
 
-bool xServer::DeVoice(Channel* theChan, iClient* target, const Source& from) {
+bool xServer::DeVoice(Channel* theChan, iClient* target, const iClient* from) {
     iClient* const targets[] = {target};
     return changeMembers(theChan, 'v', false, targets, from);
 }
 
-bool xServer::DeVoice(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+bool xServer::DeVoice(Channel* theChan, const std::vector<iClient*>& targets, const iClient* from) {
     return changeMembers(theChan, 'v', false, targets, from);
 }
 
-bool xServer::Ban(Channel* theChan, iClient* target, const Source& from) {
+bool xServer::Ban(Channel* theChan, iClient* target, const iClient* from) {
     assert(theChan != 0 && target != 0);
     if (target->isModeK()) {
         return false;
@@ -2289,22 +2284,22 @@ bool xServer::Ban(Channel* theChan, iClient* target, const Source& from) {
     return changeBans(theChan, planBans(theChan, targets), from);
 }
 
-bool xServer::Ban(Channel* theChan, const std::vector<iClient*>& targets, const Source& from) {
+bool xServer::Ban(Channel* theChan, const std::vector<iClient*>& targets, const iClient* from) {
     assert(theChan != 0);
     return changeBans(theChan, planBans(theChan, targets), from);
 }
 
-bool xServer::Ban(Channel* theChan, const banVectorType& bans, const Source& from) {
+bool xServer::Ban(Channel* theChan, const banVectorType& bans, const iClient* from) {
     assert(theChan != 0);
     return changeBans(theChan, planBans(theChan, bans), from);
 }
 
-bool xServer::UnBan(Channel* theChan, const std::string& banMask, const Source& from) {
+bool xServer::UnBan(Channel* theChan, const std::string& banMask, const iClient* from) {
     assert(theChan != 0);
     return changeBans(theChan, planBans(theChan, banVectorType{{false, banMask}}), from);
 }
 
-bool xServer::UnBan(Channel* theChan, const banVectorType& bans, const Source& from) {
+bool xServer::UnBan(Channel* theChan, const banVectorType& bans, const iClient* from) {
     assert(theChan != 0);
     return changeBans(theChan, planBans(theChan, bans), from);
 }
@@ -2364,11 +2359,11 @@ void xServer::applyModesSilently(Channel* theChan, std::span<const Channel::Mode
 
 bool xServer::Mode(xClient* theClient, Channel* theChan, const string& modes, const string& args) {
     // The form modules have always used: a null xClient means "as the server"
-    return (theClient != 0) ? Mode(theChan, modes, args, Source(theClient->getInstance()))
+    return (theClient != 0) ? Mode(theChan, modes, args, theClient->getInstance())
                             : Mode(theChan, modes, args);
 }
 
-bool xServer::Mode(Channel* theChan, const string& modes, const string& args, const Source& from) {
+bool xServer::Mode(Channel* theChan, const string& modes, const string& args, const iClient* from) {
     assert(theChan != 0);
 
     // The modes string must not be empty; the args string may be
@@ -2383,7 +2378,7 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
 
     // Passed to the OnChannelMode*() methods: the member that changes the
     // modes, or null when a server does.
-    ChannelUser* theUser = from.isClient() ? theChan->findUser(from.client()) : 0;
+    ChannelUser* theUser = (from != 0) ? theChan->findUser(from) : 0;
 
     // Everything is validated before anything is sent or changed, so that a
     // failure on a later mode cannot leave our state changed and the
@@ -2924,7 +2919,7 @@ bool xServer::Notice(iClient* theClient, const string& message) {
         return false;
     }
 
-    return SendNotice(Source(), theClient->getCharYYXXX(), message);
+    return SendNotice(nullptr, theClient->getCharYYXXX(), message);
 }
 
 bool xServer::serverNotice(Channel* theChan, const string& Message) {
@@ -2934,7 +2929,7 @@ bool xServer::serverNotice(Channel* theChan, const string& Message) {
         return false;
     }
 
-    return SendNotice(Source(), theChan->getName(), Message);
+    return SendNotice(nullptr, theChan->getName(), Message);
 }
 
 bool xServer::XReply(iServer* theServer, const string& Routing, const string& Message) {

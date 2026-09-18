@@ -197,11 +197,11 @@ class gnutest : public xClient {
      */
     /**
      * Handle the commands that change a channel.  `fake`, if set, is the
-     * fake client or spawned server of ours that makes the change.
+     * fake client of ours that makes the change; null for ourselves.
      * Returns false if st[0] is not such a command.
      */
     virtual bool channelCommand(iClient* requestingClient, const StringTokenizer& st,
-                                const std::optional<Source>& fake);
+                                const iClient* fake);
 
     virtual void chanInfo(const Channel* theChan);
 

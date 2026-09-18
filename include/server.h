@@ -64,50 +64,6 @@ class xClient;
 class Channel;
 
 /**
- * Who a change sent to the network comes from.
- *
- * Normally the object the method is called on says it: MyUplink->Op(...) is
- * the gnuworld server opping someone, bot->Op(...) is that xClient doing it.
- * A fake client or a spawned or juped server has no such object: it is only
- * an iClient or an iServer, which cannot do anything by itself.  For those,
- * the xServer methods take a Source as their last argument:
- *
- *   MyUplink->Op(theChan, target);              // the gnuworld server
- *   MyUplink->Op(theChan, target, fakeClient);  // a fake client
- *   MyUplink->Op(theChan, target, fakeServer);  // a server we introduced
- *
- * A client source has to be on the channel, opped, or the call fails: the
- * network would bounce the change.  A server source needs neither.
- */
-class Source {
-  public:
-    /// The gnuworld server itself.
-    Source() = default;
-
-    /// A client: a fake one, or an xClient's own iClient.  Implicit on
-    /// purpose, so that an iClient* can be passed where a Source is expected.
-    Source(const iClient* client) : theClient(client) {}
-
-    /// A server other than ourselves: one we spawned, or a jupe.
-    Source(const iServer* server) : theServer(server) {}
-
-    /// A null pointer says nothing about which of the two was meant.
-    Source(std::nullptr_t) = delete;
-
-    /// The client, or null if the source is a server.
-    const iClient* client() const noexcept { return theClient; }
-
-    /// The server, or null if it is a client or the gnuworld server itself.
-    const iServer* server() const noexcept { return theServer; }
-
-    bool isClient() const noexcept { return theClient != nullptr; }
-
-  private:
-    const iClient* theClient = nullptr;
-    const iServer* theServer = nullptr;
-};
-
-/**
  * This class is the server proper; it is responsible for the connection
  * to the IRC network, and for maintaining the services clients.
  */
@@ -604,10 +560,15 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      *
      * Who makes a change is the object the method is called on: these send
      * as the gnuworld server, and the methods of the same name on xClient
-     * send as that client.  A fake client, or a server we spawned or juped,
-     * is only an iClient or iServer and cannot be called on, so it is named
-     * by the last argument instead; see Source.h.  A client source has to
-     * be on the channel, opped, or the call fails.
+     * send as that client.  A fake client is only an iClient and cannot be
+     * called on, so it is named by the last argument instead:
+     *
+     *   MyUplink->Op(theChan, target);              // the gnuworld server
+     *   MyUplink->Op(theChan, target, fakeClient);  // a fake client
+     *
+     * `from` is null for the gnuworld server.  A client has to be on the
+     * channel, opped, or the call fails: the network would bounce the
+     * change.  The server needs neither.
      *
      * Each of them works out what would really change, tells the network,
      * then updates the channel and notifies the modules.  A call that would
@@ -615,42 +576,42 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
 
     virtual bool Mode(Channel*, const std::string& modes, const std::string& args,
-                      const Source& from = {});
+                      const iClient* from = nullptr);
 
     /// Clear these modes: a flag or a setting itself, for 'o' and 'v' every
     /// member holding it, for 'b' every ban.
-    virtual bool ClearMode(Channel*, const std::string& modes, const Source& from = {});
+    virtual bool ClearMode(Channel*, const std::string& modes, const iClient* from = nullptr);
 
-    virtual bool Op(Channel*, iClient*, const Source& from = {});
-    virtual bool Op(Channel*, const std::vector<iClient*>&, const Source& from = {});
-    virtual bool DeOp(Channel*, iClient*, const Source& from = {});
-    virtual bool DeOp(Channel*, const std::vector<iClient*>&, const Source& from = {});
-    virtual bool Voice(Channel*, iClient*, const Source& from = {});
-    virtual bool Voice(Channel*, const std::vector<iClient*>&, const Source& from = {});
-    virtual bool DeVoice(Channel*, iClient*, const Source& from = {});
-    virtual bool DeVoice(Channel*, const std::vector<iClient*>&, const Source& from = {});
+    virtual bool Op(Channel*, iClient*, const iClient* from = nullptr);
+    virtual bool Op(Channel*, const std::vector<iClient*>&, const iClient* from = nullptr);
+    virtual bool DeOp(Channel*, iClient*, const iClient* from = nullptr);
+    virtual bool DeOp(Channel*, const std::vector<iClient*>&, const iClient* from = nullptr);
+    virtual bool Voice(Channel*, iClient*, const iClient* from = nullptr);
+    virtual bool Voice(Channel*, const std::vector<iClient*>&, const iClient* from = nullptr);
+    virtual bool DeVoice(Channel*, iClient*, const iClient* from = nullptr);
+    virtual bool DeVoice(Channel*, const std::vector<iClient*>&, const iClient* from = nullptr);
 
     /// Ban these clients by the mask Channel::createBan() gives them.
-    virtual bool Ban(Channel*, iClient*, const Source& from = {});
-    virtual bool Ban(Channel*, const std::vector<iClient*>&, const Source& from = {});
+    virtual bool Ban(Channel*, iClient*, const iClient* from = nullptr);
+    virtual bool Ban(Channel*, const std::vector<iClient*>&, const iClient* from = nullptr);
     /// Set, or remove, bans by mask.
-    virtual bool Ban(Channel*, const banVectorType&, const Source& from = {});
-    virtual bool UnBan(Channel*, const std::string& banMask, const Source& from = {});
-    virtual bool UnBan(Channel*, const banVectorType&, const Source& from = {});
+    virtual bool Ban(Channel*, const banVectorType&, const iClient* from = nullptr);
+    virtual bool UnBan(Channel*, const std::string& banMask, const iClient* from = nullptr);
+    virtual bool UnBan(Channel*, const banVectorType&, const iClient* from = nullptr);
 
     /// Kick, and take the member off the channel.  Network services (+k)
     /// are never kicked.
-    virtual bool Kick(Channel*, iClient*, const std::string& reason, const Source& from = {});
+    virtual bool Kick(Channel*, iClient*, const std::string& reason, const iClient* from = nullptr);
     virtual bool Kick(Channel*, const std::vector<iClient*>&, const std::string& reason,
-                      const Source& from = {});
+                      const iClient* from = nullptr);
 
     /// Set the topic.  A client source has to be on the channel, and opped
     /// if the channel is +t.
-    virtual bool Topic(Channel*, const std::string& newTopic, const Source& from = {});
+    virtual bool Topic(Channel*, const std::string& newTopic, const iClient* from = nullptr);
 
     /// Invite a client.  Only a client can invite: from a server it is a
     /// protocol violation, so `from` has no default here and must be one.
-    virtual bool Invite(iClient* target, Channel*, const Source& from);
+    virtual bool Invite(iClient* target, Channel*, const iClient* from);
 
     /*
      * Messages.  These only write, there being no state to keep.  `target`
@@ -660,13 +621,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
 
     /// PRIVMSG
-    virtual bool SendMessage(const Source& from, std::string_view target, std::string_view text);
+    virtual bool SendMessage(const iClient* from, std::string_view target, std::string_view text);
 
     /// NOTICE
-    virtual bool SendNotice(const Source& from, std::string_view target, std::string_view text);
+    virtual bool SendNotice(const iClient* from, std::string_view target, std::string_view text);
 
     /// WALLCHOPS: a notice to the ops of a channel
-    virtual bool SendWallchops(const Source& from, const Channel*, std::string_view text);
+    virtual bool SendWallchops(const iClient* from, const Channel*, std::string_view text);
 
     /**
      * Send channel mode changes to the network, as `source` (a server or
@@ -1222,10 +1183,10 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
 
     /// The numeric a change goes out under.
-    std::string numericOf(const Source& from) const;
+    std::string numericOf(const iClient* from) const;
 
     /// True for a server; for a client, true if it is on the channel, opped.
-    bool canChangeChannel(const Source& from, const Channel* theChan) const;
+    bool canChangeChannel(const iClient* from, const Channel* theChan) const;
 
     /**
      * What +/-o or +/-v on these targets would really change.  A target
@@ -1263,14 +1224,14 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     void commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
                     std::span<iClient* const> targets, const std::string& reason);
 
-    bool sendText(const char* token, const Source& from, std::string_view target,
+    bool sendText(const char* token, const iClient* from, std::string_view target,
                   std::string_view text);
 
     void applyModesSilently(Channel* theChan, std::span<const Channel::ModeChange> changes);
 
     bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets,
-                       const Source& from);
-    bool changeBans(Channel* theChan, banVectorType bans, const Source& from);
+                       const iClient* from);
+    bool changeBans(Channel* theChan, banVectorType bans, const iClient* from);
 
     /**
      * Allow only subclasses to call the default

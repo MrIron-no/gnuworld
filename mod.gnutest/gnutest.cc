@@ -217,14 +217,13 @@ void gnutest::OnChannelMessage(iClient* theClient, Channel* theChan, const strin
  * several, the vector overload.
  * Returns false if st[0] is not one of these commands.
  */
-bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st,
-                             const std::optional<Source>& fake) {
-    const bool asServer = !fake && st[0].starts_with("serv");
+bool gnutest::channelCommand(iClient* requester, const StringTokenizer& st, const iClient* fake) {
+    const bool asServer = (0 == fake) && st[0].starts_with("serv");
     const string cmd = asServer ? st[0].substr(4) : st[0];
 
     // Anything but this xClient goes through the server's methods
-    const bool viaServer = asServer || fake.has_value();
-    const Source from = fake.value_or(Source());
+    const bool viaServer = asServer || (fake != 0);
+    const iClient* from = fake;
 
     // "kickasserver" is the older form, xClient::Kick(..., true): sent as the
     // server, but reported to the modules as this xClient's doing
@@ -397,32 +396,22 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         return;
     }
 
-    // "as <fake> <command ...>": have a fake client of ours, or a server we
-    // spawned, do it.  Neither has an object with methods to call, so they
-    // go through the server's methods with a Source.
+    // "as <fake> <command ...>": have a fake client of ours do it.  It has
+    // no object with methods to call, so it is named to the server's.
     if (st[0] == "as") {
-        std::optional<Source> from;
-        if (st.size() >= 3) {
-            iClient* fakeClient = Network->findNick(st[1]);
-            iServer* fakeServer = Network->findServerName(st[1]);
-            if (fakeClient != 0 && Network->findFakeClientOwner(fakeClient) == this) {
-                from = Source(fakeClient);
-            } else if (fakeServer != 0 && fakeServer != MyUplink->getMe()) {
-                from = Source(fakeServer);
-            }
-        }
-        if (!from) {
-            Notice(theClient, "Usage: as <fake client or spawned server> <command ...>");
+        iClient* fakeClient = (st.size() >= 3) ? Network->findNick(st[1]) : 0;
+        if (0 == fakeClient || Network->findFakeClientOwner(fakeClient) != this) {
+            Notice(theClient, "Usage: as <fake client> <command ...>");
             return;
         }
         StringTokenizer rest(st.assemble(2));
-        if (!channelCommand(theClient, rest, from)) {
-            Notice(theClient, "That cannot be done through a Source");
+        if (!channelCommand(theClient, rest, fakeClient)) {
+            Notice(theClient, "That cannot be done as a fake client");
         }
         return;
     }
 
-    if (channelCommand(theClient, st, std::nullopt)) {
+    if (channelCommand(theClient, st, nullptr)) {
         return;
     }
 

@@ -880,9 +880,9 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     bool enterToChange(Channel* theChan, bool& joined);
 
-    /// Who we send as: ourselves, or the server if we are a stealth module,
-    /// which has no client on the network to send from.
-    Source source() const;
+    /// Who we send as: ourselves, or null, the server, if we are a stealth
+    /// module, which has no client on the network to send from.
+    const iClient* source() const;
 
     /// Op(), DeOp(), Voice() and DeVoice(), for one target or several.
     bool changeMembers(Channel* theChan, char letter, bool set, std::span<iClient* const> targets);
