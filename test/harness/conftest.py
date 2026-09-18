@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -182,6 +183,76 @@ async def cservice_linked(docker_stack, fake_hub_p11, tmp_path):
         yield hub, proc
     finally:
         await proc.terminate()
+
+
+@asynccontextmanager
+async def link_module(docker_stack, hub, tmp_path, module: str, library: str, example: str,
+                      settings: dict[str, str]):
+    """gnuworld with one database module and stealth mod.debug, against the
+    Postgres of the compose file. Yields (hub, proc)."""
+    require_module(module)
+    require_module("debug")
+    docker_stack.up()  # Postgres
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_module_config(conf_dir / f"{module}.conf", example, settings)
+    GnuworldProc.write_debug_config(conf_dir / "debug.conf")
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        module_lines=f"module = {library} {root}/{module}.conf\n"
+        f"module = libdebug.la {root}/debug.conf",
+    )
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        try:
+            await hub.accept_and_handshake(timeout=90.0)
+            await proc.wait_for_stdout("Connected", timeout=60.0)
+        except Exception as error:
+            # Say what gnuworld said last: a module that does not come up is
+            # otherwise only seen as a link that closed
+            await asyncio.sleep(3.0)  # let it finish saying why
+            code = proc.proc.returncode if proc.proc else None
+            tail = "\n".join(proc.stdout_lines[-25:])
+            raise RuntimeError(f"mod.{module} did not link (gnuworld exit code {code}):\n{tail}") from error
+        yield hub, proc
+    finally:
+        await proc.terminate()
+
+
+_HARNESS_DB = {"host": "127.0.0.1", "port": "5433", "user": "gnuworld", "password": "gnuworld"}
+
+
+@pytest_asyncio.fixture
+async def nickserv_linked(docker_stack, fake_hub_p11, tmp_path):
+    settings = {"dbHost": _HARNESS_DB["host"], "dbPort": _HARNESS_DB["port"], "dbDb": "nickserv",
+                "dbUser": _HARNESS_DB["user"], "dbPass": _HARNESS_DB["password"]}
+    async with link_module(docker_stack, fake_hub_p11, tmp_path, "nickserv", "libnickserv.la",
+                           "nickserv.example.conf", settings) as linked:
+        yield linked
+
+
+@pytest_asyncio.fixture
+async def dronescan_linked(docker_stack, fake_hub_p11, tmp_path):
+    settings = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"], "sqlDB": "dronescan",
+                "sqlUser": _HARNESS_DB["user"], "sqlPass": _HARNESS_DB["password"]}
+    async with link_module(docker_stack, fake_hub_p11, tmp_path, "dronescan", "libdronescan.la",
+                           "dronescan.example.conf", settings) as linked:
+        yield linked
+
+
+@pytest_asyncio.fixture
+async def openchanfix_linked(docker_stack, fake_hub_p11, tmp_path):
+    settings = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"], "sqlDB": "chanfix",
+                "sqlcfUser": _HARNESS_DB["user"], "sqlPass": _HARNESS_DB["password"]}
+    async with link_module(docker_stack, fake_hub_p11, tmp_path, "openchanfix", "libchanfix.la",
+                           # bin/openchanfix.example.conf lacks settings the module
+                           # requires ("daysamples"); the module's own template has them
+                           "mod.openchanfix/chanfix.example.conf.in", settings) as linked:
+        yield linked
 
 
 @pytest_asyncio.fixture

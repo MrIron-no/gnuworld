@@ -389,6 +389,10 @@ void dronescan::BurstChannels() {
     for (; itr != Network->localClient_end(); ++itr) {
         xClient* theXClient = itr->second;
         iClient* theClient = theXClient->getInstance();
+        if (nullptr == theClient) {
+            // A stealth module has no client on the network
+            continue;
+        }
 
         clientData* newData = new clientData();
         newData->setState(NORMAL);

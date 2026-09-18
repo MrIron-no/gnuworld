@@ -15,6 +15,7 @@ services:
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
       # The schema of mod.cservice is loaded from the repository's own files
       - ../../doc:/gnuworld-doc:ro
+      - ../../mod.openchanfix/doc:/gnuworld-openchanfix-doc:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gnuworld -d ccontrol"]
       interval: 2s

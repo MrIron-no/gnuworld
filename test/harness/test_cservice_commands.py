@@ -181,3 +181,52 @@ async def test_purge(cservice_linked):
     assert sent[-1] == f"{x} L {CHAN} :"
     info = await chaninfo(hub, asker, CHAN)
     assert "R" not in info.modes and "X" not in info.members
+
+
+@pytest.mark.asyncio
+async def test_joinlim_sets_its_modes_and_lifts_the_same_ones(cservice_linked):
+    """Unidented, unauthenticated clients joining faster than JOINMAX in the
+    span: X sets the JOINMODE modes, leaving out what the channel has already,
+    and takes off what it set, and no more, when JOINPERIOD is over. X wrote
+    these lines itself and patched the channel's state; it is Mode() now."""
+    hub, _proc = cservice_linked
+    CHAN, admin, asker, _n, ts = await _setup(hub)
+    x = cs.numnick(hub)
+
+    for setting in ("joinlim on", "joinmax 2", "joinmode +rDk sekrit", "joinperiod 2"):
+        await cs.run(hub, admin, f"set {CHAN} {setting}")
+
+    # The channel is +r already: not X's to set, and so not X's to lift
+    await hub.send_raw(f"{hub.server_numnick} M {CHAN} +r {ts}")
+
+    after = len(hub.received)
+    for nick in ("flood1", "flood2", "flood3"):
+        numnick = await hub.introduce_nick(nick, username=f"~{nick}", host=f"{nick}.example.net")
+        await hub.send_raw(f"{numnick} J {CHAN} {ts}")
+
+    set_line = await hub.wait_for(lambda l: f"{x} M {CHAN} +" in l, timeout=15.0, after=after)
+    assert set_line.endswith(f"{x} M {CHAN} +Dk sekrit {ts}")
+    info = await chaninfo(hub, asker, CHAN)
+    assert set("Dkr") <= set(info.modes) and info.key == "sekrit"
+
+    lifted = await hub.wait_for(lambda l: f"{x} M {CHAN} -" in l, timeout=20.0, after=after)
+    assert lifted.endswith(f"{x} M {CHAN} -Dk sekrit {ts}")
+    info = await chaninfo(hub, asker, CHAN)
+    assert "D" not in info.modes and info.key is None
+    assert "r" in info.modes, "X lifted a mode that was not its own"
+
+
+@pytest.mark.asyncio
+async def test_the_floating_limit_follows_the_channel(cservice_linked):
+    hub, _proc = cservice_linked
+    CHAN, admin, asker, _n, ts = await _setup(hub)
+    x = cs.numnick(hub)
+
+    after = len(hub.received)
+    await cs.run(hub, admin, f"set {CHAN} floatlim on")
+    members = len((await chaninfo(hub, asker, CHAN)).members)
+
+    # The margin is 3 by default; limit_check is a second in the harness
+    line = await hub.wait_for(lambda l: f"{x} M {CHAN} +l " in l, timeout=15.0, after=after)
+    assert line.endswith(f"{x} M {CHAN} +l {members + 3} {ts}")
+    assert (await chaninfo(hub, asker, CHAN)).limit == members + 3

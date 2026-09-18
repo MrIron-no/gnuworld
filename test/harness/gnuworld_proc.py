@@ -285,9 +285,24 @@ class GnuworldProc:
             # A test sends commands faster than X lets a user: no flood control
             ("input_flood", "1000000"),
             ("output_flood", "100000000"),
+            # Look at the floating limits every second, not every half minute
+            ("limit_check", "1"),
         ):
             text, count = re.subn(rf"(?m)^{key}\s*=.*$", f"{key} = {value}", text)
             assert count == 1, f"{key} not found once in cservice.example.conf"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    @staticmethod
+    def write_module_config(path: Path, example: str, settings: dict[str, str]) -> Path:
+        """bin/<example>, with these settings replaced: the database of the
+        harness (docker/initdb/05_modules.sh) and whatever a test needs short."""
+        # A bare name is an example under bin/; a path is taken from the top
+        source = REPO_ROOT / example if "/" in example else REPO_ROOT / "bin" / example
+        text = source.read_text(encoding="utf-8")
+        for key, value in settings.items():
+            text, count = re.subn(rf"(?m)^{re.escape(key)}\s*=.*$", f"{key} = {value}", text)
+            assert count == 1, f"{key} not found once in {example}"
         path.write_text(text, encoding="utf-8")
         return path
 
