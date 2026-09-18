@@ -302,7 +302,8 @@ void xServer::mainLoop() {
             // All output for the xClients should be in the
             // output buffer by now, go ahead and put the
             // server's SQ message there as well
-            Write("{} SQ {} :{}", getCharYY(), getCharYY(), getShutDownReason());
+            // <YY> SQ <server> <link-ts> :<reason>; 0 for whichever link it is
+            Write("{} SQ {} 0 :{}", getCharYY(), getName(), getShutDownReason());
 
             // Make sure the SQ and all previous data are flushed
             // to the network before disconnecting.

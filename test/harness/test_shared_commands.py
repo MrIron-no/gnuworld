@@ -76,6 +76,27 @@ async def test_shutdown_takes_our_clients_off_and_leaves(gnutest_linked_p11):
     after = len(hub.received)
     await hub.send_privmsg(asker, me, "shutdown")
     await hub.wait_for(lambda line: line.startswith(f"{me} Q "), timeout=10.0, after=after)
-    await hub.wait_for(lambda line: " SQ " in line, timeout=10.0, after=after)
+    squit = await hub.wait_for(lambda line: " SQ " in line, timeout=10.0, after=after)
+    # <YY> SQ <server> <link-ts> :<reason>, with 0 for whichever link it is
+    assert squit.split(" :", 1)[0].endswith(f"{hub.peer_numeric} SQ {hub.peer_name} 0")
     assert proc.proc is not None
     assert await asyncio.wait_for(proc.proc.wait(), timeout=15) == 0
+
+
+@pytest.mark.asyncio
+async def test_lines_in_the_form_p11_documents(gnutest_linked_p11):
+    """Found by reading what the core writes against ircu's doc/P11.md: ircu
+    took each of these, but none was the form the protocol has."""
+    hub, _proc = gnutest_linked_p11
+    asker = await hub.introduce_nick("asker", username="asker")
+    await hub.send_account(asker, PERMIT_ACCOUNT)
+    me, srv = gt.numnick(hub), hub.peer_numeric
+
+    # A user MODE names its target by nick; it was our own numnick
+    assert await gt.run(hub, asker, "usermode +w") == [f"{me} M gnutest +w"]
+
+    # A server we introduce: "+<flags>" where there was a bare 0
+    (introduced,) = [l for l in await gt.run(hub, asker, "spawnserver spawned.testnet A spawned server")
+                     if " S spawned.testnet " in l]
+    fields = introduced.split(" :", 1)[0].split(" ")
+    assert fields[:2] == [srv, "S"] and fields[-1] == "+" and fields[-3] == "J11"

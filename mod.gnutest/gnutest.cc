@@ -445,6 +445,11 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
 
     // silence <nick> <mask>, unsilence <mask>, opmode <nick> <user modes>,
     // globalnotice <text>, servsay <nick|#channel> <text>
+    if (st[0] == "usermode" && st.size() > 1) {
+        // Our own user modes: xClient::Mode( modes )
+        Mode(st[1]);
+        return;
+    }
     if ((st[0] == "kill" || st[0] == "servkill") && st.size() > 2) {
         if (iClient* victim = Network->findNick(st[1])) {
             Kill(victim, st.assemble(2), st[0] == "servkill");

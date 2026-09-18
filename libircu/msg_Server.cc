@@ -95,6 +95,14 @@ bool msg_Server::Execute(const xParameters& Param) {
         // version our uplink speaks.
         tmpUplink->setProtocolToken(Param[4]);
 
+        // The link capabilities (P11.md 4.9): one line, right after our
+        // SERVER and before anything else, and only to a peer that has
+        // announced protocol 11.  The uplink does not register us, or send
+        // its burst, before it has them.  We have none to announce.
+        if (tmpUplink->getProtocol() >= 11) {
+            theServer->WriteDuringBurst("CAP :");
+        }
+
         // Set any appropriate server flags
         tmpUplink->setFlags(Param[6]);
 

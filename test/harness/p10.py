@@ -56,8 +56,8 @@ def p10_token(line: str) -> str | None:
     parts = strip_msg_tags(line).split()
     if not parts:
         return None
-    # Unprefixed commands (PASS, SERVER, EB, EA during handshake)
-    if parts[0] in {"PASS", "SERVER", "ERROR", "EB", "EA"}:
+    # Unprefixed commands (PASS, SERVER, CAP, EB, EA during handshake)
+    if parts[0] in {"PASS", "SERVER", "CAP", "ERROR", "EB", "EA"}:
         return parts[0]
     if len(parts) >= 2:
         return parts[1]

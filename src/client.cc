@@ -173,7 +173,8 @@ bool xClient::Mode(const string& Value) {
     // Stealth modules have no client numeric on the wire
     if (isConnected() && !Value.empty() && !IsStealth()) {
         stringstream s;
-        s << getCharYYXXX() << " M " << getCharYYXXX() << " " << Value;
+        // <YYXXX> M <nick> <modes>: the target of a user MODE is a nick
+        s << getCharYYXXX() << " M " << getNickName() << " " << Value;
 
         return MyUplink->Write(s);
     }

@@ -846,7 +846,8 @@ void xServer::BurstServer(iServer* fakeServer) {
         // couldn't link without [ip] being added to their realname
         // field unless they were juped by uworld.  Now anyone can
         // link with that name, oh well.
-        Write("{} S {} {} {} {} J{:02} {} 0 :{}\n", getCharYY(), fakeServer->getName(), 2, 0,
+        // <YY> S <name> <hops> 0 <link-ts> J<protocol> <YYXXX> +<flags> :<description>
+        Write("{} S {} {} {} {} J{:02} {} + :{}\n", getCharYY(), fakeServer->getName(), 2, 0,
               fakeServer->getConnectTime(),
               Version, // a server of ours speaks what we speak; this was a literal 10
               fakeServer->getCharYYXXX(), fakeServer->getDescription());
@@ -2594,7 +2595,7 @@ bool xServer::DetachServer(iServer* fakeServer) {
     if (fakeServer->isJupe()) {
         // source_numeric JU -servername * expiration_time lastmod :reason
         // expiration: 604800 (max)
-        Write("{} JU * -{}  604800 {} :{}", getCharYY(), fakeServer->getName(), ::time(0),
+        Write("{} JU * -{} 604800 {} :{}", getCharYY(), fakeServer->getName(), ::time(0),
               fakeServer->getDescription());
     }
 

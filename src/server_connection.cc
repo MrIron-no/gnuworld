@@ -110,8 +110,8 @@ void xServer::OnConnect(Connection* theConn) {
     WriteDuringBurst("SERVER {} {} {} {} J{:02} {} +s6 :{}\n", ServerName, 1, StartTime,
                      ConnectionTime, Version, (string(getCharYY()) + "]]]"), ServerDescription);
 
-    // Send our capabilities (none!).
-    WriteDuringBurst("CAP");
+    // Our capabilities follow once the uplink has said which protocol it
+    // speaks: a P10 server must never be sent a CAP.  See msg_Server.
 }
 
 void xServer::OnConnectFail(Connection* theConn) {

@@ -200,8 +200,14 @@ class FakeHub:
             f"{flag_field} :{self.description}"
         )
         if self.protocol >= 11:
-            # A real P11 hub follows SERVER with its link capabilities
+            # A real P11 hub follows SERVER with its link capabilities, and
+            # then waits: it neither registers the peer nor bursts before it
+            # has the peer's own CAP, which must be the next line (P11.md 4.9).
             await self._send("CAP :")
+            line = await self._recv(timeout=max(0.1, deadline - asyncio.get_event_loop().time()))
+            if p10_token(line) != "CAP":
+                raise RuntimeError(f"Protocol violation: expected CAP after SERVER, got: {line!r}")
+        # A P10 hub is never sent a CAP; test_link.py looks for one afterwards.
         # The net burst: empty unless the caller supplied one
         for burst_line in burst or []:
             await self._send(burst_line)

@@ -59,3 +59,24 @@ async def test_send_xquery_helper(linked):
     xq = next(line for line in hub.sent if p10_token(line) == "XQ")
     assert hub.peer_numeric in xq
     assert "CHECK alice" in xq
+
+
+@pytest.mark.asyncio
+async def test_cap_follows_the_uplinks_server_line_on_a_p11_link(debug_linked_p11):
+    """P11.md 4.9: one CAP, right after our SERVER, and only once the peer has
+    announced protocol 11. The hub does not burst before it has it: the fake
+    one refuses the link, as ircu does, if anything else comes first."""
+    from p10 import p10_token
+
+    hub, _proc = debug_linked_p11
+    tokens = [p10_token(line) for line in hub.received]
+    assert tokens[:3] == ["PASS", "SERVER", "CAP"]
+    assert tokens.count("CAP") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_p10_uplink_is_never_sent_a_cap(debug_linked):
+    from p10 import p10_token
+
+    hub, _proc = debug_linked
+    assert "CAP" not in [p10_token(line) for line in hub.received]
