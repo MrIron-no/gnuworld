@@ -1563,17 +1563,12 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
     theIClient->addChannel(theChan);
 
     // Create a new ChannelUser instance for the channel's records
-    ChannelUser* theChanUser = new (std::nothrow) ChannelUser(theIClient);
+    // Did the xClient request ops in the channel?
+    ChannelUser* theChanUser =
+        new (std::nothrow) ChannelUser(theIClient, getOps ? ChannelUser::MODE_O : 0);
 
     // Make sure the allocation was successful
     assert(theChanUser != 0);
-
-    // Did the xClient request ops in the channel?
-    if (getOps) {
-        // Yes, update the ChannelUser's info to reflect its
-        // operator state
-        theChanUser->setModeO();
-    }
 
     // Add the ChannelUser to the channel
     if (!theChan->addUser(theChanUser)) {

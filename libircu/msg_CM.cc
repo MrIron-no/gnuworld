@@ -147,11 +147,9 @@ bool msg_CM::Execute(const xParameters& Param) {
         for (Channel::const_userIterator ptr = tmpChan->userList_begin();
              ptr != tmpChan->userList_end(); ++ptr) {
             if (clearOps && ptr->second->isModeO()) {
-                ptr->second->removeModeO();
                 opVector.push_back(pair<bool, ChannelUser*>(false, ptr->second));
             }
             if (clearVoice && ptr->second->isModeV()) {
-                ptr->second->removeModeV();
                 voiceVector.push_back(pair<bool, ChannelUser*>(false, ptr->second));
             }
         }

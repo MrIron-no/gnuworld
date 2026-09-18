@@ -54,10 +54,11 @@ class ChannelUser {
     static const modeType MODE_V;
 
     /**
-     * Construct a ChannelUser given an iClient
-     * pointer.
+     * Construct a ChannelUser given an iClient pointer, the modes it
+     * arrives with (MODE_O for the creator of a channel) and whether it
+     * is hidden by a delayed join, which a member with a mode never is.
      */
-    ChannelUser(iClient*);
+    ChannelUser(iClient*, modeType initialModes = 0, bool isHidden = false);
 
     /**
      * Destroy this ChannelUser.
@@ -91,27 +92,6 @@ class ChannelUser {
     inline const modeType& getModes() const { return modes; }
 
     /**
-     * Set a given channel user mode.
-     */
-    inline void setMode(const modeType& whichMode) {
-        modes |= whichMode;
-        // Gaining op or voice reveals a delayed-join member
-        if (whichMode & (MODE_O | MODE_V)) {
-            hidden = false;
-        }
-    }
-
-    /**
-     * Set the user's mode +o state in this channel.
-     */
-    inline void setModeO() { setMode(MODE_O); }
-
-    /**
-     * Set the user's mode +v state in this channel.
-     */
-    inline void setModeV() { return setMode(MODE_V); }
-
-    /**
      * Return true if this member is hidden (delayed join): it is on the
      * channel, but its JOIN has not been shown to the channel yet.
      * A member is revealed when it gains op or voice, sets the topic, or
@@ -122,32 +102,6 @@ class ChannelUser {
      * could not be kept correct there and is not tracked at all.
      */
     inline bool isHidden() const { return hidden; }
-
-    /**
-     * Mark this member as hidden (delayed join).  A member holding op
-     * or voice is never hidden.
-     */
-    inline void setHidden() { hidden = !(modes & (MODE_O | MODE_V)); }
-
-    /**
-     * Reveal this member: clear the hidden (delayed join) state.
-     */
-    inline void reveal() { hidden = false; }
-
-    /**
-     * Remove a given channel user mode.
-     */
-    inline void removeMode(const modeType& whichMode) { modes &= ~whichMode; }
-
-    /**
-     * Remove the user's mode +o state in this channel.
-     */
-    inline void removeModeO() { removeMode(MODE_O); }
-
-    /**
-     * Remove the user's mode +v state in this channel.
-     */
-    inline void removeModeV() { removeMode(MODE_V); }
 
     /*
      * These are not defined in the header file to avoid
@@ -235,6 +189,58 @@ class ChannelUser {
     }
 
   protected:
+    /*
+     * Changing a mode here changes what gnuworld believes about the member,
+     * and nothing else: the network is not told and no module is notified.
+     * That is why they are not public.  A module uses Op(), Voice() and
+     * their opposites, of xServer or of its xClient; a handler passes what
+     * it has parsed to xServer::OnChannelModeO() and OnChannelModeV(), and
+     * a member that arrives with a mode is constructed with it.
+     */
+    friend class Channel;
+    friend class xServer;
+
+    /**
+     * Set a given channel user mode.
+     */
+    inline void setMode(const modeType& whichMode) {
+        modes |= whichMode;
+        // Gaining op or voice reveals a delayed-join member
+        if (whichMode & (MODE_O | MODE_V)) {
+            hidden = false;
+        }
+    }
+
+    /**
+     * Set the user's mode +o state in this channel.
+     */
+    inline void setModeO() { setMode(MODE_O); }
+
+    /**
+     * Set the user's mode +v state in this channel.
+     */
+    inline void setModeV() { return setMode(MODE_V); }
+
+    /**
+     * Reveal this member: clear the hidden (delayed join) state.
+     */
+    inline void reveal() { hidden = false; }
+
+    /**
+     * Remove a given channel user mode.
+     */
+    inline void removeMode(const modeType& whichMode) { modes &= ~whichMode; }
+
+    /**
+     * Remove the user's mode +o state in this channel.
+     */
+    inline void removeModeO() { removeMode(MODE_O); }
+
+    /**
+     * Remove the user's mode +v state in this channel.
+     */
+    inline void removeModeV() { removeMode(MODE_V); }
+
     /**
      * The iClient to which this ChannelUser instance is associated.
      */

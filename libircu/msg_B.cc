@@ -341,14 +341,9 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         }
 
         // Create a ChannelUser object to represent this user's presence
-        // in this channel
-        ChannelUser* chanUser = new (std::nothrow) ChannelUser(theClient);
+        // in this channel.  Its op and voice follow, with their events.
+        ChannelUser* chanUser = new (std::nothrow) ChannelUser(theClient, 0, memberHidden);
         assert(chanUser != 0);
-
-        // Flag it before the event below, so listeners see the state
-        if (memberHidden) {
-            chanUser->setHidden();
-        }
 
         // Add this user to the channel's database.
         if (!theChan->addUser(chanUser)) {

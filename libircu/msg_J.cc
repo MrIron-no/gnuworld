@@ -121,11 +121,6 @@ bool msg_J::Execute(const xParameters& Param) {
             continue;
         }
 
-        // Attempt to allocate a ChannelUser structure for this
-        // user<->channel association
-        ChannelUser* theUser = new (std::nothrow) ChannelUser(Target);
-        assert(theUser != 0);
-
         // This variable represents which event actually occurs
         channelEventType whichEvent = EVT_JOIN;
 
@@ -147,19 +142,16 @@ bool msg_J::Execute(const xParameters& Param) {
                 elog << "msg_J> Unable to add channel: " << theChan->getName() << endl;
 
                 // Prevent memory leaks by deallocating the
-                // Channel and ChannelUser objects
+                // Channel object
                 delete theChan;
                 theChan = 0;
-                delete theUser;
-                theUser = 0;
 
                 // Continue to next channel
                 continue;
             }
 
-            // Since this is equivalent to a CREATE, set the user
-            // as operator.
-            theUser->setModeO();
+            // Since this is equivalent to a CREATE, the user is an
+            // operator: see the ChannelUser below.
 
             // Update the event type
             whichEvent = EVT_CREATE;
@@ -220,10 +212,16 @@ bool msg_J::Execute(const xParameters& Param) {
         // never hidden.
         // Only tracked on a P11 uplink: without REVEAL we would rarely
         // learn that a member has spoken, and the flag would go stale.
+        bool isHidden = false;
         if (EVT_JOIN == whichEvent && theChan->getMode(Channel::MODE_D) &&
             theServer->getUplink()->getProtocol() >= 11) {
-            theUser->setHidden();
+            isHidden = true;
         }
+
+        // The ChannelUser structure for this user<->channel association
+        ChannelUser* theUser = new (std::nothrow)
+            ChannelUser(Target, (EVT_CREATE == whichEvent) ? ChannelUser::MODE_O : 0, isHidden);
+        assert(theUser != 0);
 
         // Add a new ChannelUser representing this client to this
         // channel's user structure.
