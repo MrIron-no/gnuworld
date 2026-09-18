@@ -1436,7 +1436,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         }
 
         Write(s);
-        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
+        sendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
         whichEvent = EVT_BURST;
 
         // Instantiate the new channel
@@ -1474,7 +1474,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             whichEvent = EVT_CREATE;
         }
 
-        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, joinModes);
+        sendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, joinModes);
 
         // Instantiate the new channel
         theChan = new (std::nothrow) Channel(chanName, time(0));
@@ -1525,7 +1525,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         }
 
         Write(s);
-        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
+        sendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
         whichEvent = EVT_BURST;
     } else {
         // After bursting, and the channel exists
@@ -1540,11 +1540,11 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             // Op the bot
             const Channel::ModeChange opClient{true, *Channel::findMode('o'),
                                                theClient->getCharYYXXX()};
-            SendChannelModes(getCharYY(), chanName, postJoinTime, std::span(&opClient, 1));
+            sendChannelModes(getCharYY(), chanName, postJoinTime, std::span(&opClient, 1));
         }
 
         // Set the channel modes
-        SendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, joinModes);
+        sendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, joinModes);
     }
 
     if (postJoinTime < theChan->getCreationTime()) {
@@ -1877,7 +1877,7 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const iClien
     if ((0 == from) || from->isOper()) {
         sent = Write("{} CM {} :{}\r\n", numericOf(from), theChan->getName(), letters);
     } else if (canChangeChannel(from, theChan)) {
-        sent = SendChannelModes(numericOf(from), theChan, changes);
+        sent = sendChannelModes(numericOf(from), theChan, changes);
     } else {
         return false;
     }
@@ -1964,7 +1964,7 @@ void xServer::commitMemberModes(const std::string& sourceNumeric, ChannelUser* e
     }
 
     // The network first, then our tables and the modules
-    SendChannelModes(sourceNumeric, theChan, changes);
+    sendChannelModes(sourceNumeric, theChan, changes);
     if ('o' == letter) {
         OnChannelModeO(theChan, eventSource, members);
     } else {
@@ -2016,7 +2016,7 @@ void xServer::commitBans(const std::string& sourceNumeric, ChannelUser* eventSou
         changes.push_back({set, *Channel::findMode('b'), mask});
     }
 
-    SendChannelModes(sourceNumeric, theChan, changes);
+    sendChannelModes(sourceNumeric, theChan, changes);
 
     // OnChannelModeB() appends the bans that a new one overrides, which is
     // why it is given a vector of its own.
@@ -2291,13 +2291,13 @@ bool xServer::UnBan(Channel* theChan, const banVectorType& bans, const iClient* 
     return changeBans(theChan, planBans(theChan, bans), from);
 }
 
-bool xServer::SendChannelModes(const std::string& source, Channel* theChan,
+bool xServer::sendChannelModes(const std::string& source, Channel* theChan,
                                std::span<const Channel::ModeChange> changes) {
     assert(theChan != 0);
-    return SendChannelModes(source, theChan->getName(), theChan->getCreationTime(), changes);
+    return sendChannelModes(source, theChan->getName(), theChan->getCreationTime(), changes);
 }
 
-bool xServer::SendChannelModes(const std::string& source, const std::string& chanName,
+bool xServer::sendChannelModes(const std::string& source, const std::string& chanName,
                                time_t timestamp, std::span<const Channel::ModeChange> changes) {
     // The one place a channel MODE line is put together.  formatLines()
     // splits at six arguments or at the line limit, and ends every line in
@@ -2449,7 +2449,7 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
     // Tell the network first, then update our tables and the modules: a
     // module may answer an event with traffic of its own, which has to
     // follow the mode that caused it.
-    SendChannelModes(numericOf(from), theChan, wire);
+    sendChannelModes(numericOf(from), theChan, wire);
 
     ApplyChannelModes(theChan, theUser, wire, "xServer::Mode>");
 

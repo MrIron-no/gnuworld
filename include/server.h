@@ -613,24 +613,6 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     /// protocol violation, so `from` has no default here and must be one.
     virtual bool Invite(iClient* target, Channel*, const iClient* from);
 
-    /**
-     * Send channel mode changes to the network, as `source` (a server or
-     * client numeric).  This only writes: it does not check the changes
-     * against the channel and does not update our tables, which is what
-     * Mode() is for.  Every channel MODE line gnuworld sends is formatted
-     * here, by Channel::formatModeLines().
-     */
-    virtual bool SendChannelModes(const std::string& source, Channel* theChan,
-                                  std::span<const Channel::ModeChange> changes);
-
-    /**
-     * The same, for a channel named by hand.  Needed while joining: the
-     * modes of a channel we create go out before its Channel exists, and
-     * carry the timestamp it was created with.
-     */
-    virtual bool SendChannelModes(const std::string& source, const std::string& chanName,
-                                  time_t timestamp, std::span<const Channel::ModeChange> changes);
-
     /* Event registration stuff */
 
     /**
@@ -1207,6 +1189,24 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     void commitKick(const std::string& sourceNumeric, iClient* kicker, Channel* theChan,
                     std::span<iClient* const> targets, const std::string& reason);
+
+    /**
+     * Send channel mode changes to the network, as `source` (a server or
+     * client numeric).  This only writes: it does not check the changes
+     * against the channel and does not update our tables, which is what
+     * Mode() is for, and why this is not public.  Every channel MODE line
+     * gnuworld sends is formatted here, by Channel::formatModeLines().
+     */
+    bool sendChannelModes(const std::string& source, Channel* theChan,
+                          std::span<const Channel::ModeChange> changes);
+
+    /**
+     * The same, for a channel named by hand.  Needed while joining: the
+     * modes of a channel we create go out before its Channel exists, and
+     * carry the timestamp it was created with.
+     */
+    bool sendChannelModes(const std::string& source, const std::string& chanName, time_t timestamp,
+                          std::span<const Channel::ModeChange> changes);
 
     /**
      * What Message(), Notice() and Wallchops() of xClient, and our own

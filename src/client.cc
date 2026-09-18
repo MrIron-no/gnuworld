@@ -656,47 +656,36 @@ bool xClient::BanKick(Channel* theChan, iClient* theClient, const string& reason
         return false;
     }
 
-    if (0 == theChan->findUser(theClient)) {
+    iClient* const target[] = {theClient};
+    const std::vector<iClient*> kicked = MyUplink->planKick(theChan, target);
+    if (kicked.empty()) {
         // User is not on that channel
         return true;
     }
 
-    bool OnChannel = isOnChannel(theChan);
-    if (!OnChannel) {
-        // Join, giving ourselves ops
-        Join(theChan, string(), 0, true);
-    } else {
-        // Bot is already on the channel
-        ChannelUser* meUser = theChan->findUser(me);
-        if (NULL == meUser) {
-            elog << "xClient::BanKick> Unable to find myself in "
-                 << "channel: " << theChan->getName() << endl;
-            return false;
-        }
-
-        // Make sure we have ops
-        if (!meUser->getMode(ChannelUser::MODE_O)) {
-            // The bot does NOT have ops
-            return false;
-        }
-
-        // The bot has ops
+    // A stealth module has no client on the network to act as.  As
+    // ourselves we have to be on the channel, opped, while it happens.
+    const bool asServer = IsStealth();
+    bool joined = false;
+    if (!asServer && !enterToChange(theChan, joined)) {
+        return false;
     }
+    const string sourceNumeric = asServer ? string(MyUplink->getCharYY()) : getCharYYXXX();
 
-    string banMask = Channel::createBan(theClient);
+    // The ban, unless it is there already, and then the kick
+    const xServer::banVectorType wanted{{true, Channel::createBan(theClient)}};
+    xServer::banVectorType bans = MyUplink->planBans(theChan, wanted);
+    if (!bans.empty()) {
+        MyUplink->commitBans(sourceNumeric, 0, theChan, std::move(bans));
+    }
+    MyUplink->commitKick(sourceNumeric, getInstance(), theChan, kicked, reason);
 
-    const Channel::ModeChange ban{true, *Channel::findMode('b'), banMask};
-    MyUplink->SendChannelModes(getCharYYXXX(), theChan, std::span(&ban, 1));
-
-    Write("{} K {} {} :{}", getCharYYXXX(), theChan->getName(), theClient->getCharYYXXX(), reason);
-
-    if (!OnChannel) {
+    if (joined) {
         Part(theChan);
     }
-
-    // Update the channel's ban list
-    theChan->setBan(banMask);
-
+    if (theChan->empty()) {
+        delete Network->removeChannel(theChan->getName());
+    }
     return true;
 }
 

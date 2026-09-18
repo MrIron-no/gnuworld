@@ -174,3 +174,38 @@ async def test_api_calls_also_update_gnuworlds_own_state(gnutest_linked_p11):
     assert info.modes == "klmnt"
     assert (info.key, info.limit) == ("sekrit", 10)
     assert info.topic == "hello there"
+
+
+@pytest.mark.asyncio
+async def test_bankick_takes_the_member_off_the_channel(gnutest_linked_p11):
+    """BanKick() is Ban() and Kick(): the ban is on our list, the member is gone,
+    and a ban that is there already is not sent a second time."""
+    hub, _proc = gnutest_linked_p11
+
+    asker = await hub.introduce_nick("asker", username="asker")
+    await hub.send_account(asker, PERMIT_ACCOUNT)
+    n = {
+        nick: await hub.introduce_nick(nick, username=nick, host=f"{nick}.example.net")
+        for nick in ("alice", "bob")
+    }
+    ts = int(time.time()) - 3600
+    hub_yy = hub.server_numnick
+    me = gt.numnick(hub)
+    await hub.send_raw(f"{hub_yy} B {CHAN} {ts} +tn {n['bob']},{n['alice']}:o")
+    await gt.run(hub, asker, f"join {CHAN}")
+    await hub.send_raw(f"{hub_yy} M {CHAN} +o {me} {ts}")
+
+    assert await gt.run(hub, asker, f"bankick {CHAN} bob out") == [
+        f"{me} M {CHAN} +b *!bob@bob.example.net {ts}",
+        f"{me} K {CHAN} {n['bob']} :out",
+    ]
+    info = await chaninfo(hub, asker, CHAN)
+    assert info.members == {"alice": "+o", "gnutest": "+o"}
+    assert info.bans == {"*!bob@bob.example.net"}
+
+    # He rejoins through the ban; it is still set, so only the kick goes out
+    await hub.send_raw(f"{n['bob']} J {CHAN} {ts}")
+    assert await gt.run(hub, asker, f"bankick {CHAN} bob and stay out") == [
+        f"{me} K {CHAN} {n['bob']} :and stay out",
+    ]
+    assert "bob" not in (await chaninfo(hub, asker, CHAN)).members
