@@ -320,8 +320,7 @@ std::string formatServerTime();
  * atoi() answers 0 for text that is not a number, stops quietly at the first
  * character it does not like, and is undefined on overflow.  For what arrives
  * from the network that is the wrong answer: 0 is a timestamp, the oldest one
- * there is, and the oldest timestamp wins every conflict.  A stray word in a
- * MODE line once reset a channel's creation time that way.
+ * there is, and the oldest timestamp wins every conflict.
  *
  * This accepts the whole of `text` or none of it: decimal digits, with a
  * leading '-' for a signed type, and nothing else.  No whitespace, no '+',

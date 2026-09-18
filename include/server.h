@@ -1094,17 +1094,27 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * methods above.  `sourceUser` is the member that made the change; null
      * for a server, or for a client that is not on the channel (OPMODE).
      *
-     * The first form is for a line from the network: whatever
-     * Channel::parseModes() found wrong is logged, and the rest applied.
-     * Either form logs a change it cannot apply, which is a +o/+v whose
-     * target is unknown or not on the channel, and applies the others.
+     * A change it cannot apply is logged, and the others applied: that is
+     * a +o/+v whose target is unknown or not on the channel, which happens
+     * when the change crosses a KILL or a KICK of ours on the way.
      * `where` starts the log lines: "msg_M>".
      */
     virtual void ApplyChannelModes(Channel*, ChannelUser* sourceUser,
-                                   const Channel::ParsedModes& parsed, std::string_view where);
-    virtual void ApplyChannelModes(Channel*, ChannelUser* sourceUser,
                                    std::span<const Channel::ModeChange> changes,
                                    std::string_view where);
+
+    /**
+     * A line from the uplink that cannot be parsed.  Our picture of the
+     * network is only of use while it is the uplink's, and after such a
+     * line it is not: say which line, and what is wrong with it, and
+     * abort, as a failed assert() does.  Call it before the line has
+     * changed anything.
+     *
+     * This is for the network only.  A module that asks for something
+     * invalid is refused, and gnuworld carries on: see Mode().
+     */
+    [[noreturn]] void ProtocolError(std::string_view where,
+                                    std::span<const std::string> problems) const;
 
     /**
      * Check the list of glines for any that are about to
@@ -1176,9 +1186,12 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     bool writeLine(std::string_view text, bool duringBurst);
 
+    /// The line being processed, as it was received: for ProtocolError()
+    std::string currentLine;
+
     /// One line in elog for each problem: "<where> (<channel>): ...".
     void logModeProblems(std::string_view where, std::string_view channelName,
-                         std::span<const Channel::ModeProblem> problems) const;
+                         std::span<const std::string> problems) const;
 
     /*
      * The pieces the channel methods (Op(), Ban(), Kick()...) are made of.

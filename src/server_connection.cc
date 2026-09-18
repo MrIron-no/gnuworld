@@ -279,7 +279,7 @@ bool xServer::writeLine(std::string_view text, bool duringBurst) {
     // ircu ends a line at CR as well as at LF, so text with either inside
     // it, a channel description out of the database say, would start a new
     // server-to-server line of somebody else's choosing.  Cut it there.  A
-    // NUL ends the line for ircu too, which is how a timestamp once got lost.
+    // NUL ends the line for ircu too.
     const std::string_view::size_type cut = text.find_first_of(std::string_view("\r\n\0", 3));
     if (cut != std::string_view::npos) {
         elog << "xServer::writeLine> Dropped " << (text.size() - cut)

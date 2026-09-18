@@ -24,6 +24,8 @@
 #include <optional>
 #include <string>
 #include <iostream>
+#include <string>
+#include <vector>
 
 #include "gnuworld_config.h"
 #include "server.h"
@@ -66,6 +68,19 @@ bool msg_CM::Execute(const xParameters& Param) {
      */
     std::string Modes = Param[2];
 
+    std::vector<std::string> problems;
+    for (const char letter : Modes) {
+        if (!Channel::findMode(letter)) {
+            problems.push_back(std::string(Channel::isLocalOnlyMode(letter)
+                                               ? "mode is local to a server: "
+                                               : "unknown mode: ") +
+                               letter);
+        }
+    }
+    if (!problems.empty()) {
+        theServer->ProtocolError("msg_CM>", problems);
+    }
+
     // These three variables will be set to true if we are to clear either
     // the ops, voice, or bans, respectively
     bool clearOps = false;
@@ -89,36 +104,29 @@ bool msg_CM::Execute(const xParameters& Param) {
     xServer::modeVectorType modeVector;
 
     for (const char letter : Modes) {
-        const std::optional<Channel::ModeInfo> mode = Channel::findMode(letter);
-        if (!mode) {
-            elog << "msg_CM> (" << tmpChan->getName() << "): "
-                 << (Channel::isLocalOnlyMode(letter) ? "mode is local to a server: "
-                                                      : "unknown mode: ")
-                 << letter << endl;
-            continue;
-        }
+        // Every letter was looked up above
+        const Channel::ModeInfo mode = *Channel::findMode(letter);
 
-        switch (mode->kind) {
-        case Channel::ModeKind::Flag:
-            modeVector.push_back(make_pair(false, mode->flag));
+        switch (mode.type) {
+        case Channel::ModeType::Flag:
+            modeVector.push_back(make_pair(false, mode.flag));
             break;
-        case Channel::ModeKind::Key:
-            theServer->OnChannelModeK(tmpChan, false, 0, std::string());
-            break;
-        case Channel::ModeKind::Limit:
+        case Channel::ModeType::SetOnly:
             theServer->OnChannelModeL(tmpChan, false, 0, 0);
             break;
-        case Channel::ModeKind::Password:
-            if ('A' == letter) {
+        case Channel::ModeType::Setting:
+            if ('k' == letter) {
+                theServer->OnChannelModeK(tmpChan, false, 0, std::string());
+            } else if ('A' == letter) {
                 theServer->OnChannelModeA(tmpChan, false, 0, std::string());
             } else {
                 theServer->OnChannelModeU(tmpChan, false, 0, std::string());
             }
             break;
-        case Channel::ModeKind::Member:
+        case Channel::ModeType::Prefix:
             ('o' == letter ? clearOps : clearVoice) = true;
             break;
-        case Channel::ModeKind::Ban:
+        case Channel::ModeType::List:
             clearBans = true;
             break;
         }

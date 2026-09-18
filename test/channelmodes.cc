@@ -20,10 +20,7 @@ using namespace gnuworld;
 using Parsed = Channel::ParsedModes;
 using Change = Channel::ModeChange;
 using Mode = Channel::ModeInfo;
-using Kind = Channel::ModeKind;
-using Group = Channel::ModeGroup;
-using Error = Channel::ModeError;
-using Problem = Channel::ModeProblem;
+using Type = Channel::ModeType;
 constexpr auto& modes = Channel::modeTable;
 constexpr auto find = &Channel::findMode;
 constexpr auto isLocalOnly = &Channel::isLocalOnlyMode;
@@ -31,7 +28,6 @@ constexpr auto burstOrder = &Channel::burstOrder;
 constexpr auto isValidKey = &Channel::isValidKey;
 constexpr auto isValidLimit = &Channel::isValidLimit;
 constexpr auto burstModeBlock = &Channel::burstModeBlock;
-constexpr auto isupportChanmodes = &Channel::isupportChanmodes;
 constexpr std::size_t maxKeyLength = MAX_KEY_LENGTH;
 constexpr std::size_t maxLineLength = IRC_MAX_LINE - 2;
 
@@ -78,9 +74,9 @@ std::string flat(const Parsed& parsed) {
     return out;
 }
 
-bool onlyProblem(const Parsed& parsed, Error error, char letter, string_view detail = {}) {
-    return parsed.problems.size() == 1 &&
-           parsed.problems[0] == Problem{error, letter, std::string(detail)};
+/// True if the parse reported exactly this one problem.
+bool onlyProblem(const Parsed& parsed, string_view message) {
+    return parsed.problems.size() == 1 && parsed.problems[0] == message;
 }
 
 void testTable() {
@@ -94,7 +90,7 @@ void testTable() {
 
     // Members and bans are not channel flags; everything else is exactly one bit
     for (const Mode& mode : modes) {
-        const bool isFlagless = (mode.kind == Kind::Member || mode.kind == Kind::Ban);
+        const bool isFlagless = (mode.type == Type::Prefix || mode.type == Type::List);
         CHECK(isFlagless == (mode.flag == 0));
         CHECK(isFlagless || (mode.flag & (mode.flag - 1)) == 0);
     }
@@ -121,11 +117,6 @@ void testTable() {
     CHECK(find('A')->takesArg(false) && find('U')->takesArg(false));
     CHECK(find('o')->takesArg(false) && find('v')->takesArg(false) && find('b')->takesArg(false));
 
-    // Only +R is reserved for servers
-    for (const Mode& mode : modes) {
-        CHECK(mode.serverOnly == (mode.letter == 'R'));
-    }
-
     // doc/P11.md 15.1: s|p m t i n r D R c C u M Z, then l k A U
     const string_view burst = "spmtinrDRcCuMZlkAU";
     for (std::size_t i = 0; i + 1 < burst.size(); ++i) {
@@ -133,7 +124,7 @@ void testTable() {
     }
 
     // Usable at compile time
-    static_assert(Channel::findMode('k')->kind == Kind::Key);
+    static_assert(Channel::findMode('k')->type == Type::Setting);
     static_assert(!Channel::findMode('q'));
     static_assert(MAX_CHAN_MODES == 6 && MAX_KEY_LENGTH == 23);
 }
@@ -145,34 +136,37 @@ std::string sorted(std::string_view s) {
     return out;
 }
 
-void testIsupportGroups() {
-    CHECK(find('b')->group() == Group::A);
-    CHECK(find('k')->group() == Group::B && find('A')->group() == Group::B &&
-          find('U')->group() == Group::B);
-    CHECK(find('l')->group() == Group::C);
-    CHECK(find('m')->group() == Group::D && find('D')->group() == Group::D);
-    CHECK(find('o')->group() == Group::Prefix && find('v')->group() == Group::Prefix);
-
-    // What ircu advertises in RPL_ISUPPORT with OPLEVELS on (include/supported.h):
-    //   CHANMODES=b,AkU,l,imnpstrDdRcCuMZ   PREFIX=(ov)@+
-    // Group for group it must be our table, give or take the server-local 'd'.
-    const std::string ours = isupportChanmodes();
-    const std::string_view ircu = "b,AkU,l,imnpstrDdRcCuMZ";
-    std::size_t ourStart = 0;
-    std::size_t ircuStart = 0;
-    for (int group = 0; group < 4; ++group) {
-        const std::size_t ourEnd = std::min(ours.find(',', ourStart), ours.size());
-        const std::size_t ircuEnd = std::min(ircu.find(',', ircuStart), ircu.size());
-        std::string theirs(ircu.substr(ircuStart, ircuEnd - ircuStart));
-        std::erase_if(theirs, isLocalOnly);
-        CHECK(sorted(ours.substr(ourStart, ourEnd - ourStart)) == sorted(theirs));
-        ourStart = ourEnd + 1;
-        ircuStart = ircuEnd + 1;
+/// The letters of the table that are of this type.
+std::string lettersOf(Type type) {
+    std::string out;
+    for (const Mode& mode : modes) {
+        if (mode.type == type) {
+            out += mode.letter;
+        }
     }
-    CHECK(std::ranges::count(ours, ',') == 3);
+    return out;
+}
 
-    // o and v are PREFIX modes, so they are in no CHANMODES group
-    CHECK(ours.find('o') == std::string::npos && ours.find('v') == std::string::npos);
+void testTypes() {
+    CHECK(find('b')->type == Type::List);
+    CHECK(find('k')->type == Type::Setting && find('A')->type == Type::Setting &&
+          find('U')->type == Type::Setting);
+    CHECK(find('l')->type == Type::SetOnly);
+    CHECK(find('m')->type == Type::Flag && find('D')->type == Type::Flag);
+    CHECK(find('o')->type == Type::Prefix && find('v')->type == Type::Prefix);
+
+    // ModeType is the classification of RPL_ISUPPORT, so the table has to
+    // agree, group for group, with what ircu advertises (include/supported.h,
+    // with OPLEVELS on):  CHANMODES=b,AkU,l,imnpstrDdRcCuMZ  PREFIX=(ov)@+
+    // give or take 'd', which is local to a server and not in the table.
+    const std::string_view ircu[] = {"b", "AkU", "l", "imnpstrDdRcCuMZ"};
+    const Type types[] = {Type::List, Type::Setting, Type::SetOnly, Type::Flag};
+    for (std::size_t i = 0; i < 4; ++i) {
+        std::string theirs(ircu[i]);
+        std::erase_if(theirs, isLocalOnly);
+        CHECK(sorted(lettersOf(types[i])) == sorted(theirs));
+    }
+    CHECK(sorted(lettersOf(Type::Prefix)) == "ov");
 }
 
 void testParseValid() {
@@ -202,45 +196,45 @@ void testParseValid() {
 
     // The typed record carries the table entry, not just a letter
     parsed = parseArgs("+R", {});
-    CHECK(parsed.changes.size() == 1 && parsed.changes[0].mode.serverOnly);
+    CHECK(parsed.changes.size() == 1 && parsed.changes[0].mode.flag == Channel::MODE_REG);
     CHECK(parsed.changes[0] == (Change{true, *find('R'), ""}));
 }
 
 void testParseProblems() {
     auto parsed = parseArgs("+tx", {});
-    CHECK(flat(parsed) == "+t" && onlyProblem(parsed, Error::UnknownMode, 'x'));
+    CHECK(flat(parsed) == "+t" && onlyProblem(parsed, "unknown mode 'x'"));
 
     // 'd' and 'z' exist in ircu, but never between servers
     parsed = parseArgs("+nd", {});
-    CHECK(flat(parsed) == "+n" && onlyProblem(parsed, Error::LocalOnlyMode, 'd'));
-    CHECK(onlyProblem(parseArgs("-z", {}), Error::LocalOnlyMode, 'z'));
+    CHECK(flat(parsed) == "+n" && onlyProblem(parsed, "mode 'd' is local to a server"));
+    CHECK(onlyProblem(parseArgs("-z", {}), "mode 'z' is local to a server"));
 
-    CHECK(onlyProblem(parseArgs("+k", {}), Error::MissingArgument, 'k'));
-    CHECK(onlyProblem(parseArgs("-k", {}), Error::MissingArgument, 'k'));
-    CHECK(onlyProblem(parseArgs("+l", {}), Error::MissingArgument, 'l'));
-    CHECK(onlyProblem(parseArgs("+o", {}), Error::MissingArgument, 'o'));
-    CHECK(onlyProblem(parseArgs("+b", {}), Error::MissingArgument, 'b'));
+    CHECK(onlyProblem(parseArgs("+k", {}), "mode 'k' is missing its argument"));
+    CHECK(onlyProblem(parseArgs("-k", {}), "mode 'k' is missing its argument"));
+    CHECK(onlyProblem(parseArgs("+l", {}), "mode 'l' is missing its argument"));
+    CHECK(onlyProblem(parseArgs("+o", {}), "mode 'o' is missing its argument"));
+    CHECK(onlyProblem(parseArgs("+b", {}), "mode 'b' is missing its argument"));
 
     // A bad argument is consumed, so the next mode still gets the right one
     parsed = parseArgs("+lk", {"many", "sekrit"});
-    CHECK(flat(parsed) == "+k:sekrit" && onlyProblem(parsed, Error::InvalidLimit, 'l', "many"));
+    CHECK(flat(parsed) == "+k:sekrit" && onlyProblem(parsed, "invalid limit for mode 'l': many"));
 
     // An unknown mode consumes nothing
     parsed = parseArgs("+xk", {"sekrit"});
-    CHECK(flat(parsed) == "+k:sekrit" && onlyProblem(parsed, Error::UnknownMode, 'x'));
+    CHECK(flat(parsed) == "+k:sekrit" && onlyProblem(parsed, "unknown mode 'x'"));
 
-    CHECK(onlyProblem(parseArgs("+m", {"stray"}), Error::UnusedArgument, 0, "stray"));
-    CHECK(onlyProblem(parseArgs("-l", {"10"}), Error::UnusedArgument, 0, "10"));
+    CHECK(onlyProblem(parseArgs("+m", {"stray"}), "unused argument: stray"));
+    CHECK(onlyProblem(parseArgs("-l", {"10"}), "unused argument: 10"));
 
-    CHECK(onlyProblem(parseArgs("+o", {"AB,AC"}), Error::InvalidTarget, 'o', "AB,AC"));
-    CHECK(onlyProblem(parseArgs("+b", {"two words"}), Error::InvalidMask, 'b', "two words"));
+    CHECK(onlyProblem(parseArgs("+o", {"AB,AC"}), "invalid target for mode 'o': AB,AC"));
+    CHECK(onlyProblem(parseArgs("+b", {"two words"}), "invalid mask for mode 'b': two words"));
     // The bug this replaces: "+b :mask <ts>" glued the timestamp onto the mask
-    CHECK(onlyProblem(parseArgs("+b", {"*!bob@example.net 1789642110"}), Error::InvalidMask, 'b',
-                      "*!bob@example.net 1789642110"));
-    CHECK(onlyProblem(parseArgs("+b", {":*!*@x"}), Error::InvalidMask, 'b', ":*!*@x"));
+    CHECK(onlyProblem(parseArgs("+b", {"*!bob@example.net 1789642110"}),
+                      "invalid mask for mode 'b': *!bob@example.net 1789642110"));
+    CHECK(onlyProblem(parseArgs("+b", {":*!*@x"}), "invalid mask for mode 'b': :*!*@x"));
 
     // The +A/+U passwords follow the key rules
-    CHECK(onlyProblem(parseArgs("+A", {"bad,pass"}), Error::InvalidKey, 'A', "bad,pass"));
+    CHECK(onlyProblem(parseArgs("+A", {"bad,pass"}), "invalid key for mode 'A': bad,pass"));
     CHECK(parseArgs("+AU", {"apass", "upass"}).ok());
 }
 
@@ -293,11 +287,11 @@ void testTimestamp() {
 
     // Not asked for: a leftover number is just a stray argument
     parsed = parseArgs("+m", {"1789642110"}, false);
-    CHECK(!parsed.timestamp && onlyProblem(parsed, Error::UnusedArgument, 0, "1789642110"));
+    CHECK(!parsed.timestamp && onlyProblem(parsed, "unused argument: 1789642110"));
 
     // Only a final, all-digit argument counts
     parsed = parseArgs("+m", {"17x"}, true);
-    CHECK(!parsed.timestamp && onlyProblem(parsed, Error::UnusedArgument, 0, "17x"));
+    CHECK(!parsed.timestamp && onlyProblem(parsed, "unused argument: 17x"));
     parsed = parseArgs("+m", {"1789642110", "stray"}, true);
     CHECK(!parsed.timestamp && parsed.problems.size() == 2);
 
@@ -315,7 +309,7 @@ void testBurstModeBlock() {
 
     // Without the option the member list is reported, but still not consumed
     parsed = parse("+tnlk", rest);
-    CHECK(parsed.argsUsed == 2 && onlyProblem(parsed, Error::UnusedArgument, 0, "ACAAK:o,ACAAM"));
+    CHECK(parsed.argsUsed == 2 && onlyProblem(parsed, "unused argument: ACAAK:o,ACAAM"));
 
     // A mode block with no arguments uses none
     parsed = parse("+tn", std::vector<string_view>{"ACAAO,ACAAN:d"}, {.allowLeftover = true});
@@ -324,7 +318,7 @@ void testBurstModeBlock() {
     // A truncated burst: "+l" with nothing behind it must not read past the end
     parsed = parse("+tl", std::vector<string_view>{}, {.allowLeftover = true});
     CHECK(flat(parsed) == "+t" && parsed.argsUsed == 0 &&
-          onlyProblem(parsed, Error::MissingArgument, 'l'));
+          onlyProblem(parsed, "mode 'l' is missing its argument"));
 
     // The timestamp counts as used
     parsed = parseArgs("+l", {"10", "1789642110"}, true);
@@ -430,7 +424,7 @@ void testBurstModeBlockOutput() {
 
 int main() {
     testTable();
-    testIsupportGroups();
+    testTypes();
     testParseValid();
     testParseProblems();
     testKeysAndLimits();

@@ -54,38 +54,40 @@ bool isSingleToken(std::string_view s) noexcept {
            std::ranges::none_of(s, [](char c) { return static_cast<unsigned char>(c) <= ' '; });
 }
 
-/// The problem with this argument for this mode, if any.
-std::optional<Channel::ModeError> validateModeArg(const Channel::ModeInfo& mode,
-                                                  std::string_view arg) noexcept {
-    switch (mode.kind) {
-    case Channel::ModeKind::Flag:
+/// What is wrong with this argument for this mode: "invalid key", or
+/// nothing if it is fine.
+std::string_view argumentProblem(const Channel::ModeInfo& mode, std::string_view arg) noexcept {
+    switch (mode.type) {
+    case Channel::ModeType::Flag:
         break;
-    case Channel::ModeKind::Key:
-    case Channel::ModeKind::Password:
+    case Channel::ModeType::Setting:
+        // A key, or one of the two passwords: the same rules for all three
         if (!Channel::isValidKey(arg)) {
-            return Channel::ModeError::InvalidKey;
+            return "invalid key";
         }
         break;
-    case Channel::ModeKind::Limit:
+    case Channel::ModeType::SetOnly:
         if (!Channel::isValidLimit(arg)) {
-            return Channel::ModeError::InvalidLimit;
+            return "invalid limit";
         }
         break;
-    case Channel::ModeKind::Member:
+    case Channel::ModeType::Prefix:
         // A numeric from the network, or a nick when the change comes
         // from a module.
         if (!isSingleToken(arg) || arg.find(',') != std::string_view::npos) {
-            return Channel::ModeError::InvalidTarget;
+            return "invalid target";
         }
         break;
-    case Channel::ModeKind::Ban:
+    case Channel::ModeType::List:
         if (!isSingleToken(arg)) {
-            return Channel::ModeError::InvalidMask;
+            return "invalid mask";
         }
         break;
     }
-    return std::nullopt;
+    return {};
 }
+
+std::string quoted(char letter) { return std::string("'") + letter + "'"; }
 
 } // namespace
 
@@ -120,10 +122,9 @@ Channel::ParsedModes Channel::parseModes(std::string_view modeString,
         const std::optional<ModeInfo> mode = findMode(letter);
         if (!mode) {
             // Nothing is known about its argument, so none is consumed.
-            result.problems.push_back(
-                {isLocalOnlyMode(letter) ? ModeError::LocalOnlyMode : ModeError::UnknownMode,
-                 letter,
-                 {}});
+            result.problems.push_back(isLocalOnlyMode(letter)
+                                          ? "mode " + quoted(letter) + " is local to a server"
+                                          : "unknown mode " + quoted(letter));
             continue;
         }
 
@@ -133,15 +134,16 @@ Channel::ParsedModes Channel::parseModes(std::string_view modeString,
         }
 
         if (nextArg >= args.size()) {
-            result.problems.push_back({ModeError::MissingArgument, letter, {}});
+            result.problems.push_back("mode " + quoted(letter) + " is missing its argument");
             continue;
         }
 
         // The argument is consumed even when it is invalid, so that the
         // modes behind this one still get their own.
         const std::string_view arg = args[nextArg++];
-        if (const std::optional<ModeError> error = validateModeArg(*mode, arg)) {
-            result.problems.push_back({*error, letter, std::string(arg)});
+        if (const std::string_view problem = argumentProblem(*mode, arg); !problem.empty()) {
+            result.problems.push_back(std::string(problem) + " for mode " + quoted(letter) + ": " +
+                                      std::string(arg));
             continue;
         }
         result.changes.push_back({set, *mode, std::string(arg)});
@@ -158,7 +160,7 @@ Channel::ParsedModes Channel::parseModes(std::string_view modeString,
 
     if (!options.allowLeftover) {
         for (; nextArg < args.size(); ++nextArg) {
-            result.problems.push_back({ModeError::UnusedArgument, 0, std::string(args[nextArg])});
+            result.problems.push_back("unused argument: " + std::string(args[nextArg]));
         }
     }
 
@@ -226,8 +228,8 @@ std::vector<std::string> Channel::formatModeLines(std::string_view prefix,
 std::string Channel::burstModeBlock(std::span<const ModeChange> changes) {
     std::vector<const ModeChange*> block;
     for (const ModeChange& change : changes) {
-        if (change.set && change.mode.kind != ModeKind::Member &&
-            change.mode.kind != ModeKind::Ban) {
+        if (change.set && change.mode.type != ModeType::Prefix &&
+            change.mode.type != ModeType::List) {
             block.push_back(&change);
         }
     }
@@ -246,43 +248,6 @@ std::string Channel::burstModeBlock(std::span<const ModeChange> changes) {
         }
     }
     return out + args;
-}
-
-std::string Channel::isupportChanmodes() {
-    std::string out;
-    for (const ModeGroup group : {ModeGroup::A, ModeGroup::B, ModeGroup::C, ModeGroup::D}) {
-        if (group != ModeGroup::A) {
-            out += ',';
-        }
-        for (const ModeInfo& mode : modeTable) {
-            if (mode.group() == group) {
-                out += mode.letter;
-            }
-        }
-    }
-    return out;
-}
-
-std::string_view Channel::describe(ModeError error) noexcept {
-    switch (error) {
-    case ModeError::UnknownMode:
-        return "unknown mode";
-    case ModeError::LocalOnlyMode:
-        return "mode is local to a server";
-    case ModeError::MissingArgument:
-        return "missing argument";
-    case ModeError::InvalidKey:
-        return "invalid key";
-    case ModeError::InvalidLimit:
-        return "invalid limit";
-    case ModeError::InvalidTarget:
-        return "invalid target";
-    case ModeError::InvalidMask:
-        return "invalid mask";
-    case ModeError::UnusedArgument:
-        return "unused argument";
-    }
-    return "unknown error";
 }
 
 } // namespace gnuworld

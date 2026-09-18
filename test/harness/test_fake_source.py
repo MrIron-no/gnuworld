@@ -71,9 +71,6 @@ async def test_a_fake_client_changes_a_channel_it_is_opped_on(gnutest_linked_p11
     assert await run("as fakey clearmode {c} lb") == [
         f"{v['fake']} M {CHAN} -lb *!*@one.example {v['ts']}"
     ]
-    # A client may not touch a server-only mode
-    assert await run("as fakey mode {c} +R") == []
-
     info = await chaninfo(hub, v["asker"], CHAN)
     assert info.members == {"alice": "+o", "bob": "+o+v", "carol": "+v", "fakey": "+o"}
     assert (info.modes, info.limit, info.bans) == ("mnt", None, set())

@@ -142,91 +142,86 @@ class Channel {
      * formatModeLines().  The reference is ircu's doc/P11.md, section 15.1.
      */
 
-    /// What a mode is, which decides how its argument is validated.
-    enum class ModeKind : unsigned char {
-        Flag,     ///< +m: no argument
-        Key,      ///< +k <key>, -k <key>
-        Limit,    ///< +l <n>, -l
-        Password, ///< +A/+U <pass>, -A/-U <pass> (OPLEVELS)
-        Member,   ///< +o/+v <member>
-        Ban       ///< +b <mask>
-    };
-
     /**
-     * The group a mode belongs to, which says when it carries an argument.
-     * A to D are the four groups of the CHANMODES token that a server
-     * advertises in RPL_ISUPPORT (005), "CHANMODES=A,B,C,D".  That is the
-     * ISUPPORT draft's classification, not RFC 1459's.  ircu sends
+     * What sort of mode a letter is, which says when it takes an argument
+     * and how that argument is checked.
+     *
+     * This is the classification IRC itself uses.  A server advertises its
+     * channel modes in RPL_ISUPPORT (005) as "CHANMODES=A,B,C,D", four groups
+     * that tell a client how to read a MODE line without knowing the letters;
+     * the modes that give a member status are advertised apart, in "PREFIX".
+     * (That is the ISUPPORT draft's scheme, not RFC 1459's.)  ircu sends
      * "CHANMODES=b,AkU,l,imnpstrDdRcCuMZ" and "PREFIX=(ov)@+".
      */
-    enum class ModeGroup : unsigned char {
-        A,     ///< a list: always an argument (b)
-        B,     ///< a setting: always an argument, set or unset (k, A, U)
-        C,     ///< a setting: an argument only when set (l)
-        D,     ///< a flag: never an argument (m, t, n, ...)
-        Prefix ///< a member's status: always an argument.  Not part of
-               ///< CHANMODES, but of the PREFIX token (o, v)
+    enum class ModeType : unsigned char {
+        List,    ///< group A: adds to or removes from a list; always an argument (b)
+        Setting, ///< group B: a value; an argument when set and when unset (k, A, U)
+        SetOnly, ///< group C: a value; an argument only when set (l)
+        Flag,    ///< group D: on or off; never an argument (m, t, n, ...)
+        Prefix   ///< a member's status; always an argument, the member (o, v)
     };
 
+    /// One row of modeTable: everything known about one mode letter.
     struct ModeInfo {
+        /// The letter as it is on the wire.  Case matters: 'm' and 'M' are
+        /// two different modes.
         char letter;
-        ModeKind kind;
-        /// The MODE_* bit; 0 for Member and Ban, which are not channel flags.
+
+        /// When it takes an argument, and what kind; see ModeType.
+        ModeType type;
+
+        /// Its bit in a channel's modes, one of the MODE_* above, for
+        /// getMode().  0 for a List or Prefix mode, which is not a property
+        /// of the channel as a whole: bans and members are kept in lists.
         modeType flag;
-        /// Only a server may set or clear it (+R, registered with services).
-        bool serverOnly;
 
-        constexpr ModeGroup group() const noexcept {
-            switch (kind) {
-            case ModeKind::Ban:
-                return ModeGroup::A;
-            case ModeKind::Key:
-            case ModeKind::Password:
-                return ModeGroup::B;
-            case ModeKind::Limit:
-                return ModeGroup::C;
-            case ModeKind::Flag:
-                return ModeGroup::D;
-            case ModeKind::Member:
-                return ModeGroup::Prefix;
-            }
-            return ModeGroup::D;
-        }
-
+        /// Does it carry an argument when being set (true) or cleared (false)?
         constexpr bool takesArg(bool set) const noexcept {
-            return group() != ModeGroup::D && (group() != ModeGroup::C || set);
+            return ModeType::Flag != type && (ModeType::SetOnly != type || set);
         }
 
         friend constexpr bool operator==(const ModeInfo&, const ModeInfo&) = default;
     };
 
     /**
-     * Every channel mode that travels between servers.  The flags and
-     * settings are in the order a BURST sends them: s|p m t i n r D R c C u
-     * M Z, then l k A U.
+     * Every channel mode that travels between servers, one row each:
+     *
+     *     { letter, type, flag }
+     *
+     * To teach gnuworld a new mode, add a MODE_* bit above and a row here.
+     * Nothing else has a list of the letters: the handlers read modes with
+     * parseModes() and every MODE line is written by formatModeLines().
+     *
+     * The order of the rows matters for the Flag, SetOnly and Setting modes.
+     * It is the order in which a BURST lists them, which burstModeBlock()
+     * follows: s|p m t i n r D R c C u M Z, then l k A U (ircu's doc/P11.md,
+     * section 15.1).
+     *
+     * Not in the table, on purpose: 'd' and 'z'.  They are real ircu modes
+     * but local to one server; see isLocalOnlyMode().
      */
     static constexpr std::array<ModeInfo, 21> modeTable{{
-        {'s', ModeKind::Flag, MODE_S, false},
-        {'p', ModeKind::Flag, MODE_P, false},
-        {'m', ModeKind::Flag, MODE_M, false},
-        {'t', ModeKind::Flag, MODE_T, false},
-        {'i', ModeKind::Flag, MODE_I, false},
-        {'n', ModeKind::Flag, MODE_N, false},
-        {'r', ModeKind::Flag, MODE_R, false},
-        {'D', ModeKind::Flag, MODE_D, false},
-        {'R', ModeKind::Flag, MODE_REG, true},
-        {'c', ModeKind::Flag, MODE_C, false},
-        {'C', ModeKind::Flag, MODE_CTCP, false},
-        {'u', ModeKind::Flag, MODE_PART, false},
-        {'M', ModeKind::Flag, MODE_MNOREG, false},
-        {'Z', ModeKind::Flag, MODE_Z, false},
-        {'l', ModeKind::Limit, MODE_L, false},
-        {'k', ModeKind::Key, MODE_K, false},
-        {'A', ModeKind::Password, MODE_A, false},
-        {'U', ModeKind::Password, MODE_U, false},
-        {'o', ModeKind::Member, 0, false},
-        {'v', ModeKind::Member, 0, false},
-        {'b', ModeKind::Ban, 0, false},
+        {'s', ModeType::Flag, MODE_S},      // secret
+        {'p', ModeType::Flag, MODE_P},      // private
+        {'m', ModeType::Flag, MODE_M},      // moderated
+        {'t', ModeType::Flag, MODE_T},      // only ops set the topic
+        {'i', ModeType::Flag, MODE_I},      // invite only
+        {'n', ModeType::Flag, MODE_N},      // no messages from outside
+        {'r', ModeType::Flag, MODE_R},      // registered users only
+        {'D', ModeType::Flag, MODE_D},      // delayed joins
+        {'R', ModeType::Flag, MODE_REG},    // registered with services
+        {'c', ModeType::Flag, MODE_C},      // no colours
+        {'C', ModeType::Flag, MODE_CTCP},   // no CTCP
+        {'u', ModeType::Flag, MODE_PART},   // no part messages
+        {'M', ModeType::Flag, MODE_MNOREG}, // moderate unregistered users
+        {'Z', ModeType::Flag, MODE_Z},      // TLS only
+        {'l', ModeType::SetOnly, MODE_L},   // limit: +l <n>, -l
+        {'k', ModeType::Setting, MODE_K},   // key: +k <key>, -k <key>
+        {'A', ModeType::Setting, MODE_A},   // admin pass (ircu OPLEVELS)
+        {'U', ModeType::Setting, MODE_U},   // user pass (ircu OPLEVELS)
+        {'o', ModeType::Prefix, 0},         // op: +o <member>
+        {'v', ModeType::Prefix, 0},         // voice: +v <member>
+        {'b', ModeType::List, 0},           // ban: +b <mask>
     }};
 
     /// Look a mode up by its letter.
@@ -265,30 +260,12 @@ class Channel {
         friend bool operator==(const ModeChange&, const ModeChange&) = default;
     };
 
-    enum class ModeError : unsigned char {
-        UnknownMode,
-        LocalOnlyMode, ///< 'd' or 'z'
-        MissingArgument,
-        InvalidKey, ///< also a +A/+U password; they share the key rules
-        InvalidLimit,
-        InvalidTarget, ///< the member of a +o/+v
-        InvalidMask,
-        UnusedArgument ///< an argument no mode asked for
-    };
-
-    struct ModeProblem {
-        ModeError error;
-        char letter;        ///< the mode concerned; 0 for UnusedArgument
-        std::string detail; ///< the offending argument, if there was one
-
-        friend bool operator==(const ModeProblem&, const ModeProblem&) = default;
-    };
-
     struct ParsedModes {
         /// The changes that were valid, in the order given.
         std::vector<ModeChange> changes;
-        /// What was wrong with the rest; such a mode is left out of changes.
-        std::vector<ModeProblem> problems;
+        /// What was wrong with the rest, as messages for the log: "unknown
+        /// mode 'x'".  Such a mode is left out of changes.
+        std::vector<std::string> problems;
         /// The channel timestamp, if one was asked for and found.
         std::optional<std::uint64_t> timestamp;
         /// How many of the arguments were consumed, the timestamp included.
@@ -309,10 +286,11 @@ class Channel {
 
     /**
      * Parse a mode string, such as "+tnk-l", and its arguments.  No leading
-     * sign means '+'.  A mode with a problem is reported and skipped and the
-     * parse carries on, so the caller decides what a problem means: a line
-     * from the network is applied as far as it is valid, while a change we
-     * are about to send should not go out unless ok().
+     * sign means '+'.  A mode with a problem is reported and left out, and
+     * the parse carries on so that every problem is found.  The caller
+     * decides what a problem means: in a line from the uplink it is a
+     * protocol error (xServer::ProtocolError()), while a change a module asks
+     * for is refused.
      */
     static ParsedModes parseModes(std::string_view modeString,
                                   std::span<const std::string_view> args, ModeParseOptions options);
@@ -341,12 +319,6 @@ class Channel {
     /// The mode block of a BURST, "+tnlk 25 sekrit": what is being set, in
     /// burst order.  Empty if nothing remains.
     static std::string burstModeBlock(std::span<const ModeChange> changes);
-
-    /// The modes of each CHANMODES group as one string, "A,B,C,D".
-    static std::string isupportChanmodes();
-
-    /// A short name for a ModeError, for logs.
-    static std::string_view describe(ModeError error) noexcept;
 
     /// Type used to store number of clients in channel
     typedef userListType::size_type size_type;
@@ -704,9 +676,8 @@ class Channel {
     /*
      * Setting and clearing a mode changes what gnuworld believes about the
      * channel, and nothing else: the network is not told and no module is
-     * notified.  They were public, and every use was a way for our state to
-     * drift from the network's.  A module changes modes with
-     * xServer::Mode() or xClient::Mode(); a handler applies what it has
+     * notified.  That is why they are not public.  A module changes modes
+     * with xServer::Mode() or xClient::Mode(); a handler applies what it has
      * parsed with xServer::ApplyChannelModes().
      */
 

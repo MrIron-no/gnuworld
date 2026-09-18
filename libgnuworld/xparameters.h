@@ -122,10 +122,8 @@ class xParameters {
      * The parameter at `pos`, or an empty string if there is none.
      *
      * A line from the network may have fewer parameters than its handler
-     * expects.  This used to assert, and so abort the whole process, on an
-     * index that was out of range, which let one short line from the uplink
-     * take the services down.  A handler that forgot to check the count now
-     * sees an empty parameter instead.  Use has() to tell the two apart.
+     * expects, and a handler may have forgotten to check the count.  It then
+     * sees an empty parameter.  Use has() to tell the two apart.
      */
     inline char* operator[](const size_type& pos) const {
         if (!validSubscript(pos)) {

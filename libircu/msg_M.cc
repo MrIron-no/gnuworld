@@ -142,11 +142,13 @@ bool msg_M::Execute(const xParameters& Param) {
     const std::vector<std::string_view> args = Param.views(3);
     const Channel::ParsedModes parsed =
         Channel::parseModes(Param[2], args, {.trailingTimestamp = true});
+    if (!parsed.ok()) {
+        theServer->ProtocolError("msg_M>", parsed.problems);
+    }
 
     // An older timestamp means the sender knows an older instance of the
-    // channel, and we adopt it.  Only a real timestamp counts: this used to
-    // run atoi() over whatever argument was left, so a stray one reset the
-    // creation time to 0.
+    // channel, and we adopt it.  Only a real timestamp counts: an argument
+    // that is not one must not be read as 0, the oldest time there is.
     if (parsed.timestamp && *parsed.timestamp != 0) {
         const time_t newCreationTime = static_cast<time_t>(*parsed.timestamp);
         if (theChan->getCreationTime() > newCreationTime) {
@@ -154,7 +156,7 @@ bool msg_M::Execute(const xParameters& Param) {
         }
     }
 
-    theServer->ApplyChannelModes(theChan, theUser, parsed, "msg_M>");
+    theServer->ApplyChannelModes(theChan, theUser, parsed.changes, "msg_M>");
 
     return true;
 }

@@ -28,6 +28,8 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <format>
+#include <span>
 #include <vector>
 #include <iostream>
 #include <utility>
@@ -173,7 +175,10 @@ bool msg_B::Execute(const xParameters& Param) {
         const std::vector<std::string_view> args = Param.views(whichToken + 1);
         const Channel::ParsedModes parsed =
             Channel::parseModes(Param[whichToken], args, {.allowLeftover = true});
-        theServer->ApplyChannelModes(theChan, 0, parsed, "msg_B>");
+        if (!parsed.ok()) {
+            theServer->ProtocolError("msg_B>", parsed.problems);
+        }
+        theServer->ApplyChannelModes(theChan, 0, parsed.changes, "msg_B>");
 
         whichToken += 1 + parsed.argsUsed;
     }
@@ -415,14 +420,12 @@ void msg_B::parseBurstBans(Channel* theChan, const string& theBans) {
     const bool isP11 = theServer->getUplink()->getProtocol() >= 11;
     const StringTokenizer::size_type stride = isP11 ? 3 : 1;
 
-    // Validate the framing of the whole section before applying any of
-    // it.  ircu rejects a malformed section outright, so applying the
-    // part that fits would leave our ban list out of step with it.
+    // Validate the framing of the whole section before applying any of it
     if (isP11) {
         if ((st.size() % stride) != 0) {
-            elog << "msg_B::parseBurstBans> (" << theChan->getName() << ") Ban section has "
-                 << st.size() << " tokens, not a multiple of 3, ignored: " << theBans << endl;
-            return;
+            const std::string problem =
+                std::format("the ban section has {} tokens, not a multiple of 3", st.size());
+            theServer->ProtocolError("msg_B::parseBurstBans>", std::span(&problem, 1));
         }
 
         for (StringTokenizer::size_type i = 0; i < st.size(); i += stride) {
@@ -430,10 +433,8 @@ void msg_B::parseBurstBans(Channel* theChan, const string& theBans) {
             // st[ i + 2 ]: who set it.
             const string& banTS = st[i + 1];
             if (banTS.empty() || banTS.find_first_not_of("0123456789") != string::npos) {
-                elog << "msg_B::parseBurstBans> (" << theChan->getName()
-                     << ") Invalid ban timestamp: " << banTS << ", section ignored: " << theBans
-                     << endl;
-                return;
+                const std::string problem = "invalid ban timestamp: " + banTS;
+                theServer->ProtocolError("msg_B::parseBurstBans>", std::span(&problem, 1));
             }
         }
     }

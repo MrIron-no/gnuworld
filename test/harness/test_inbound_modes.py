@@ -1,12 +1,16 @@
-"""Inbound channel modes: what the shared parser and applier fixed.
+"""Inbound channel modes: MODE, OPMODE, CLEARMODE and the BURST mode block.
 
-MODE, OPMODE and the BURST mode block used to have a letter switch each. They
-now go through libgnuworld/ChannelModes (parse) and src/ChannelModeApply. These
-cases are the defects the old handlers had, so they stay fixed.
+They share Channel::parseModes() and xServer::ApplyChannelModes(). A line
+from the uplink that cannot be parsed is a protocol error: gnuworld says which
+line, and why, and aborts, because its state is no longer the network's. A
+change that parses but cannot be applied (+v for somebody who is gone) is a
+race, not an error, and is skipped.
 """
 
 from __future__ import annotations
 
+import asyncio
+import signal
 import time
 
 import pytest
@@ -28,17 +32,14 @@ async def _setup(hub) -> tuple[str, dict[str, str], int]:
     return asker, n, ts
 
 
-@pytest.mark.asyncio
-async def test_stray_argument_does_not_reset_the_creation_time(debug_linked_p11):
-    """The old handler ran atoi() over any leftover argument and took the result,
-    0, as an older channel timestamp."""
-    hub, _proc = debug_linked_p11
-    asker, n, ts = await _setup(hub)
-
-    await hub.send_raw(f"{n['opped']} M {CHAN} +m stray")
-    info = await chaninfo(hub, asker, CHAN)
-    assert info.created == ts
-    assert "m" in info.modes  # the valid part of the line is still applied
+async def _expect_abort(proc, line: str, problem: str) -> None:
+    """gnuworld names the line and the problem, then dies of SIGABRT."""
+    await proc.wait_for_stdout("PROTOCOL ERROR, cannot parse this line from the uplink: " + line)
+    await proc.wait_for_stdout(problem)
+    assert proc.proc is not None
+    returncode = await asyncio.wait_for(proc.proc.wait(), timeout=10)
+    # -SIGABRT when gnuworld is our child, 128 + SIGABRT through a shell
+    assert returncode in (-signal.SIGABRT, 128 + signal.SIGABRT), returncode
 
 
 @pytest.mark.asyncio
@@ -72,36 +73,47 @@ async def test_timestamp_is_adopted_only_when_older(debug_linked_p11):
 
 
 @pytest.mark.asyncio
-async def test_bad_modes_are_skipped_and_the_rest_applied(debug_linked_p11):
-    hub, _proc = debug_linked_p11
-    asker, n, ts = await _setup(hub)
-
-    # 'd' is local to an ircu server, 'x' does not exist, the limit is not a
-    # number and AzZZZ is nobody. +i, -t, +k and +v must still go through, and
-    # the bad limit must not shift the key onto the wrong argument.
-    await hub.send_raw(
-        f"{n['opped']} M {CHAN} +idx-t+lkov many sekrit AzZZZ {n['plain']} {ts}"
-    )
-    info = await chaninfo(hub, asker, CHAN)
-    assert info.modes == "ikn"
-    assert (info.key, info.limit) == ("sekrit", None)
-    assert info.members["plain"] == "+v"
-
-
-@pytest.mark.asyncio
-async def test_truncated_burst_mode_block(debug_linked_p11):
-    """"+l" with nothing behind it made the BURST handler read past the end of
-    its parameters."""
+async def test_a_change_that_cannot_be_applied_is_skipped(debug_linked_p11):
     hub, proc = debug_linked_p11
     asker, n, ts = await _setup(hub)
 
-    await hub.send_raw(f"{hub.server_numnick} B #truncated {ts} +tl")
-    await hub.send_raw(f"{hub.server_numnick} B #keyed {ts} +tk")
+    # AzZZZ is nobody: he may have been killed by us while this was on its way
+    await hub.send_raw(f"{n['opped']} M {CHAN} +i-t+kov sekrit AzZZZ {n['plain']} {ts}")
+    info = await chaninfo(hub, asker, CHAN)
+    assert info.modes == "ikn"
+    assert info.key == "sekrit"
+    assert info.members["plain"] == "+v"
+    await proc.wait_for_stdout("no such member for mode 'o': AzZZZ")
 
-    # Still alive and answering, and the valid flag of each block was applied
-    assert (await chaninfo(hub, asker, "#truncated")).modes == "t"
-    assert (await chaninfo(hub, asker, "#keyed")).modes == "t"
-    assert proc.proc is not None and proc.proc.returncode is None
+
+UNPARSEABLE = [
+    # line, with {c} the channel, {ts} its timestamp, {s} the hub and {u} an op
+    ("{u} M {c} +ix {ts}", "unknown mode 'x'"),
+    ("{u} M {c} +id {ts}", "mode 'd' is local to a server"),
+    ("{u} M {c} +l many {ts}", "invalid limit for mode 'l': many"),
+    ("{u} M {c} +k", "mode 'k' is missing its argument"),
+    ("{u} M {c} +i stray {ts}", "unused argument: stray"),
+    # not a timestamp, so it must not be read as one: 0 is the oldest there is
+    ("{u} M {c} +m stray", "unused argument: stray"),
+    ("{u} OM {c} +o", "mode 'o' is missing its argument"),
+    ("{s} B #truncated {ts} +tl", "mode 'l' is missing its argument"),
+    ("{s} B #keyed {ts} +tk", "mode 'k' is missing its argument"),
+    ("{s} B #banned {ts} {u}:o :%*!*@a.example 1700000000", "not a multiple of 3"),
+    ("{s} B #banned {ts} {u}:o :%*!*@a.example soon {u}", "invalid ban timestamp: soon"),
+    ("{s} CM {c} ovx", "unknown mode: x"),
+    ("{s} CM {c} bd", "mode is local to a server: d"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("template", "problem"), UNPARSEABLE, ids=[line.format(c="#c", ts="ts", s="S", u="U") for line, _ in UNPARSEABLE])
+async def test_a_line_that_cannot_be_parsed_aborts(debug_linked_p11, template, problem):
+    hub, proc = debug_linked_p11
+    asker, n, ts = await _setup(hub)
+    line = template.format(c=CHAN, ts=ts, s=hub.server_numnick, u=n["opped"])
+    await hub.send_raw(line)
+
+    await _expect_abort(proc, line, problem)
 
 
 @pytest.mark.asyncio
@@ -127,8 +139,8 @@ async def test_clearmode_covers_every_kind_of_mode(debug_linked_p11):
     assert before.modes == "".join(sorted("AURklmnt"))
     assert before.bans == {"*!*@spam.example.net"}
 
-    # Everything but +n and +t; 'd' is server-local and 'x' unknown: both ignored
-    await hub.send_raw(f"{hub_yy} CM {CHAN} RmlkAUovbdx")
+    # Everything but +n and +t
+    await hub.send_raw(f"{hub_yy} CM {CHAN} RmlkAUovb")
     after = await chaninfo(hub, asker, CHAN)
     assert after.modes == "nt"
     assert (after.key, after.limit) == (None, None)

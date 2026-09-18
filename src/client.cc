@@ -313,7 +313,6 @@ bool xClient::FakeNotice(const Channel* theChan, const iClient* srcClient, const
     if (Message.empty() || !isConnected()) {
         return false;
     }
-    // This sent a PRIVMSG, having been copied from FakeMessage()
     return MyUplink->SendNotice(Source(srcClient), theChan->getName(), Message);
 }
 
