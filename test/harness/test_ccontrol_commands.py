@@ -72,9 +72,11 @@ async def test_announce_is_a_notice_to_everybody_from_a_client_made_for_it(ccont
 
 
 @pytest.mark.asyncio
-async def test_topic_is_set_by_the_server_in_the_form_the_link_takes(ccontrol_linked):
-    """The handwritten line was "T #chan :text", which a P11 uplink does not
-    take. xServer::Topic() knows the link, and keeps our own record of the topic."""
+async def test_topic_is_set_by_the_server_through_the_api(ccontrol_linked):
+    """The handwritten line was "T #chan :text". A P11 uplink takes that too,
+    but without the channel's timestamp it cannot tell a younger channel of the
+    same name, and our own record of the topic was left as it was.
+    xServer::Topic() sends the form of the link and keeps the record."""
     hub, _proc = ccontrol_linked
     oper, _n, _ts = await _setup(hub)
 

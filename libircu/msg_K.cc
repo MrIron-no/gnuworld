@@ -193,6 +193,13 @@ bool msg_K::Execute(const xParameters& Param) {
     }
 
     // Post the channel kick event
+    // A kicked member stays on the channel, as a zombie, until its own
+    // server confirms the kick with a PART.  For a client of ours, a fake
+    // one included, that server is us.
+    if (destClient->getIntYY() == theServer->getIntYY()) {
+        theServer->Write("{} L {}", destClient->getCharYYXXX(), theChan->getName());
+    }
+
     theServer->PostChannelKick(theChan, srcClient, destClient,
                                (Param.size() >= 4) ? Param[3] : string(), localKick);
 

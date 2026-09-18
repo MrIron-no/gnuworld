@@ -79,3 +79,35 @@ async def test_one_join_to_several_channels(debug_linked_p11):
     await hub.send_raw(f"{hub.server_numnick} M #second -o {n['plain']} {now}")
     assert (await chaninfo(hub, asker, "#second")).members == {"plain": "none"}
     assert (await chaninfo(hub, asker, "#third")).members == {"plain": "+o"}
+
+
+@pytest.mark.asyncio
+async def test_a_kick_of_a_client_of_ours_is_confirmed_with_a_part(gnutest_linked_p11):
+    """The network keeps a kicked member as a zombie until its own server
+    confirms with a PART. For a fake client of ours that server is gnuworld;
+    mod.cloner and mod.dronescan each wrote that PART themselves."""
+    import gnutest_client as gt
+
+    hub, _proc = gnutest_linked_p11
+    asker = await hub.introduce_nick("asker", username="asker")
+    await hub.send_account(asker, "MrIron")
+    alice = await hub.introduce_nick("alice", username="alice")
+    ts = int(time.time()) - 3600
+    await hub.send_raw(f"{hub.server_numnick} B #kicks {ts} +tn {alice}:o")
+
+    introduced = await gt.run(hub, asker, "spawnclient fakey")
+    fakey = next(line for line in introduced if " N fakey " in line).split(" :", 1)[0].split(" ")[-1]
+    await gt.run(hub, asker, "spawnjoin fakey #kicks")
+
+    after = len(hub.received)
+    await hub.send_raw(f"{alice} K #kicks {fakey} :out")
+    confirmed = await hub.wait_for(lambda line: f"{fakey} L #kicks" in line, timeout=10.0, after=after)
+    assert confirmed.endswith(f"{fakey} L #kicks")
+
+    # A kick of somebody else's client is theirs to confirm
+    bob = await hub.introduce_nick("bob", username="bob")
+    await hub.send_raw(f"{bob} J #kicks {ts}")
+    after = len(hub.received)
+    await hub.send_raw(f"{alice} K #kicks {bob} :out")
+    await gt.run(hub, asker, "help")
+    assert not [line for line in hub.received[after:] if " L #kicks" in line]

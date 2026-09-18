@@ -165,16 +165,6 @@ void cloner::OnAttach() {
     loadCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, 0);
 }
 
-void cloner::OnNetworkKick(Channel* theChan, iClient*, iClient* destClient, const string&, bool) {
-    auto pos = std::find(clones.begin(), clones.end(), destClient);
-    if (pos != clones.end()) {
-        stringstream s;
-        s << destClient->getCharYYXXX() << " L " << theChan->getName() << endl;
-
-        MyUplink->Write(s);
-    }
-}
-
 void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
     // elog << "cloner::OnPrivateMessage> " << Message << endl ;
 

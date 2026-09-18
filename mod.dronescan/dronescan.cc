@@ -883,10 +883,7 @@ void dronescan::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* des
         return;
     }
 
-    // Resync GNUWorld channel state (same pattern as cloner.cc)
-    std::stringstream partMsg;
-    partMsg << destClient->getCharYYXXX() << " L " << theChan->getName() << endl;
-    MyUplink->Write(partMsg);
+    // The core has confirmed the kick to the network with a PART
 
     const string chanKey = string_lower(theChan->getName());
     monitoredChannelsMapType::const_iterator mc = monitoredChannelsMap.find(chanKey);

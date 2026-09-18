@@ -51,7 +51,6 @@ class cloner : public xClient {
     virtual void OnDetach(const string&);
     virtual void OnTimer(const xServer::timerID&, void*);
     virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false);
-    virtual void OnNetworkKick(Channel*, iClient*, iClient*, const string&, bool);
 
   private:
     virtual void addClone();
