@@ -218,7 +218,7 @@ class Channel {
         {'C', ModeType::Flag, MODE_CTCP, 10},   // no CTCP
         {'u', ModeType::Flag, MODE_PART, 11},   // no part messages
         {'M', ModeType::Flag, MODE_MNOREG, 11}, // moderate unregistered users
-        {'Z', ModeType::Flag, MODE_Z, 10},      // TLS only
+        {'Z', ModeType::Flag, MODE_Z, 11},      // TLS only
         {'l', ModeType::SetOnly, MODE_L, 10},   // limit: +l <n>, -l
         {'k', ModeType::Setting, MODE_K, 10},   // key: +k <key>, -k <key>
         {'A', ModeType::Setting, MODE_A, 10},   // admin pass (ircu OPLEVELS)

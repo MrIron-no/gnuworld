@@ -239,23 +239,25 @@ void testParseProblems() {
 }
 
 void testProtocol() {
-    // u and M came with P11.  On a P10 link they are neither sent nor
+    // u, M and Z came with P11.  On a P10 link they are neither sent nor
     // believed: a problem, as an unknown mode is, and the rest stands.
     for (const Channel::ModeInfo& mode : Channel::modeTable) {
-        CHECK(mode.protocol == (('u' == mode.letter || 'M' == mode.letter) ? 11 : 10));
+        const bool isNew = std::string_view("uMZ").find(mode.letter) != std::string_view::npos;
+        CHECK(mode.protocol == (isNew ? 11 : 10));
     }
 
     const std::vector<std::string_view> none;
-    const Channel::ParsedModes p11 = Channel::parseModes("+muM", none, {.protocol = 11});
-    CHECK(p11.ok() && p11.changes.size() == 3);
+    const Channel::ParsedModes p11 = Channel::parseModes("+muMZ", none, {.protocol = 11});
+    CHECK(p11.ok() && p11.changes.size() == 4);
 
-    const Channel::ParsedModes p10 = Channel::parseModes("+muM", none, {.protocol = 10});
+    const Channel::ParsedModes p10 = Channel::parseModes("+muMZ", none, {.protocol = 10});
     CHECK(p10.problems ==
-          (std::vector<std::string>{"mode 'u' needs protocol 11", "mode 'M' needs protocol 11"}));
+          (std::vector<std::string>{"mode 'u' needs protocol 11", "mode 'M' needs protocol 11",
+                                    "mode 'Z' needs protocol 11"}));
     CHECK(p10.changes.size() == 1 && 'm' == p10.changes[0].mode.letter);
 
     // The default is the protocol we speak ourselves
-    CHECK(Channel::parseModes("+uM", none).ok());
+    CHECK(Channel::parseModes("+uMZ", none).ok());
 }
 
 void testKeysAndLimits() {

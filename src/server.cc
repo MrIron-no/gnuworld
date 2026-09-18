@@ -1825,8 +1825,12 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const iClien
     logModeProblems("xServer::ClearMode>", theChan->getName(), problems);
 
     string letters;
-    std::ranges::copy_if(modes, std::back_inserter(letters),
-                         [](char letter) { return Channel::findMode(letter).has_value(); });
+    const unsigned int protocol = (Uplink != 0) ? Uplink->getProtocol() : 11;
+    std::ranges::copy_if(modes, std::back_inserter(letters), [protocol](char letter) {
+        // Not a letter the uplink does not have: u, M and Z came with P11
+        const std::optional<Channel::ModeInfo> mode = Channel::findMode(letter);
+        return mode && mode->protocol <= protocol;
+    });
 
     if (letters.empty()) {
         return false;

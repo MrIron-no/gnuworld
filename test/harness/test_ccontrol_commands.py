@@ -38,7 +38,8 @@ async def test_channel_commands(ccontrol_linked):
     assert await sent(f"mode {CHAN} +b *!*@spam.example") == [f"{srv} M {CHAN} +b *!*@spam.example {ts}"]
     assert await sent(f"mode {CHAN} +o bob") == [f"{srv} M {CHAN} +o {n['bob']} {ts}"]
     assert await sent(f"clearchan {CHAN} b") == [f"{srv} CM {CHAN} :b"]
-    assert await sent(f"clearchan {CHAN} ALL") == [f"{srv} CM {CHAN} :obklimnsptrDCcuMZ"]
+    # ALL is "obklimnsptrDCcuMZ"; this link is P10, which has no u, M or Z
+    assert await sent(f"clearchan {CHAN} ALL") == [f"{srv} CM {CHAN} :obklimnsptrDCc"]
 
 
 @pytest.mark.asyncio
