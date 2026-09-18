@@ -148,10 +148,11 @@ void nickserv::BurstChannels() {
     MyUplink->RegisterChannelEvent(consoleChannel, this);
 
     std::stringstream setTopic;
-    setTopic << getCharYYXXX() << " T " << consoleChannel << " :"
-             << "Current NickServ console level: [" << logging::logTarget::getIdent(consoleLevel)
+    setTopic << "Current NickServ console level: [" << logging::logTarget::getIdent(consoleLevel)
              << "] (" << consoleLevel << ")";
-    Write(setTopic);
+    if (Channel* theConsole = Network->findChannel(consoleChannel)) {
+        Topic(theConsole, setTopic.str());
+    }
 
     return xClient::BurstChannels();
 }
@@ -607,8 +608,9 @@ void nickserv::setConsoleLevel(logging::events::eventType& newMask) {
 
     consoleLevel = newMask;
 
-    Write("%s T %s :Current NickServ console level: %u", getCharYYXXX().c_str(),
-          consoleChannel.c_str(), newMask);
+    if (Channel* theConsole = Network->findChannel(consoleChannel)) {
+        Topic(theConsole, std::format("Current NickServ console level: {}", newMask));
+    }
 }
 
 /**

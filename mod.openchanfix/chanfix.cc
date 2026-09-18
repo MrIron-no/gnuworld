@@ -272,13 +272,14 @@ void chanfix::readConfigFile(const std::string& configFileName) {
 
     daySamples = atoi((chanfixConfig->Require("daysamples")->second).c_str());
     if (daySamples < 1) {
-        elog << "chanfix::readConfigFile> FATAL: daysamples must be >= 1 (got "
-             << daySamples << "). Check your config file." << std::endl;
+        elog << "chanfix::readConfigFile> FATAL: daysamples must be >= 1 (got " << daySamples
+             << "). Check your config file." << std::endl;
         ::exit(1);
     }
     maxScore = daySamples * (86400 / POINTS_UPDATE_TIME);
     bonusPointsPerDay = atoi((chanfixConfig->Require("bonusPointsPerDay")->second).c_str());
-    bonusMaxDaysBeforeDecay = atoi((chanfixConfig->Require("bonusMaxDaysBeforeDecay")->second).c_str());
+    bonusMaxDaysBeforeDecay =
+        atoi((chanfixConfig->Require("bonusMaxDaysBeforeDecay")->second).c_str());
 
     /* Set up the channels that chanfix should join */
     EConfig::const_iterator ptr = chanfixConfig->Find("joinChan");
@@ -382,8 +383,7 @@ void chanfix::OnTimer(const xServer::timerID& theTimer, void*) {
     time_t theTime;
     if (theTimer == tidGivePoints) {
         /* 5 min timer, loop through channels and give all ops a point! */
-        elog << "[C] - INFO  - Scoring cycle: awarding points to opped users."
-             << std::endl;
+        elog << "[C] - INFO  - Scoring cycle: awarding points to opped users." << std::endl;
         giveAllOpsPoints();
 
         /* Refresh Timer */
@@ -417,8 +417,7 @@ void chanfix::OnTimer(const xServer::timerID& theTimer, void*) {
         tidRotateDB = MyUplink->RegisterTimer(theTime, this, NULL);
     } else if (theTimer == tidUpdateDB) {
         /* Sync dirty ops to the database */
-        elog << "[C] - INFO  - SQL sync: writing dirty ops to database."
-             << std::endl;
+        elog << "[C] - INFO  - SQL sync: writing dirty ops to database." << std::endl;
         syncToDB();
 
         /* Refresh Timer */
@@ -798,14 +797,12 @@ bool chanfix::msgTopOps(Channel* netChan) {
                  cptr++) {
                 curAccount = *cptr;
 
-                MyUplink->Write(
-                    "%s P %s :%s channel modes have been removed to allow you to return. Please "
-                    "return so that I can op you during the channel fixing process\r\n",
-                    getCharYYXXX().c_str(), curAccount->getCharYYXXX().c_str(),
-                    netChan->getName().c_str());
+                Message(curAccount,
+                        "%s channel modes have been removed to allow you to return. Please "
+                        "return so that I can op you during the channel fixing process",
+                        netChan->getName().c_str());
 
-                MyUplink->Write("%s P %s :\002DO NOT REPLY TO THIS MESSAGE\002\r\n",
-                                getCharYYXXX().c_str(), curAccount->getCharYYXXX().c_str());
+                Message(curAccount, "\002DO NOT REPLY TO THIS MESSAGE\002");
             }
         }
     }
@@ -932,24 +929,14 @@ bool chanfix::serverNotice(Channel* theChannel, const char* format, ...) {
     vsnprintf(buf, 1024, format, _list);
     va_end(_list);
 
-    std::stringstream s;
-    s << MyUplink->getCharYY() << " O " << theChannel->getName() << " :" << buf << std::ends;
-
-    Write(s);
-
-    return false;
+    return MyUplink->serverNotice(theChannel, std::string(buf));
 }
 
 /**
  * Send a notice to a channel from the server.
- * TODO: Move this method to xServer.
  */
 bool chanfix::serverNotice(Channel* theChannel, const std::string& Message) {
-    std::stringstream s;
-    s << MyUplink->getCharYY() << " O " << theChannel->getName() << " :" << Message << std::ends;
-
-    Write(s);
-    return false;
+    return MyUplink->serverNotice(theChannel, Message);
 }
 
 bool chanfix::logAdminMessage(const char* format, ...) {
@@ -1020,40 +1007,17 @@ char* chanfix::convertToAscTime(time_t NOW) {
 }
 
 void chanfix::SendFmtTo(iClient* theClient, const std::string& theMessage) {
-    char buffer[512] = {0};
-    char* b = buffer;
-    const char* m = 0;
-
+    // Only to somebody who is logged in.  Every line of the text is a
+    // message of its own, which Message() and Notice() see to.
     sqlcfUser* theUser = isAuthed(theClient->getAccount());
-
-    for (m = theMessage.c_str(); *m != 0; m++) {
-        if (*m == '\n' || *m == '\r') {
-            *b = '\0';
-            if (theUser) {
-                if (!theUser->getUseNotice())
-                    MyUplink->Write("%s P %s :%s\r\n", getCharYYXXX().c_str(),
-                                    theClient->getCharYYXXX().c_str(), buffer);
-                else
-                    MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                                    theClient->getCharYYXXX().c_str(), buffer);
-            }
-            b = buffer;
-        } else if (b < buffer + 509)
-            *(b++) = *m;
+    if (!theUser) {
+        return;
     }
 
-    *b = '\0'; // What's this for? 'b' isn't used anymore.
-
-    if (theUser) {
-        if (!theUser->getUseNotice())
-            MyUplink->Write("%s P %s :%s\r\n", getCharYYXXX().c_str(),
-                            theClient->getCharYYXXX().c_str(), buffer);
-        else
-            MyUplink->Write("%s O %s :%s\r\n", getCharYYXXX().c_str(),
-                            theClient->getCharYYXXX().c_str(), buffer);
-    }
-
-    return;
+    if (!theUser->getUseNotice())
+        Message(theClient, theMessage);
+    else
+        Notice(theClient, theMessage);
 }
 
 void chanfix::SendTo(iClient* theClient, const char* Msg, ...) {
@@ -1087,24 +1051,24 @@ bool chanfix::migrateDaySamples() {
     unsigned int oldDaySamples = 14; /* default if not stored */
 
     /* Read the stored daySamples value from the variables table */
-    if (localDBHandle->Exec(
-            "SELECT var_value FROM variables WHERE var_name = 'daysamples'", true)
-        && localDBHandle->Tuples()) {
+    if (localDBHandle->Exec("SELECT var_value FROM variables WHERE var_name = 'daysamples'",
+                            true) &&
+        localDBHandle->Tuples()) {
         oldDaySamples = atoi(localDBHandle->GetValue(0, 0));
-        if (oldDaySamples < 1) oldDaySamples = 14;
+        if (oldDaySamples < 1)
+            oldDaySamples = 14;
     }
 
     unsigned int newDaySamples = daySamples;
 
     if (oldDaySamples == newDaySamples) {
-        elog << "*** [chanfix::migrateDaySamples] daySamples unchanged ("
-             << newDaySamples << "), no migration needed." << std::endl;
+        elog << "*** [chanfix::migrateDaySamples] daySamples unchanged (" << newDaySamples
+             << "), no migration needed." << std::endl;
         return true;
     }
 
-    elog << "*** [chanfix::migrateDaySamples] daySamples changed from "
-         << oldDaySamples << " to " << newDaySamples
-         << ". Migrating chanops_daily ..." << std::endl;
+    elog << "*** [chanfix::migrateDaySamples] daySamples changed from " << oldDaySamples << " to "
+         << newDaySamples << ". Migrating chanops_daily ..." << std::endl;
 
     time_t now = currentTime();
     int oldCurrentDay = static_cast<int>(now / 86400 % oldDaySamples);
@@ -1112,22 +1076,23 @@ bool chanfix::migrateDaySamples() {
 
     /* If shrinking, delete day slots that fall outside the new window */
     if (newDaySamples < oldDaySamples) {
-        int minKeep = (oldCurrentDay - static_cast<int>(newDaySamples) + 1)
-                      % static_cast<int>(oldDaySamples);
-        if (minKeep < 0) minKeep += static_cast<int>(oldDaySamples);
+        int minKeep =
+            (oldCurrentDay - static_cast<int>(newDaySamples) + 1) % static_cast<int>(oldDaySamples);
+        if (minKeep < 0)
+            minKeep += static_cast<int>(oldDaySamples);
         int maxKeep = oldCurrentDay;
 
         std::stringstream delQuery;
         if (minKeep <= maxKeep) {
-            delQuery << "DELETE FROM chanops_daily WHERE day < "
-                     << minKeep << " OR day > " << maxKeep;
+            delQuery << "DELETE FROM chanops_daily WHERE day < " << minKeep << " OR day > "
+                     << maxKeep;
         } else {
-            delQuery << "DELETE FROM chanops_daily WHERE day > "
-                     << maxKeep << " AND day < " << minKeep;
+            delQuery << "DELETE FROM chanops_daily WHERE day > " << maxKeep << " AND day < "
+                     << minKeep;
         }
 
-        elog << "*** [chanfix::migrateDaySamples] Pruning old day slots: "
-             << delQuery.str() << std::endl;
+        elog << "*** [chanfix::migrateDaySamples] Pruning old day slots: " << delQuery.str()
+             << std::endl;
 
         if (!localDBHandle->Exec(delQuery.str())) {
             elog << "*** [chanfix::migrateDaySamples] ERROR pruning: "
@@ -1138,16 +1103,15 @@ bool chanfix::migrateDaySamples() {
 
     /* Shift day slots so that currentDay points to the same data */
     if (oldCurrentDay != newCurrentDay) {
-        int shift = (newCurrentDay - oldCurrentDay)
-                    % static_cast<int>(newDaySamples);
-        if (shift < 0) shift += static_cast<int>(newDaySamples);
+        int shift = (newCurrentDay - oldCurrentDay) % static_cast<int>(newDaySamples);
+        if (shift < 0)
+            shift += static_cast<int>(newDaySamples);
 
         std::stringstream shiftQuery;
-        shiftQuery << "UPDATE chanops_daily SET day = (day + "
-                   << shift << ") % " << newDaySamples;
+        shiftQuery << "UPDATE chanops_daily SET day = (day + " << shift << ") % " << newDaySamples;
 
-        elog << "*** [chanfix::migrateDaySamples] Shifting day slots: "
-             << shiftQuery.str() << std::endl;
+        elog << "*** [chanfix::migrateDaySamples] Shifting day slots: " << shiftQuery.str()
+             << std::endl;
 
         if (!localDBHandle->Exec(shiftQuery.str())) {
             elog << "*** [chanfix::migrateDaySamples] ERROR shifting: "
@@ -1156,26 +1120,25 @@ bool chanfix::migrateDaySamples() {
         }
     }
 
-    /* If expanding, we need to move the following day slots at the end so they don't get erased the next days.
-       Note: The below is required in addition to the previous shifts.
+    /* If expanding, we need to move the following day slots at the end so they don't get erased the
+       next days. Note: The below is required in addition to the previous shifts.
     */
     if (newDaySamples > oldDaySamples) {
         int shift = (newDaySamples - oldDaySamples);
         int minDay = newCurrentDay;
-        int maxDay = (newCurrentDay + static_cast<int>(oldDaySamples)) % static_cast<int>(newDaySamples);
+        int maxDay =
+            (newCurrentDay + static_cast<int>(oldDaySamples)) % static_cast<int>(newDaySamples);
         std::stringstream shiftQuery;
         string tmpStr = (maxDay > minDay) ? " AND " : " OR ";
-        shiftQuery << "UPDATE chanops_daily SET day = (day + "
-                << shift << ") % " << newDaySamples
-                << " WHERE day > " << minDay
-                << tmpStr << "day < " << maxDay;
+        shiftQuery << "UPDATE chanops_daily SET day = (day + " << shift << ") % " << newDaySamples
+                   << " WHERE day > " << minDay << tmpStr << "day < " << maxDay;
 
-        elog << "*** [chanfix::migrateDaySamples] Shifting day slots (part 2): "
-            << shiftQuery.str() << std::endl;
+        elog << "*** [chanfix::migrateDaySamples] Shifting day slots (part 2): " << shiftQuery.str()
+             << std::endl;
 
         if (!localDBHandle->Exec(shiftQuery.str())) {
             elog << "*** [chanfix::migrateDaySamples] ERROR shifting: "
-                << localDBHandle->ErrorMessage() << std::endl;
+                 << localDBHandle->ErrorMessage() << std::endl;
             return false;
         }
     }
@@ -1201,8 +1164,7 @@ bool chanfix::migrateDaySamples() {
     }
 
     elog << "*** [chanfix::migrateDaySamples] Migration complete. "
-         << "oldCurrentDay=" << oldCurrentDay
-         << " newCurrentDay=" << newCurrentDay << std::endl;
+         << "oldCurrentDay=" << oldCurrentDay << " newCurrentDay=" << newCurrentDay << std::endl;
 
     return true;
 }
@@ -1215,19 +1177,18 @@ void chanfix::precacheChanOps() {
 
     /* Check for legacy backup table from old full-dump code */
     if (localDBHandle->Exec("SELECT count(*) FROM pg_tables WHERE tablename = 'chanopsbackup'",
-                             true)
-        && localDBHandle->Tuples() && atoi(localDBHandle->GetValue(0, 0))) {
+                            true) &&
+        localDBHandle->Tuples() && atoi(localDBHandle->GetValue(0, 0))) {
         /* Check if the main chanOps table is empty */
-        if (localDBHandle->Exec("SELECT count(*) FROM chanOps", true)
-            && localDBHandle->Tuples() && atoi(localDBHandle->GetValue(0, 0)) == 0) {
+        if (localDBHandle->Exec("SELECT count(*) FROM chanOps", true) && localDBHandle->Tuples() &&
+            atoi(localDBHandle->GetValue(0, 0)) == 0) {
             /* Main table is empty - restore from backup */
             elog << "*** [chanfix::precacheChanOps] Restoring chanOps from legacy backup table."
                  << std::endl;
             localDBHandle->Exec("INSERT INTO chanOps SELECT * FROM chanOpsBackup");
         }
         /* Drop the backup table either way */
-        elog << "*** [chanfix::precacheChanOps] Dropping legacy chanOpsBackup table."
-             << std::endl;
+        elog << "*** [chanfix::precacheChanOps] Dropping legacy chanOpsBackup table." << std::endl;
         localDBHandle->Exec("DROP TABLE chanOpsBackup");
     }
 
@@ -1281,8 +1242,7 @@ void chanfix::precacheChanOps() {
     }
 
     /* Recalculate total points after loading daily data */
-    for (sqlChanOpsType::iterator ptr = sqlChanOps.begin();
-         ptr != sqlChanOps.end(); ++ptr) {
+    for (sqlChanOpsType::iterator ptr = sqlChanOps.begin(); ptr != sqlChanOps.end(); ++ptr) {
         for (sqlChanOpsType::mapped_type::iterator chanOp = ptr->second.begin();
              chanOp != ptr->second.end(); ++chanOp) {
             chanOp->second->calcTotalPoints();
@@ -2048,7 +2008,8 @@ bool chanfix::simFix(sqlChannel* sqlChan, bool autofix, time_t c_Time, iClient* 
 
     SendTo(theClient, chanStatus.str().c_str());
 
-    if ((!numClientsToOp || chanMaxScore < min_score) && (!autofix || !(numClientsToOp + currentOps))) {
+    if ((!numClientsToOp || chanMaxScore < min_score) &&
+        (!autofix || !(numClientsToOp + currentOps))) {
         if (autofix && !sqlChan->getSimModesRemoved()) {
 
             if (netChan->banList_size() || netChan->getMode(Channel::MODE_I) ||
@@ -2308,8 +2269,8 @@ bool chanfix::fixChan(sqlChannel* sqlChan, bool autofix) {
         min_score = sqlChan->getMaxScore();
 
     elog << "chanfix::fixChan> [" << netChan->getName() << "] start " << sqlChan->getFixStart()
-         << ", delta " << time_since_start << ", max " << chanMaxScore << ", minabs " << min_score_abs
-         << ", minrel " << min_score_rel << "." << std::endl;
+         << ", delta " << time_since_start << ", max " << chanMaxScore << ", minabs "
+         << min_score_abs << ", minrel " << min_score_rel << "." << std::endl;
 
     /**
      * Get the scores of the accounts of the non-opped clients.
@@ -2357,7 +2318,8 @@ bool chanfix::fixChan(sqlChannel* sqlChan, bool autofix) {
     }
 
     /* If no scores are high enough, return. */
-    if ((!numClientsToOp || chanMaxScore < min_score) && (!autofix || !(numClientsToOp + currentOps))) {
+    if ((!numClientsToOp || chanMaxScore < min_score) &&
+        (!autofix || !(numClientsToOp + currentOps))) {
         if (autofix && !sqlChan->getModesRemoved() && needsModesRemoved(netChan)) {
             ClearMode(netChan, "biklrD", true);
             sqlChan->setModesRemoved(true);
@@ -2730,8 +2692,7 @@ void chanfix::startTimers() {
  * since libpq connections are not thread-safe. Signals completion by setting
  * syncThreadRunning to false.
  */
-void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDeletes)
-{
+void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDeletes) {
     /* Get our own DB connection for this thread */
     dbHandle* threadCon = theManager->getConnection();
 
@@ -2751,15 +2712,13 @@ void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDelete
     }
 
     /* 1. Process deletes - remove from both tables */
-    for (pendingDeletesType::iterator it = snapDeletes.begin();
-         it != snapDeletes.end(); ++it) {
+    for (pendingDeletesType::iterator it = snapDeletes.begin(); it != snapDeletes.end(); ++it) {
         std::stringstream delQuery;
-        delQuery << "DELETE FROM chanOps WHERE channel = '"
-                 << escapeSQLChars(it->first) << "' AND account = '"
-                 << escapeSQLChars(it->second) << "'";
+        delQuery << "DELETE FROM chanOps WHERE channel = '" << escapeSQLChars(it->first)
+                 << "' AND account = '" << escapeSQLChars(it->second) << "'";
         if (!threadCon->Exec(delQuery.str())) {
-            elog << "*** [chanfix::syncWorker] Error deleting chanOp: "
-                 << threadCon->ErrorMessage() << std::endl;
+            elog << "*** [chanfix::syncWorker] Error deleting chanOp: " << threadCon->ErrorMessage()
+                 << std::endl;
             threadCon->Exec("ROLLBACK");
             syncFailures++;
             if (syncFailures >= MAX_SYNC_FAILURES) {
@@ -2772,9 +2731,8 @@ void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDelete
             return;
         }
         std::stringstream delDailyQuery;
-        delDailyQuery << "DELETE FROM chanops_daily WHERE channel = '"
-                      << escapeSQLChars(it->first) << "' AND account = '"
-                      << escapeSQLChars(it->second) << "'";
+        delDailyQuery << "DELETE FROM chanops_daily WHERE channel = '" << escapeSQLChars(it->first)
+                      << "' AND account = '" << escapeSQLChars(it->second) << "'";
         if (!threadCon->Exec(delDailyQuery.str())) {
             elog << "*** [chanfix::syncWorker] Error deleting chanops_daily: "
                  << threadCon->ErrorMessage() << std::endl;
@@ -2783,26 +2741,21 @@ void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDelete
 
     /* 2. UPSERT snapshot ops - metadata to chanOps, daily points to chanops_daily */
     int upsertsProcessed = 0;
-    for (syncSnapshotType::iterator snap = snapOps.begin();
-         snap != snapOps.end(); ++snap) {
+    for (syncSnapshotType::iterator snap = snapOps.begin(); snap != snapOps.end(); ++snap) {
         /* 2a. UPSERT metadata into chanOps */
         std::stringstream upsertQuery;
         upsertQuery << "INSERT INTO chanOps (channel, account, last_seen_as, "
-                    << "ts_firstopped, ts_lastopped) VALUES ('"
-                    << escapeSQLChars(snap->channel) << "', '"
-                    << escapeSQLChars(snap->account) << "', '"
-                    << escapeSQLChars(snap->lastSeenAs) << "', "
-                    << snap->firstOpped << ", "
-                    << snap->lastOpped
-                    << ") ON CONFLICT (channel, account) DO UPDATE SET "
+                    << "ts_firstopped, ts_lastopped) VALUES ('" << escapeSQLChars(snap->channel)
+                    << "', '" << escapeSQLChars(snap->account) << "', '"
+                    << escapeSQLChars(snap->lastSeenAs) << "', " << snap->firstOpped << ", "
+                    << snap->lastOpped << ") ON CONFLICT (channel, account) DO UPDATE SET "
                     << "last_seen_as = EXCLUDED.last_seen_as, "
                     << "ts_firstopped = EXCLUDED.ts_firstopped, "
                     << "ts_lastopped = EXCLUDED.ts_lastopped";
 
         if (!threadCon->Exec(upsertQuery.str())) {
-            elog << "*** [chanfix::syncWorker] Error upserting chanOp ("
-                 << snap->channel << ", " << snap->account
-                 << "): " << threadCon->ErrorMessage() << std::endl;
+            elog << "*** [chanfix::syncWorker] Error upserting chanOp (" << snap->channel << ", "
+                 << snap->account << "): " << threadCon->ErrorMessage() << std::endl;
             threadCon->Exec("ROLLBACK");
             syncFailures++;
             if (syncFailures >= MAX_SYNC_FAILURES) {
@@ -2819,12 +2772,12 @@ void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDelete
         if (snap->forceAllDays) {
             /* Shutdown: write all non-zero day slots */
             for (size_t i = 0; i < snap->day.size(); i++) {
-                if (snap->day[i] == 0) continue;
+                if (snap->day[i] == 0)
+                    continue;
                 std::stringstream dayQuery;
                 dayQuery << "INSERT INTO chanops_daily (channel, account, day, points) VALUES ('"
-                         << escapeSQLChars(snap->channel) << "', '"
-                         << escapeSQLChars(snap->account) << "', "
-                         << i << ", " << snap->day[i]
+                         << escapeSQLChars(snap->channel) << "', '" << escapeSQLChars(snap->account)
+                         << "', " << i << ", " << snap->day[i]
                          << ") ON CONFLICT (channel, account, day) DO UPDATE SET "
                          << "points = EXCLUDED.points";
                 if (!threadCon->Exec(dayQuery.str())) {
@@ -2838,9 +2791,8 @@ void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDelete
                 snap->currentDaySlot < static_cast<short>(snap->day.size())) {
                 std::stringstream dayQuery;
                 dayQuery << "INSERT INTO chanops_daily (channel, account, day, points) VALUES ('"
-                         << escapeSQLChars(snap->channel) << "', '"
-                         << escapeSQLChars(snap->account) << "', "
-                         << snap->currentDaySlot << ", " << snap->day[snap->currentDaySlot]
+                         << escapeSQLChars(snap->channel) << "', '" << escapeSQLChars(snap->account)
+                         << "', " << snap->currentDaySlot << ", " << snap->day[snap->currentDaySlot]
                          << ") ON CONFLICT (channel, account, day) DO UPDATE SET "
                          << "points = EXCLUDED.points";
                 if (!threadCon->Exec(dayQuery.str())) {
@@ -2870,13 +2822,12 @@ void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDelete
 
     /* Success */
     if (syncFailures > 0) {
-        logAdminMessage("SQL sync recovered after %d consecutive failure(s).",
-                        syncFailures);
+        logAdminMessage("SQL sync recovered after %d consecutive failure(s).", syncFailures);
     }
     syncFailures = 0;
 
-    logDebugMessage("SQL sync complete: %d upserts, %d deletes.",
-                    upsertsProcessed, static_cast<int>(snapDeletes.size()));
+    logDebugMessage("SQL sync complete: %d upserts, %d deletes.", upsertsProcessed,
+                    static_cast<int>(snapDeletes.size()));
 
     theManager->removeConnection(threadCon);
     syncThreadRunning = false;
@@ -2892,8 +2843,7 @@ void chanfix::syncWorker(syncSnapshotType snapOps, pendingDeletesType snapDelete
  * Shutdown mode (forceAll=true): waits for any running background sync,
  * then runs synchronously to guarantee data is persisted before exit.
  */
-void chanfix::syncToDB(bool forceAll)
-{
+void chanfix::syncToDB(bool forceAll) {
     /* If shutdown, wait for any running background sync to finish first */
     if (forceAll) {
         while (syncThreadRunning) {
@@ -2902,16 +2852,14 @@ void chanfix::syncToDB(bool forceAll)
     }
 
     if (syncThreadRunning) {
-        elog << "*** [chanfix::syncToDB] Background sync still running; skipping."
-             << std::endl;
+        elog << "*** [chanfix::syncToDB] Background sync still running; skipping." << std::endl;
         return;
     }
 
     /* 1. Build snapshot of dirty ops (main thread, fast) */
     syncSnapshotType snapOps;
 
-    for (sqlChanOpsType::iterator ptr = sqlChanOps.begin();
-         ptr != sqlChanOps.end(); ++ptr) {
+    for (sqlChanOpsType::iterator ptr = sqlChanOps.begin(); ptr != sqlChanOps.end(); ++ptr) {
         for (sqlChanOpsType::mapped_type::iterator chanOp = ptr->second.begin();
              chanOp != ptr->second.end(); ++chanOp) {
             sqlChanOp* curOp = chanOp->second;
@@ -2944,8 +2892,7 @@ void chanfix::syncToDB(bool forceAll)
     }
 
     logDebugMessage("SQL sync starting: %d dirty ops, %d pending deletes.",
-                    static_cast<int>(snapOps.size()),
-                    static_cast<int>(snapDeletes.size()));
+                    static_cast<int>(snapOps.size()), static_cast<int>(snapDeletes.size()));
 
     if (forceAll) {
         /* Synchronous path for shutdown - must complete before exit */
@@ -2955,8 +2902,8 @@ void chanfix::syncToDB(bool forceAll)
     } else {
         /* Background thread for periodic sync */
         syncThreadRunning = true;
-        std::thread syncThread(&chanfix::syncWorker, this,
-                               std::move(snapOps), std::move(snapDeletes));
+        std::thread syncThread(&chanfix::syncWorker, this, std::move(snapOps),
+                               std::move(snapDeletes));
         syncThread.detach();
     }
 }
@@ -3026,9 +2973,8 @@ void chanfix::rotateDB() {
             curOp = chanOp->second;
             curOp->setDay(nextDay, 0);
             curOp->calcTotalPoints();
-            if ((curOp->getPoints() <= 0) &&
-                ((maxFirstOppedTS > curOp->getTimeFirstOpped()) ||
-                 (maxLastOppedTS > curOp->getTimeLastOpped()))) {
+            if ((curOp->getPoints() <= 0) && ((maxFirstOppedTS > curOp->getTimeFirstOpped()) ||
+                                              (maxLastOppedTS > curOp->getTimeLastOpped()))) {
                 pendingDeletes.push_back(std::make_pair(ptr->first, curOp->getAccount()));
                 ptr->second.erase(chanOp++);
                 delete curOp;
@@ -3109,9 +3055,8 @@ void chanfix::giveAllOpsPoints() {
         }
     }
 
-    elog << "[C] - INFO  - Scoring complete: "
-         << scoredOps << " ops scored across "
-         << scoredChans << " channels." << std::endl;
+    elog << "[C] - INFO  - Scoring complete: " << scoredOps << " ops scored across " << scoredChans
+         << " channels." << std::endl;
 
     return;
 } // giveAllOpsPoints
@@ -3415,7 +3360,8 @@ int chanfix::getNewScore(sqlChanOp* chOp, time_t oldestTS) {
     if (daysSinceFirstOpOnChan < static_cast<int>(bonusMaxDaysBeforeDecay))
         x = static_cast<double>(bonusPointsPerDay);
     else
-        x = static_cast<double>(bonusPointsPerDay * bonusMaxDaysBeforeDecay) / daysSinceFirstOpOnChan;
+        x = static_cast<double>(bonusPointsPerDay * bonusMaxDaysBeforeDecay) /
+            daysSinceFirstOpOnChan;
 
     /* GET NEW SCORE */
     int newScore = (x * daysSinceFirstOp);
@@ -3615,8 +3561,7 @@ bool chanfix::doXResponse(iServer* theServer, const string& Routing, const strin
     elog << "chanfix::doXResponse: " << getCharYY().c_str() << " XR "
          << theServer->getCharYY().c_str() << " " << Routing.c_str() << " :" << Message.c_str()
          << endl;
-    return Write("%s XR %s %s :%s", getCharYY().c_str(), theServer->getCharYY().c_str(),
-                 Routing.c_str(), Message.c_str());
+    return MyUplink->XReply(theServer, Routing, Message);
 }
 
 } // namespace cf

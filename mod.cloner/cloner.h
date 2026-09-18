@@ -56,6 +56,9 @@ class cloner : public xClient {
     virtual void addClone();
     virtual size_t joinClone(iClient*, Channel*);
     virtual size_t joinClone(const size_t, Channel*);
+    /// Have every clone say this to a channel or to a nick.
+    void allClonesSay(iClient* theClient, const string& chanOrNickName, const string& text,
+                      bool asNotice);
     virtual size_t partClone(iClient*, Channel*, const string);
     virtual size_t partClone(const size_t, Channel*, const string);
     virtual size_t quitClone(const size_t, const string);

@@ -531,22 +531,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         string chanOrNickName(st[1]);
         string privMsg(st.assemble(2).c_str());
 
-        if (chanOrNickName[0] != '#') { // Assume nickname
-            iClient* Target = Network->findNick(st[1]);
-            if (nullptr == Target) {
-                Notice(theClient, "Unable to find nick: %s", st[1].c_str());
-                return;
-            }
-            chanOrNickName = Target->getCharYYXXX();
-        }
-
-        for (cloneVectorType::const_iterator ptr = clones.begin(), endPtr = clones.end();
-             ptr != endPtr; ++ptr) {
-            stringstream s;
-            s << (*ptr)->getCharYYXXX() << " P " << chanOrNickName << " :" << privMsg;
-
-            MyUplink->Write(s);
-        }
+        allClonesSay(theClient, chanOrNickName, privMsg, false);
     } // SAYALL/MSGALL
     else if (command == "ACTALL" || command == "DOALL" || command == "DESCRIBEALL") {
         if (st.size() < 3) {
@@ -557,23 +542,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         string chanOrNickName(st[1]);
         string action(st.assemble(2).c_str());
 
-        if (chanOrNickName[0] != '#') { // Assume nickname
-            iClient* Target = Network->findNick(st[1]);
-            if (nullptr == Target) {
-                Notice(theClient, "Unable to find nick: %s", st[1].c_str());
-                return;
-            }
-            chanOrNickName = Target->getCharYYXXX();
-        }
-
-        for (cloneVectorType::const_iterator ptr = clones.begin(), endPtr = clones.end();
-             ptr != endPtr; ++ptr) {
-            stringstream s;
-            s << (*ptr)->getCharYYXXX() << " P " << chanOrNickName << " :\001ACTION " << action
-              << "\001";
-
-            MyUplink->Write(s);
-        }
+        allClonesSay(theClient, chanOrNickName, "\001ACTION " + action + "\001", false);
     } // ACTALL/DOALL/DESCRIBEALL
     else if (command == "NOTICEALL") {
         if (st.size() < 3) {
@@ -584,23 +553,37 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         string chanOrNickName(st[1]);
         string notice(st.assemble(2).c_str());
 
-        if (chanOrNickName[0] != '#') { // Assume nickname
-            iClient* Target = Network->findNick(st[1]);
-            if (nullptr == Target) {
-                Notice(theClient, "Unable to find nick: %s", st[1].c_str());
-                return;
-            }
-            chanOrNickName = Target->getCharYYXXX();
-        }
-
-        for (cloneVectorType::const_iterator ptr = clones.begin(), endPtr = clones.end();
-             ptr != endPtr; ++ptr) {
-            stringstream s;
-            s << (*ptr)->getCharYYXXX() << " O " << chanOrNickName << " :" << notice;
-
-            MyUplink->Write(s);
-        }
+        allClonesSay(theClient, chanOrNickName, notice, true);
     } // NOTICEALL
+}
+
+void cloner::allClonesSay(iClient* theClient, const string& chanOrNickName, const string& text,
+                          bool asNotice) {
+    Channel* targetChan = 0;
+    iClient* targetClient = 0;
+    if ('#' == chanOrNickName[0]) {
+        targetChan = Network->findChannel(chanOrNickName);
+        if (nullptr == targetChan) {
+            Notice(theClient, "Unable to find channel: %s", chanOrNickName.c_str());
+            return;
+        }
+    } else { // Assume nickname
+        targetClient = Network->findNick(chanOrNickName);
+        if (nullptr == targetClient) {
+            Notice(theClient, "Unable to find nick: %s", chanOrNickName.c_str());
+            return;
+        }
+    }
+
+    for (iClient* theClone : clones) {
+        if (targetChan != nullptr) {
+            asNotice ? FakeNotice(targetChan, theClone, text)
+                     : FakeMessage(targetChan, theClone, text);
+        } else {
+            asNotice ? FakeNotice(targetClient, theClone, text)
+                     : FakeMessage(targetClient, theClone, text);
+        }
+    }
 }
 
 void cloner::OnTimer(const xServer::timerID& timer_id, void*) {
@@ -746,24 +729,8 @@ size_t cloner::partClone(iClient* theClone, Channel* theChan, const string partM
     if (!theClone->findChannel(theChan))
         return 0;
 
-    stringstream s;
-    s << theClone->getCharYYXXX() << " L " << theChan->getName();
-
-    if (partMsg != "")
-        s << " :" << partMsg;
-
-    MyUplink->Write(s);
-
-    ChannelUser* tmpUser = theChan->findUser(theClone);
-    if (tmpUser != nullptr) {
-        delete tmpUser;
-        tmpUser = nullptr;
-    }
-
-    theChan->removeUser(theClone);
-    theClone->removeChannel(theChan);
-
-    MyUplink->PostChannelEvent(EVT_PART, theChan, static_cast<void*>(theClone), NULL);
+    // Sends the PART, takes the clone off the channel and tells the modules
+    MyUplink->PartChannel(theClone, theChan->getName(), partMsg);
 
     return 1;
 }

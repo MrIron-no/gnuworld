@@ -2253,7 +2253,6 @@ void dronescan::log(const char* cat, const string& message) {
 /** Set the topic of the console channel. */
 void dronescan::setConsoleTopic() {
     std::stringstream setTopic;
-    setTopic << getCharYYXXX() << " T " << consoleChannel << " :";
 
     setTopic << "  ||"
              << "  channelMargin: " << channelMargin << "  nickMargin: " << nickMargin
@@ -2263,7 +2262,9 @@ void dronescan::setConsoleTopic() {
              << "  jcInterval: " << jcInterval << "  jcCutoff: " << jcCutoff
              << "  ncInterval: " << ncInterval << "  ncCutoff: " << ncCutoff;
 
-    Write(setTopic);
+    if (Channel* theConsole = Network->findChannel(consoleChannel)) {
+        Topic(theConsole, setTopic.str());
+    }
 }
 
 /** Reply to an iClient. */

@@ -445,6 +445,12 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
 
     // silence <nick> <mask>, unsilence <mask>, opmode <nick> <user modes>,
     // globalnotice <text>, servsay <nick|#channel> <text>
+    if (st[0] == "servnotice" && st.size() > 2) {
+        if (Channel* targetChan = Network->findChannel(st[1])) {
+            MyUplink->serverNotice(targetChan, st.assemble(2));
+        }
+        return;
+    }
     if (st[0] == "silence" || st[0] == "opmode" || st[0] == "servsay") {
         iClient* target = (st.size() > 2) ? Network->findNick(st[1]) : 0;
         Channel* targetChan = (st.size() > 2) ? Network->findChannel(st[1]) : 0;

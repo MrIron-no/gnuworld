@@ -2662,8 +2662,13 @@ void xServer::PartChannel(iClient* theClient, const string& chanName, const stri
         return;
     }
 
-    // Perform both operations below regardless of the return values,
-    // just to ensure that all parts are in synch
+    // The network knows of no membership to end if we know of none
+    if (0 == theChan->findUser(theClient)) {
+        elog << "xServer::PartChannel (fake)> " << *theClient << " is not on channel: " << chanName
+             << endl;
+        return;
+    }
+
     delete theChan->removeUser(theClient);
     theClient->removeChannel(theChan);
 

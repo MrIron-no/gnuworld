@@ -53,15 +53,8 @@ bool SHUTDOWNCommand::Exec(iClient* theClient, const string& Message) {
                         theClient->getNickName().c_str(), theUser->getName().c_str(),
                         st.assemble(1).c_str());
 
-    std::stringstream toSQuit;
-    toSQuit << server->getCharYY() << " SQ " << server->getName() << " 0 :(" << theUser->getName()
-            << ") " << st.assemble(1);
-
-    std::stringstream toQuit;
-    toQuit << bot->getCharYYXXX() << " Q :" << st.assemble(1);
-
-    bot->Write(toQuit);
-    bot->Write(toSQuit);
+    // The core takes our clients off the network and leaves it
+    server->Shutdown("(" + theUser->getName() + ") " + st.assemble(1));
 
     return true;
 } // SHUTDOWNCommand::Exec(iClient*, const string&)
