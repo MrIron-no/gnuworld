@@ -699,43 +699,128 @@ double getCPUTime() {
            usage.ru_stime.tv_usec / 1e6;
 }
 
+namespace {
+
+/* The length of the UTF-8 sequence this lead byte starts, or 0 when it starts
+ * none: 0xc0 and 0xc1 would be overlong, 0xf5 and above are out of range.
+ */
+std::size_t utf8SequenceLength(unsigned char lead) {
+    if (lead >= 0xc2 && lead <= 0xdf)
+        return 2;
+    if (lead >= 0xe0 && lead <= 0xef)
+        return 3;
+    if (lead >= 0xf0 && lead <= 0xf4)
+        return 4;
+    return 0;
+}
+
+/* True when the length bytes at position are a valid UTF-8 sequence: the
+ * continuation bytes are all 10xxxxxx, and the first of them is narrowed
+ * where the lead byte would otherwise allow an overlong encoding, a surrogate
+ * or a code point above U+10FFFF.
+ */
+bool isValidUtf8Sequence(const std::string& text, std::size_t position, std::size_t length) {
+    if (position + length > text.length())
+        return false;
+
+    const unsigned char lead = static_cast<unsigned char>(text[position]);
+    unsigned char lowest = 0x80;
+    unsigned char highest = 0xbf;
+
+    if (0xe0 == lead)
+        lowest = 0xa0; // no overlong three-byte form
+    else if (0xed == lead)
+        highest = 0x9f; // no UTF-16 surrogate
+    else if (0xf0 == lead)
+        lowest = 0x90; // no overlong four-byte form
+    else if (0xf4 == lead)
+        highest = 0x8f; // nothing above U+10FFFF
+
+    for (std::size_t i = 1; i < length; ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[position + i]);
+        const unsigned char low = (1 == i) ? lowest : 0x80;
+        const unsigned char high = (1 == i) ? highest : 0xbf;
+        if (c < low || c > high)
+            return false;
+    }
+
+    return true;
+}
+
+} // namespace
+
 std::string escapeJsonString(const std::string& input) {
+    static const char hexDigits[] = "0123456789abcdef";
+
     std::string output;
     output.reserve(input.length() * 2);
 
-    for (char c : input) {
+    std::size_t i = 0;
+    while (i < input.length()) {
+        const unsigned char c = static_cast<unsigned char>(input[i]);
+
         switch (c) {
         case '"':
             output += "\\\"";
-            break;
+            ++i;
+            continue;
         case '\\':
             output += "\\\\";
-            break;
+            ++i;
+            continue;
         case '\b':
             output += "\\b";
-            break;
+            ++i;
+            continue;
         case '\f':
             output += "\\f";
-            break;
+            ++i;
+            continue;
         case '\n':
             output += "\\n";
-            break;
+            ++i;
+            continue;
         case '\r':
             output += "\\r";
-            break;
+            ++i;
+            continue;
         case '\t':
             output += "\\t";
-            break;
+            ++i;
+            continue;
         default:
-            if (c >= 0 && c < 32) {
-                output += "\\u";
-                output += std::to_string(static_cast<int>(c));
-            } else {
-                output += c;
-            }
             break;
         }
+
+        /* A control character JSON has no name for, and DEL, as \u00XX */
+        if (c < 0x20 || 0x7f == c) {
+            output += "\\u00";
+            output += hexDigits[(c >> 4) & 0x0f];
+            output += hexDigits[c & 0x0f];
+            ++i;
+            continue;
+        }
+
+        if (c < 0x80) {
+            output += static_cast<char>(c);
+            ++i;
+            continue;
+        }
+
+        /* Valid UTF-8 passes through; anything else becomes U+FFFD, one per
+         * offending byte, so that the line we emit is always valid JSON.
+         */
+        const std::size_t length = utf8SequenceLength(c);
+        if (0 != length && isValidUtf8Sequence(input, i, length)) {
+            output.append(input, i, length);
+            i += length;
+            continue;
+        }
+
+        output += "\xef\xbf\xbd";
+        ++i;
     }
+
     return output;
 }
 

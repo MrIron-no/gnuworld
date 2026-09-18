@@ -18,7 +18,8 @@ noinst_PROGRAMS = test_burst \
 	test_channelmodes \
 	test_checkedformat \
 	test_numbers \
-	test_logger_render
+	test_logger_render \
+	test_logger_format
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
@@ -119,6 +120,11 @@ test_logger_render_SOURCES = test/logger_render.cc
 test_logger_render_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_logger_render_LDADD = libgnuworld.la $(threadLib)
 
+test_logger_format_SOURCES = test/logger_format.cc
+test_logger_format_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_format_LDADD = libgnuworld.la $(threadLib)
+
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
-TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render
+TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
+	test_logger_format

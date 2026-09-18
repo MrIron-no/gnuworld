@@ -22,12 +22,14 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 #include <format>
 
 #include "Channel.h"
 #include "Network.h"
 #include "ELog.h"
+#include "LogFormat.h"
 
 #include "logger.h"
 
@@ -156,20 +158,7 @@ void Logger::writeFunc(Verbosity v, const char* func, const string& jsonParams,
  * Handles both C++ member functions and standalone functions.
  */
 std::string Logger::parseFunction(std::string pretty) {
-    auto paren = pretty.find('(');
-    if (paren != std::string::npos)
-        pretty.erase(paren);
-
-    auto lastColons = pretty.rfind("::");
-    if (lastColons != std::string::npos) {
-        // Find the second-to-last "::" to get class::function
-        auto secondLastColons = pretty.rfind("::", lastColons - 1);
-        if (secondLastColons != std::string::npos)
-            return pretty.substr(secondLastColons + 2);
-        else
-            return pretty;
-    }
-    return pretty;
+    return ::gnuworld::parseFunction(std::move(pretty));
 }
 
 /**
