@@ -25,6 +25,7 @@
 
 #include "xparameters.h"
 #include "ELog.h"
+#include "ChannelUser.h"
 
 namespace gnuworld {
 
@@ -33,6 +34,18 @@ class xServer;
 class ServerCommandHandler {
   protected:
     xServer* theServer;
+
+    /*
+     * The handlers are the IRC parser: what the network says has happened,
+     * they record.  The classes that keep their state from the modules name
+     * this class as a friend, and since C++ does not pass friendship on to
+     * a derived class, the handlers reach that state through these.
+     */
+
+    /// Set a mode of a member, such as the op of whoever creates a channel.
+    static void setMemberMode(ChannelUser* member, ChannelUser::modeType whichMode) {
+        member->setMode(whichMode);
+    }
 
   public:
     ServerCommandHandler(xServer* _theServer) : theServer(_theServer) {}

@@ -195,16 +195,14 @@ class ChannelUser {
      * That is why they are not public.  A module uses Op(), Voice() and
      * their opposites, of xServer or of its xClient.  The IRC parser is what
      * they are for: a handler that has parsed a mode change passes it to
-     * xServer::ApplyChannelModes(), and the ones named below set the
-     * creator's op themselves.
+     * xServer::ApplyChannelModes(), and one that sets a mode itself, the op
+     * of whoever creates a channel, goes through ServerCommandHandler.
      */
     friend class Channel;
     friend class xServer;
 
-    /// The IRC parser: the handlers of libircu that set a member's modes
-    /// themselves, which is the creator's op.
-    friend class msg_C;
-    friend class msg_J;
+    /// The IRC parser: the base class of the handlers of libircu.
+    friend class ServerCommandHandler;
 
     /**
      * Set a given channel user mode.
