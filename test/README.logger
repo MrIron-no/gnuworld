@@ -45,8 +45,8 @@ gives it.
 test_logger_hierarchy
 -----------------------
 LogManager's registry: that get() creates missing ancestors and always
-returns the same pointer for a name, level precedence (configured level
-beats a code default beats inheritance), additive dispatch stopping at a
+returns the same pointer for a name, level precedence (a configured level
+beats a code default, which beats inheritance), additive dispatch stopping at a
 logger with additivity = no, per-sink thresholds, moduleNameFromLibrary()
 for a handful of real library names, and that the logger name column width
 tracks the longest registered name, capped at 20.
@@ -60,7 +60,7 @@ required key, a duplicate logger line, a bad sink id) is rejected with the
 whole file left unapplied; a missing file fails without exiting; configure()
 builds every sink before it changes anything and keeps a code-attached
 sink across a reload; and bin/logging.example.conf itself parses with zero
-errors.
+errors, its five sinks and its active cservice section included.
 
 test_elog_shim
 ----------------

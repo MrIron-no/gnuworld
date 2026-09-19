@@ -19,14 +19,17 @@ MrIron
   LogManager's registry and configuration, logging.conf, the elog shim, and
   migration guides from elog and from log4cplus. The old per-bot
   `LOG_MSG(...).logStructured()` / `registerObjectHandler` / `setChanVerbosity`
-  API this file used to document is gone; see the deprecated fallback keys
-  below for what an existing cservice install keeps working with.
+  API this file used to document is gone, and so are cservice's own five
+  logging keys: it is configured in `logging.conf` like everything else (see
+  [cservice](#cservice) and [Upgrade notes](#upgrade-notes)).
 
 ## Table of Contents
 
 - [Concepts](#concepts)
 - [Quick Start for Operators](#quick-start-for-operators)
 - [logging.conf Reference](#loggingconf-reference)
+- [cservice](#cservice)
+- [Upgrade notes](#upgrade-notes)
 - [Logger Names](#logger-names)
 - [Output Formats](#output-formats)
 - [Levels and Inheritance](#levels-and-inheritance)
@@ -69,15 +72,15 @@ A logger's **effective level** is decided in this order, highest precedence
 first:
 
 1. an explicit `logger.<name>` line of `logging.conf`;
-2. cservice's deprecated legacy conf keys (`log_verbosity` and friends —
-   [see below](#loggingconf-reference)), for as long as `logging.conf` has
-   no `logger.cservice` line;
-3. a **code default**, set once by whoever asked for the logger — this is
+2. a **code default**, set once by whoever asked for the logger — this is
    the one exception to plain inheritance: `db->getLogger()->child("sql",
    ERROR)` gives `<module>.sql` the level `ERROR` of its own even though its
    parent may be at `INFO` or `DEBUG`;
-4. inherited from the nearest ancestor that has a level;
-5. `INFO`, for the root, when nothing at all was said.
+3. inherited from the nearest ancestor that has a level;
+4. `INFO`, for the root, when nothing at all was said.
+
+No module has a say of its own in any of this: every logger of every module,
+cservice's included, is configured by `logging.conf`.
 
 ## Quick Start for Operators
 
@@ -213,15 +216,92 @@ order mark on the first line are tolerated.
 
 **What a reload keeps**: sinks attached by a module's own code
 (`Logger::addSink`), a module's code-supplied default level
-(`child("sql", ERROR)`), cservice's legacy-key level, and an additivity the
-code asked for all survive a reload; `logging.conf` only ever adds a
-*configured* level, sink list and additivity on top of them, and clears
-those three (not the code's own) when it is read again.
+(`child("sql", ERROR)`), and an additivity the code asked for all survive a
+reload; `logging.conf` only ever adds a *configured* level, sink list and
+additivity on top of them, and clears those three (not the code's own) when
+it is read again.
 
 The `debuglog` sink id, `-d`/`-D`, and the fallback when nothing at all can
 be applied (an unwritable path even in the built-in default: the process
 starts and logs wherever it still can) are covered under
 [Quick Start](#quick-start-for-operators).
+
+## cservice
+
+cservice is configured here and nowhere else. It has three loggers —
+`cservice` (the module itself), `cservice.commands` (one record per user
+command) and `cservice.sql` (its statements) — and `bin/logging.example.conf`
+ships an **active** section for them, which is what cservice used to do with
+five keys of its own:
+
+```
+sink.cservice.type     = file
+sink.cservice.path     = cservice.log
+sink.cservice.format   = json
+sink.debugchan.type    = irc
+sink.debugchan.channel = #coder-com
+sink.debugchan.level   = INFO
+logger.cservice              = DEBUG, cservice, debugchan, console
+additivity.cservice          = no
+logger.cservice.commands     = INFO, cservice
+additivity.cservice.commands = no
+#logger.cservice.sql         = DEBUG
+```
+
+Line by line:
+
+- `sink.cservice` is the module's own JSON log, one object per line — the
+  `cservice.log` the module used to write beside its configuration file.
+- `sink.debugchan.channel` should be the channel cservice's own
+  `debug_channel` key names (`#coder-com` as `bin/cservice.example.conf`
+  ships it). The sink is at `INFO` on purpose: the logger below is at
+  `DEBUG`, and a channel is no place for a DEBUG record, least of all a SQL
+  statement.
+- `logger.cservice = DEBUG, cservice, debugchan, console` is the module at
+  `DEBUG` to all three.
+- `additivity.cservice = no` keeps cservice's records out of the root's
+  sinks. **Drop that line** to have them in `debug.log` and `gnuworld.log`
+  as well.
+- `logger.cservice.commands = INFO, cservice` sends the command log to the
+  file only, and `additivity.cservice.commands = no` keeps it there: the
+  sentence (`LOGIN by nick`) is noise on a channel, and the arguments — in
+  the JSON field `command_line` and nowhere else — are not for a channel at
+  all (see [Security Notes](#security-notes)).
+- `cservice.sql` needs no line: its code default is `ERROR`, so a statement
+  that **fails** is always reported. `logger.cservice.sql = DEBUG`, shipped
+  commented out, adds every statement in full — which is why the channel
+  sink above stops at `INFO`. Never route that logger, at `DEBUG`, to a
+  channel or to a notifier.
+
+A module that is not loaded never logs to its loggers, so the section is
+harmless in a GNUWorld running without cservice.
+
+## Upgrade notes
+
+An install from before this rewrite has five keys in its `cservice.conf`
+that configured cservice's logging: `log_verbosity`, `chan_verbosity`,
+`console_verbosity`, `log_sql` and `console_sql`. **They are gone.** The
+file keeps working with them in it — they are simply not read, and cservice
+says so once when it starts, at `WARN`:
+
+```
+<conf>: log_verbosity, chan_verbosity, console_verbosity, log_sql and
+console_sql are no longer used; configure logger.cservice in logging.conf
+(see bin/logging.example.conf)
+```
+
+What an operator has to do: **copy the cservice section above into
+`logging.conf`** (adjusting `sink.debugchan.channel` to whatever the
+install's own `debug_channel` is). Without it, and this is the whole of the
+change:
+
+- cservice's records go to the sinks of the **root**, at the root's level,
+  like every other module's;
+- `cservice.log` is **no longer written** at all;
+- **nothing** is sent to the debug channel by the logger (cservice's own
+  notices to that channel, which are not log records, are unaffected);
+- a statement is logged only when it fails, whatever `log_sql` said —
+  `logger.cservice.sql = DEBUG` is what asks for the rest.
 
 ## Logger Names
 
@@ -423,10 +503,9 @@ additivity.cservice.sql = no
 - `cservice` has an explicit level, `DEBUG`: it logs at DEBUG regardless of
   what its parent (the root, `INFO`) says.
 - `cservice.sql` has no `logger.` line of its own — the `additivity.` line
-  alone does not give it a level — so it falls through: no legacy key (only
-  cservice's own has those, and only for `cservice` itself), but it *does*
-  have a code default (`ERROR`, from `bot->getLogger()->child("sql",
-  ERROR)`), which wins over the inherited `DEBUG`. It logs at `ERROR`.
+  alone does not give it a level — so it falls through: it *does* have a code
+  default (`ERROR`, from `bot->getLogger()->child("sql", ERROR)`), which wins
+  over the inherited `DEBUG`. It logs at `ERROR`.
 - A `DEBUG` query record on `cservice.sql` is therefore dropped before it
   ever reaches a sink (`ERROR` is stricter than `DEBUG`). An error record
   passes; because `additivity.cservice.sql = no`, it goes to `cservice.sql`'s
@@ -437,7 +516,7 @@ additivity.cservice.sql = no
   logged.
 
 This is exactly the precedence list under [Concepts](#concepts): configured
-level, then legacy key, then code default, then inheritance, then `INFO`.
+level, then code default, then inheritance, then `INFO`.
 
 ## Module Author's Guide
 
@@ -480,7 +559,7 @@ LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
 
 `Logger* child(const std::string&)` is a sub-logger (`logger->child("sub")`
 == `LogManager::get(moduleName + ".sub")`), or, giving it a level unless
-`logging.conf` or a legacy key overrides it, `child("sub", codeDefault)`.
+`logging.conf` overrides it, `child("sub", codeDefault)`.
 
 **A statement that is not going to be logged costs almost nothing**: `LOG`
 and `.with()` both call `shouldLog()` first, so an extractor never runs and
@@ -702,7 +781,9 @@ rather than through `logging.conf`.
    cservice and ccontrol that includes the `UPDATE ... SET password = ...`
    the credential exemption above does not cover simply by being a
    different query. Never route such a logger, at `DEBUG`, to an `irc`
-   sink or to a notifier.
+   sink or to a notifier: that is why the `debugchan` sink of the shipped
+   [cservice section](#cservice) stops at `INFO`, and why
+   `logger.cservice.sql = DEBUG` is shipped commented out.
 4. **An `irc` sink is driven by whatever the uplink sends**, one notice per
    anomaly, with no rate limit of its own. Put it on a module's own logger
    at `WARN` or above, never on `core.state`, `core.proto`, `core.net`, or
@@ -942,16 +1023,15 @@ field the template did not name with `{key}` never appears outside JSON.
 This is not a bug to fix by adding it to the template if the field is
 sensitive (see [Security Notes](#security-notes)).
 
-**`cservice`'s legacy keys seem to be ignored.** They are honoured only
-for as long as `logging.conf` has no `logger.cservice` line; add one and
-the module says so once, at INFO (`... are ignored because logging.conf
-configures logger.cservice`), and stops using them.
+**`cservice.log` is not written any more, and nothing reaches the debug
+channel.** cservice has no logging keys of its own: `logging.conf` is what
+gives it a file and a channel. Copy the section under [cservice](#cservice)
+into it — and see [Upgrade notes](#upgrade-notes) for the `WARN` line a
+`cservice.conf` that still carries the five old keys gets.
 
-**A query never shows up even with `log_sql = yes`.** In fallback mode a
-query is a `DEBUG` record: `log_sql`/`console_sql = yes` alone is not
-enough, `log_verbosity`/`console_verbosity` also has to be at least 5.
-Under `logging.conf`, `logger.cservice.sql = DEBUG` is what is wanted
-instead.
+**A query never shows up.** A statement is a `DEBUG` record of
+`cservice.sql`, whose code default is `ERROR`: only a statement that fails is
+logged until `logger.cservice.sql = DEBUG` asks for the rest.
 
 **Compilation fails with "elog" undeclared.** The six core targets build
 with `-DGNUWORLD_NO_ELOG`; a fresh `elog` statement there has to be a

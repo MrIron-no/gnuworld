@@ -67,10 +67,18 @@ async def test_check(ccontrol_linked):
 end to end: the built-in default with no `logging.conf`, that a JSON sink's
 lines all parse, an `irc` sink's highlighted notice, SIGHUP reopening a
 renamed file and reloading a changed (or broken) `logging.conf`, per-module
-`<module>.sql` on a forced SQL failure, and cservice's deprecated
-`log_verbosity`/`chan_verbosity`/`console_verbosity`/`log_sql`/`console_sql`
-fallback versus a configured `logger.cservice`. It is written from
-`specs/2026-09-18-logger-core.md`, not from the implementation.
+`<module>.sql` on a forced SQL failure, and how cservice is configured — with
+no `logger.cservice` line (its records go to the root's sinks and it writes
+no log of its own), with the cservice section `bin/logging.example.conf`
+ships (its own JSON file, the debug channel, the command log in the file
+only), and with a `cservice.conf` that still carries the five logging keys
+cservice no longer reads (one `WARN`, and nothing else changed). It is
+written from `specs/2026-09-18-logger-core.md`, not from the implementation.
+
+`link_cservice_logging` takes `cservice_extra=`, lines appended to
+`cservice.conf` verbatim, for keys that are not in
+`bin/cservice.example.conf` at all — `override_conf_keys` needs every key to
+be there already, and the five removed logging keys are no longer there.
 
 A test drops its own `logging.conf` into the conf dir before start by
 passing `logging_conf=...` to `link_bare`, `link_cservice_logging` or

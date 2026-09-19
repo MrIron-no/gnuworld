@@ -22,10 +22,18 @@ A few things an existing install should know about before upgrading:
 - A log file this process creates is now mode 0640 rather than whatever the
   process's umask alone produced; an existing file keeps its mode.
 - cservice's log_verbosity, chan_verbosity, console_verbosity, log_sql and
-  console_sql are now deprecated fallbacks, honoured only for as long as
-  logging.conf has no "logger.cservice" line; in that fallback mode, SQL
-  query lines are DEBUG records and need log_verbosity/console_verbosity
-  at 5 or above, where log_sql/console_sql alone used to be enough.
+  console_sql are REMOVED: cservice is configured in logging.conf like
+  every other logger, with the loggers "cservice", "cservice.commands" and
+  "cservice.sql".  A cservice.conf that still has the five keys keeps
+  working - they are not read, and cservice says so once at WARN when it
+  starts.  Copy the (active) cservice section of bin/logging.example.conf
+  into logging.conf to keep what those keys used to give: cservice.log, the
+  debug channel and the console.  WITHOUT it, cservice's records go to the
+  sinks of the root at the root's level, no cservice.log is written, and
+  nothing of the log reaches the debug channel.  A SQL statement is now
+  logged only when it fails, whatever log_sql said;
+  "logger.cservice.sql = DEBUG" asks for every statement in full - never
+  route that logger to an irc sink or a notifier.
 - LOGSQL_ERROR is now an alias of SQL_ERROR, usable in any module with a
   dbHandle, not only in one with a Logger of its own.
 - cservice's command log no longer puts a command's arguments in the
