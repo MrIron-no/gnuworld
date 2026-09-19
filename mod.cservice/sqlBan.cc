@@ -42,20 +42,18 @@ using std::stringstream;
 
 sqlBan::sqlBan(cservice* _bot)
     : id(0), channel_id(0), banmask(), set_by(), set_ts(0), level(0), expires(0), reason(),
-      last_updated(0), logger(_bot->getLogger()), SQLDb(_bot->SQLDb) {}
+      last_updated(0), SQLDb(_bot->SQLDb) {}
 
 sqlBan::sqlBan(cservice* _bot, int _channelID, const std::string& _banMask,
                const std::string& _setBy, time_t _setTS, int _level)
     : id(0), channel_id(_channelID), banmask(_banMask), set_by(_setBy), set_ts(_setTS),
-      level(_level), expires(0), reason(), last_updated(0), logger(_bot->getLogger()),
-      SQLDb(_bot->SQLDb) {}
+      level(_level), expires(0), reason(), last_updated(0), SQLDb(_bot->SQLDb) {}
 
 sqlBan::sqlBan(cservice* _bot, int _channelID, const std::string& _banMask,
                const std::string& _setBy, time_t _setTS, int _level, time_t _expires,
                const std::string& _reason)
     : id(0), channel_id(_channelID), banmask(_banMask), set_by(_setBy), set_ts(_setTS),
-      level(_level), expires(_expires), reason(_reason), last_updated(0), logger(_bot->getLogger()),
-      SQLDb(_bot->SQLDb) {}
+      level(_level), expires(_expires), reason(_reason), last_updated(0), SQLDb(_bot->SQLDb) {}
 
 void sqlBan::setAllMembers(int row) {
     /*

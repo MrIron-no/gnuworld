@@ -48,7 +48,7 @@ using std::stringstream;
 
 sqlPendingChannel::sqlPendingChannel(cservice* _bot)
     : channel_id(0), join_count(0), unique_join_count(0), initialised(false), bot(_bot),
-      logger(_bot->getLogger()), SQLDb(_bot->SQLDb) {}
+      SQLDb(_bot->SQLDb) {}
 
 /*
  *  Destructor to clean up any memory this class may have

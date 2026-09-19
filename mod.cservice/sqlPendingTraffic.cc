@@ -43,8 +43,7 @@ using std::string;
 using std::stringstream;
 
 sqlPendingTraffic::sqlPendingTraffic(cservice* _bot)
-    : channel_id(0), ip_number(string()), join_count(0), logger(_bot->getLogger()),
-      SQLDb(_bot->SQLDb) {}
+    : channel_id(0), ip_number(string()), join_count(0), SQLDb(_bot->SQLDb) {}
 
 bool sqlPendingTraffic::insertRecord() {
     string theip_number = ip_number;

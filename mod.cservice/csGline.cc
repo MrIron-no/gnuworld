@@ -43,8 +43,7 @@ using std::stringstream;
 unsigned int csGline::numAllocated = 0;
 
 csGline::csGline(cservice* _bot)
-    : Id(), AddedBy(), AddedOn(0), Expires(0), LastUpdated(0), Reason(), logger(_bot->getLogger()),
-      SQLDb(_bot->SQLDb) {
+    : Id(), AddedBy(), AddedOn(0), Expires(0), LastUpdated(0), Reason(), SQLDb(_bot->SQLDb) {
     ++numAllocated;
 }
 

@@ -52,7 +52,7 @@ sqlUser::sqlUser(cservice* _bot)
     : id(0), user_name(), password(), last_seen(0), url(), language_id(0), flags(0), last_used(0),
       instantiated_ts(::time(NULL)), signup_ts(0), email(), verifdata(), last_hostmask(),
       maxlogins(0), last_note(0), notes_sent(0), failed_logins(0), failed_login_ts(0),
-      scram_record(), logger(_bot->getLogger()), SQLDb(_bot->SQLDb) {}
+      scram_record(), SQLDb(_bot->SQLDb) {}
 
 /*
  *  Load all data for this user from the backend. (Key: userID)

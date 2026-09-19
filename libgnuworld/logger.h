@@ -36,23 +36,62 @@
 #include <vector>
 
 #include "LogFormat.h"
+#include "LogManager.h"
 #include "LogRecord.h"
 #include "LogRender.h"
 #include "LogSink.h"
+
+/**
+ * Names the logger the LOG and LOG_MSG macros of this code write to, by defining
+ * the moduleLogger() they resolve.
+ *
+ * It is used at GLOBAL scope - outside every namespace - once per module, in the
+ * module's common header, so that every translation unit of the module logs
+ * under the module's name.  Core code, which is one binary and not one module,
+ * uses it once per .cc file with the sub-logger of that file, and never in a
+ * header, where it would name the logger of whoever includes it.
+ *
+ * Usage: GNUWORLD_MODULE_LOGGER("cservice");
+ *
+ * The accessor has internal linkage on purpose.  Modules are separate shared
+ * objects and all of their code lives in namespace gnuworld, so an exported
+ * gnuworld::moduleLogger() would be one symbol for all of them: ELF
+ * interposition would bind every module to whichever one was loaded first, and
+ * cservice would log to dronescan's logger.  The unnamed namespace gives each
+ * object file its own accessor, which nothing outside it can reach.
+ *
+ * Code that has a Logger* of its own - shared code acting for a module, or a
+ * class holding the logger it was handed - uses LOG_TO / LOG_MSG_TO instead.
+ */
+#define GNUWORLD_MODULE_LOGGER(name)                                                               \
+    namespace gnuworld {                                                                           \
+    namespace {                                                                                    \
+    [[maybe_unused]] inline Logger* moduleLogger() {                                               \
+        static Logger* const l = ::gnuworld::LogManager::get(name);                                \
+        return l;                                                                                  \
+    }                                                                                              \
+    }                                                                                              \
+    }
 
 /**
  * Main logging macro for simple formatted messages.
  * Automatically passes the current function name and supports format strings.
  * Usage: LOG(INFO, "User {} connected", username);
  */
-#define LOG(x, ...) logger->writeFunc(x, __PRETTY_FUNCTION__, __VA_ARGS__)
+#define LOG(x, ...) moduleLogger()->writeFunc(x, __PRETTY_FUNCTION__, __VA_ARGS__)
+
+/**
+ * The same, to a logger named at the call site rather than the module's.
+ * Usage: LOG_TO(::gnuworld::LogManager::get("core.net"), INFO, "listening");
+ */
+#define LOG_TO(loggerPtr, x, ...) (loggerPtr)->writeFunc(x, __PRETTY_FUNCTION__, __VA_ARGS__)
 
 /**
  * SQL error logging macro for database-related errors.
  * Automatically formats SQL error messages from database objects.
  */
 #define LOGSQL_ERROR(x)                                                                            \
-    logger->writeFunc(ERROR, __PRETTY_FUNCTION__, "SQL Error: {}", x->ErrorMessage())
+    moduleLogger()->writeFunc(ERROR, __PRETTY_FUNCTION__, "SQL Error: {}", x->ErrorMessage())
 
 /**
  * Structured logging macro with template support and field extraction.
@@ -60,7 +99,13 @@
  * Usage: LOG_MSG(INFO, "User {} joined {channel}", username).with("channel", chanPtr).log();
  */
 #define LOG_MSG(level, template_msg, ...)                                                          \
-    logger->createMessage(level, __PRETTY_FUNCTION__, template_msg, ##__VA_ARGS__)
+    moduleLogger()->createMessage(level, __PRETTY_FUNCTION__, template_msg, ##__VA_ARGS__)
+
+/**
+ * The same, to a logger named at the call site rather than the module's.
+ */
+#define LOG_MSG_TO(loggerPtr, level, template_msg, ...)                                            \
+    (loggerPtr)->createMessage(level, __PRETTY_FUNCTION__, template_msg, ##__VA_ARGS__)
 
 namespace gnuworld {
 

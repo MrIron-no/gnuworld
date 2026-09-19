@@ -518,7 +518,6 @@ class sqlChannel {
     time_t w_ts;
 #endif // THERETURN_ENABLED
 
-    Logger* logger;
     dbHandle* SQLDb;
 };
 

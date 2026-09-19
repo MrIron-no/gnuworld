@@ -243,7 +243,6 @@ class sqlUser {
     std::string totp_key;
     std::string scram_record;
 
-    Logger* logger;
     dbHandle* SQLDb;
 };
 

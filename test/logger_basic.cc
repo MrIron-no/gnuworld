@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -21,6 +22,14 @@
 #include "logger.h"
 
 using namespace gnuworld;
+
+/* ------------------------------------------------------------------ *
+ * The logger the LOG macros write to.  They resolve moduleLogger(), which
+ * this declaration defines, so every macro of this file logs on "test"
+ * however many loggers the file otherwise uses.
+ * ------------------------------------------------------------------ */
+
+GNUWORLD_MODULE_LOGGER("test");
 
 namespace {
 
@@ -47,10 +56,9 @@ int failures = 0;
     } while (0)
 
 /* ------------------------------------------------------------------ *
- * The logger the LOG macros write to: they expand to "logger->", so the
- * name is part of their contract and the test has to use it too.  The
+ * The logger the cases that do not go through a macro write to.  The
  * loggers belong to the registry, which keeps each of them for the life of
- * the process, so every test asks for one of its own.
+ * the process, so every such case asks for one of its own.
  * ------------------------------------------------------------------ */
 
 Logger* logger = nullptr;
@@ -136,6 +144,28 @@ std::shared_ptr<CaptureSink> freshLogger(const std::string& name) {
     return sink;
 }
 
+/**
+ * A capture sink on the logger the macros write to.  That logger is the
+ * registry's and outlives every case here, so the sink goes on for the one case
+ * that reads it and comes off again however that case leaves: a macro of the
+ * next one must see nothing of this one.
+ */
+class MacroSink {
+  public:
+    MacroSink() : sink(std::make_shared<CaptureSink>()) { moduleLogger()->addSink(sink); }
+
+    ~MacroSink() { moduleLogger()->removeSink(sink); }
+
+    MacroSink(const MacroSink&) = delete;
+    MacroSink& operator=(const MacroSink&) = delete;
+
+    /// Reads as the shared_ptr the cases held while they owned their logger
+    CaptureSink* operator->() const { return sink.get(); }
+
+  private:
+    std::shared_ptr<CaptureSink> sink;
+};
+
 /* ------------------------------------------------------------------ *
  * A sink that logs from inside its own emit(), and one that wants none
  * of what such a sink produces
@@ -178,8 +208,8 @@ class SuppressingCaptureSink : public CaptureSink {
  * and the logger's context.
  */
 void testStructuredRecord() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("cservice");
-    logger->setContext("bot", std::string("X"));
+    const MacroSink sink;
+    moduleLogger()->setContext("bot", std::string("X"));
 
     registerFakes();
 
@@ -196,7 +226,7 @@ void testStructuredRecord() {
 
     CHECK_EQ(record.message, "A failed to add to #b");
     CHECK(WARN == record.level);
-    CHECK_EQ(record.logger, "cservice");
+    CHECK_EQ(record.logger, "test");
     CHECK(!record.function.empty());
 
     CHECK(2 == record.spans.size());
@@ -247,7 +277,7 @@ void testStructuredRecord() {
  * a null-valued field under the bare key, so that JSON says "nick":null.
  */
 void testNullObject() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.null");
+    const MacroSink sink;
 
     FakeUser* const nobody = nullptr;
 
@@ -281,7 +311,7 @@ void testNullObject() {
  * constness of the pointee is not part of what the registry is keyed on.
  */
 void testConstPointer() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.const");
+    const MacroSink sink;
 
     const FakeUser user{"A", 1};
     const FakeUser* const pointer = &user;
@@ -298,7 +328,7 @@ void testConstPointer() {
  * pointer again, and shows as one.
  */
 void testFallbackWithoutExtractor() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.fallback");
+    const MacroSink sink;
 
     Logger::removeExtractors(&owner);
 
@@ -414,7 +444,7 @@ void testStreamApi() {
  * each of them.
  */
 void testLogMacro() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.macro");
+    const MacroSink sink;
 
     LOG(INFO, "x {} {:>3}", "y", 7);
 
@@ -436,8 +466,8 @@ void testLogMacro() {
  * no sink is troubled.
  */
 void testLazyRecord() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.lazy");
-    logger->setLevel(INFO);
+    const MacroSink sink;
+    moduleLogger()->setLevel(INFO);
 
     FakeUser user{"A", 1};
 
@@ -453,6 +483,9 @@ void testLazyRecord() {
 
     CHECK(before + 1 == extractorCalls);
     CHECK(1 == sink->records.size());
+
+    // The logger is the registry's: the next case finds it as it was
+    moduleLogger()->setConfigLevel(std::nullopt);
 }
 
 /**
@@ -574,7 +607,7 @@ void testContextReplacement() {
  * The plain values of with(): the type of the field is the type of the value.
  */
 void testTypedFields() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.typed");
+    const MacroSink sink;
 
     LOG_MSG(INFO, "{name} {count} {offset} {ratio} {ok}")
         .with("name", std::string("MrIron"))
@@ -608,6 +641,60 @@ void testTypedFields() {
     CHECK(nullptr != name && std::holds_alternative<std::string>(name->value));
 }
 
+/**
+ * The macros find the logger themselves: LOG and LOG_MSG write to the one
+ * GNUWORLD_MODULE_LOGGER named, and moduleLogger() is that logger and no other,
+ * however often it is asked for.
+ */
+void testModuleLoggerAccessor() {
+    const MacroSink sink;
+
+    LOG(INFO, "x {}", 1);
+    LOG_MSG(WARN, "{a}").with("a", 5).log();
+
+    CHECK(2 == sink->records.size());
+    if (2 != sink->records.size())
+        return;
+
+    CHECK_EQ(sink->records[0].message, "x 1");
+    CHECK(INFO == sink->records[0].level);
+    CHECK_EQ(sink->records[0].logger, "test");
+    CHECK(!sink->records[0].function.empty());
+
+    CHECK_EQ(sink->records[1].message, "5");
+    CHECK(WARN == sink->records[1].level);
+    CHECK_EQ(sink->records[1].logger, "test");
+
+    // One logger, looked up once and the registry's own
+    CHECK(moduleLogger() == moduleLogger());
+    CHECK(moduleLogger() == LogManager::get("test"));
+}
+
+/**
+ * LOG_TO and LOG_MSG_TO write to the logger they are handed rather than to the
+ * module's: the record carries that logger's name, and walks up to the sinks of
+ * its ancestors as the record of any additive logger does.
+ */
+void testLogToMacros() {
+    const MacroSink sink;
+
+    LOG_TO(LogManager::get("test.sub"), WARN, "y");
+    LOG_MSG_TO(LogManager::get("test.sub"), ERROR, "{b}").with("b", true).log();
+
+    CHECK(2 == sink->records.size());
+    if (2 != sink->records.size())
+        return;
+
+    CHECK_EQ(sink->records[0].message, "y");
+    CHECK(WARN == sink->records[0].level);
+    CHECK_EQ(sink->records[0].logger, "test.sub");
+    CHECK(!sink->records[0].function.empty());
+
+    CHECK_EQ(sink->records[1].message, "true");
+    CHECK(ERROR == sink->records[1].level);
+    CHECK_EQ(sink->records[1].logger, "test.sub");
+}
+
 } // namespace
 
 int main() {
@@ -628,6 +715,8 @@ int main() {
     testLegacySqlDoesNotWalkUp();
     testContextReplacement();
     testTypedFields();
+    testModuleLoggerAccessor();
+    testLogToMacros();
 
     Logger::removeExtractors(&owner);
     logger = nullptr;

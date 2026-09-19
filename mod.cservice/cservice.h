@@ -57,6 +57,11 @@
 #include "threadworker.h"
 #endif
 
+/* Every file of this module logs under the module's name.  This is what the LOG
+ * and LOG_MSG macros resolve, so no class here has to carry a Logger* of its own
+ * for them; it has to stand outside every namespace. */
+GNUWORLD_MODULE_LOGGER("cservice");
+
 namespace gnuworld {
 using std::map;
 using std::string;

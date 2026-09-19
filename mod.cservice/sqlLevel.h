@@ -145,7 +145,6 @@ class sqlLevel {
     time_t last_updated;
     time_t last_used;
 
-    Logger* logger;
     dbHandle* SQLDb;
 };
 

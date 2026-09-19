@@ -40,7 +40,6 @@ class sqlPendingTraffic {
     string ip_number;
     unsigned int join_count;
 
-    Logger* logger;
     dbHandle* SQLDb;
 };
 

@@ -112,7 +112,7 @@ sqlChannel::sqlChannel(cservice* _bot)
 #ifdef THERETURN_ENABLED
       hasw(false), w_ts(0),
 #endif
-      logger(_bot->getLogger()), SQLDb(_bot->SQLDb) {
+      SQLDb(_bot->SQLDb) {
 }
 
 bool sqlChannel::loadData(const string& channelName) {
