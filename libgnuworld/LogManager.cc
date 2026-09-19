@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <exception>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -605,6 +606,246 @@ bool LogManager::loadFile(const string& fileName) {
     }
 
     return applied;
+}
+
+/// The one sink id the command line is about: the debug file of -d and -D
+static const string debugLogSinkId("debuglog");
+
+/**
+ * The configuration of a process that has no logging.conf: the debug log and
+ * the console, both fed by the root at INFO, and the old elog stream at the
+ * DEBUG level it has always had.
+ *
+ * This is the same thing the file
+ *
+ *     sink.console.type    = console
+ *     sink.debuglog.type   = file
+ *     sink.debuglog.path   = debug.log
+ *     sink.debuglog.format = text
+ *     logger.root          = INFO, debuglog, console
+ *     logger.legacy        = on
+ *
+ * would be, built here rather than written anywhere: an installation without a
+ * logging.conf logs what it always logged.
+ */
+static LogConfig builtInLogConfig() {
+    LogConfig config;
+
+    SinkSpec console;
+    console.id = "console";
+    console.type = "console";
+    config.sinks.push_back(console);
+
+    SinkSpec debugLog;
+    debugLog.id = debugLogSinkId;
+    debugLog.type = "file";
+    debugLog.path = "debug.log";
+    debugLog.json = false;
+    config.sinks.push_back(debugLog);
+
+    LoggerSpec root;
+    // The root's name is empty, however a file spells it
+    root.level = INFO;
+    root.sinks.push_back(debugLogSinkId);
+    root.sinks.push_back("console");
+    config.loggers.push_back(root);
+
+    LoggerSpec legacy;
+    legacy.name = "legacy";
+    legacy.level = DEBUG;
+    config.loggers.push_back(legacy);
+
+    return config;
+}
+
+/**
+ * The command line on top of a configuration, whether that came from a file or
+ * from builtInLogConfig(): -d puts the debug log where it said, and -D takes it
+ * away altogether, so that "no debug log" keeps meaning no debug log whatever
+ * logging.conf asks for.  Every other sink is the file's business alone.
+ */
+static void adjustForCommandLine(LogConfig& config, const LogStartOptions& options) {
+    if (options.debugLogFileGiven)
+        for (SinkSpec& sink : config.sinks)
+            if (debugLogSinkId == sink.id)
+                sink.path = options.debugLogFile;
+
+    if (options.debugLog)
+        return;
+
+    for (std::vector<SinkSpec>::iterator sink = config.sinks.begin(); sink != config.sinks.end();)
+        if (debugLogSinkId == sink->id)
+            sink = config.sinks.erase(sink);
+        else
+            ++sink;
+
+    // And with it every mention of it, which would otherwise be a dangling id
+    for (LoggerSpec& logger : config.loggers)
+        for (std::vector<string>::iterator id = logger.sinks.begin(); id != logger.sinks.end();)
+            if (debugLogSinkId == *id)
+                id = logger.sinks.erase(id);
+            else
+                ++id;
+}
+
+/// The path the debug log would be written to, empty when there is none
+static string debugLogPath(const LogConfig& config) {
+    for (const SinkSpec& sink : config.sinks)
+        if (debugLogSinkId == sink.id)
+            return sink.path;
+
+    return string();
+}
+
+/**
+ * Says what went wrong with logging.conf, one record per problem, in the words
+ * LogManager::loadFile() uses for the same thing.  These are records like any
+ * other: they go wherever the configuration in force sends "core.config", which
+ * is why the caller says them once it has applied one.
+ *
+ * The function is the caller's rather than this one's: what the reader of a log
+ * file wants to see is where the configuration was being read, not the three
+ * lines that write the message.
+ */
+static void reportLogConfigErrors(const char* function, const std::vector<string>& errors) {
+    Logger* const reporter = coreLogger(CoreLogger::Config);
+
+    for (const string& error : errors)
+        reporter->writeFunc(ERROR, function, "logging.conf: {}", error);
+}
+
+void LogManager::start(const LogStartOptions& options) {
+    /* logging.conf is data, and data can neither stop this process nor take its
+     * logging away.  Whatever reading one may cost - the allocation a monstrous
+     * name or a monstrous list asks for - is caught here: on a reload the
+     * configuration in force stays in force and the reason is logged, and at
+     * start-up the process carries on with whatever it can still be given.
+     * Nothing here exits, and nothing here throws on */
+    string failure;
+
+    try {
+        bool haveFile = false;
+
+        {
+            std::ifstream probe(options.fileName.c_str());
+
+            haveFile = probe.is_open();
+        }
+
+        /* Everything that was wrong with the file, said once at the end: reporting a
+         * problem is itself logging, and said here it would go wherever the process
+         * happened to be logging before - at start-up, nowhere at all */
+        std::vector<string> problems;
+
+        LogConfig config;
+
+        // Whether the configuration that ends up in force is the one in that file
+        bool fromFile = false;
+
+        if (haveFile) {
+            std::vector<string> errors;
+
+            if (parseLogConfig(options.fileName, config, errors))
+                fromFile = true;
+            else
+                problems = errors;
+        }
+
+        /* A file that is not a configuration changes nothing at all on a reload:
+         * what is in force stays in force, and the process goes on logging where it
+         * was logging.  At start-up there is nothing to keep, and the built-in
+         * default is what a process with no usable file has */
+        if (haveFile && !fromFile && options.reload) {
+            reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+            return;
+        }
+
+        if (!fromFile)
+            config = builtInLogConfig();
+
+        adjustForCommandLine(config, options);
+
+        std::vector<string> errors;
+        bool applied = configure(config, errors);
+
+        if (!applied) {
+            problems.insert(problems.end(), errors.begin(), errors.end());
+
+            // As above: on a reload the configuration in force is the one to keep
+            if (options.reload) {
+                reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+                return;
+            }
+
+            /* At start-up a file that cannot be applied - a sink whose file will
+             * not open, a kind of sink this build has not got - is no reason to log
+             * nowhere at all: the built-in default is tried instead */
+            if (fromFile) {
+                fromFile = false;
+                config = builtInLogConfig();
+                adjustForCommandLine(config, options);
+
+                errors.clear();
+                applied = configure(config, errors);
+                problems.insert(problems.end(), errors.begin(), errors.end());
+            }
+
+            /* And when even that will not do - an unwritable debug log - the
+             * process starts all the same and logs wherever it still can.  Nothing
+             * here exits: writing a log file is not what this process is for */
+            if (!applied)
+                std::clog << "*** Unable to open log file: " << debugLogPath(config) << std::endl;
+        }
+
+        /* Said last of all, so that every one of these goes where the configuration
+         * just applied says it goes rather than wherever the one before it did */
+        reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+        /* A file that holds a token - a pushover sink's - and that anybody on
+         * this host may read is worth one warning.  Only for the file that is
+         * really in force: the built-in default holds no secret */
+        if (fromFile)
+            warnIfSecretsAreReadable(options.fileName, config);
+
+        if (!options.reload && !haveFile)
+            LOG_CORE(Core, INFO,
+                     "No logging.conf found; using built-in defaults (see "
+                     "bin/logging.example.conf)");
+
+        if (options.reload && fromFile)
+            LOG_CORE(Core, INFO, "Reloaded {}", options.fileName);
+
+        return;
+    } catch (const std::exception& e) {
+        failure = e.what();
+    } catch (...) {
+        failure = "an unknown error";
+    }
+
+    if (options.reload) {
+        LOG_CORE(Config, ERROR, "logging.conf: {}", failure);
+
+        return;
+    }
+
+    /* At start-up there is nothing in force to keep, so the built-in default is
+     * tried; when even that will not go on, the console the root was given while
+     * the process started up is where this process logs */
+    std::clog << "*** logging.conf: " << failure << std::endl;
+
+    try {
+        LogConfig config = builtInLogConfig();
+
+        adjustForCommandLine(config, options);
+
+        std::vector<string> errors;
+
+        configure(config, errors);
+    } catch (...) {
+        std::clog << "*** Unable to apply the built-in logging defaults" << std::endl;
+    }
 }
 
 /**

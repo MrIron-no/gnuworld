@@ -40,6 +40,28 @@ struct LogConfig;
 struct SinkSpec;
 
 /**
+ * Everything LogManager::start() is told from outside the logging system: which
+ * file to read, what the command line said about the debug log, and whether this
+ * is a SIGHUP rather than the start of the process.
+ */
+struct LogStartOptions {
+    /// The logging.conf to read, which need not be there
+    std::string fileName;
+
+    /// Whether a debug log is wanted at all: -D says no
+    bool debugLog = true;
+
+    /// Whether -d named the file it goes to, overriding the one in the file
+    bool debugLogFileGiven = false;
+
+    /// The file -d named
+    std::string debugLogFile;
+
+    /// Whether the configuration in force is one to keep when the file is bad
+    bool reload = false;
+};
+
+/**
  * The loggers of the process, by name, under one unnamed root.
  *
  * A name is a dotted path: "cservice.sql" is a logger below "cservice", which is
@@ -178,6 +200,22 @@ class LogManager {
      * is reported, one record per problem, at ERROR on "core.config".
      */
     static bool loadFile(const std::string& fileName);
+
+    /**
+     * Sets the logging system up: the file if there is one, the built-in
+     * configuration if there is not, and the command line on top of either.
+     *
+     * Called once before the first module of a process is loaded, so that a
+     * module finds logging configured, and again with reload for every SIGHUP.
+     * On a reload a file that cannot be read or cannot be applied changes
+     * nothing and is reported on "core.config": a mistake in logging.conf can
+     * neither stop nor silence a running process.  Nothing here exits, and
+     * nothing here throws.
+     *
+     * The kinds of sink the file may name are registered before this is called:
+     * whoever can make one is the layer that knows what it is.
+     */
+    static void start(const LogStartOptions&);
 
     /**
      * Says once, at WARN on "core.config", that this file holds a secret and

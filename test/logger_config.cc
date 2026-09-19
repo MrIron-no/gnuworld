@@ -2074,6 +2074,158 @@ void testLoadFileReportsAndKeeps() {
     LogManager::get("core.config")->removeSink(reports);
 }
 
+/* ------------------------------------------------------------------ *
+ * Starting the logging system
+ * ------------------------------------------------------------------ */
+
+/**
+ * A process with no logging.conf gets the built-in configuration: a console and
+ * a debug log, both fed by the root at INFO, and the legacy stream at DEBUG.
+ * Its debug log is where -d said, which is the only way a test can have one that
+ * is not "debug.log" in the working directory.
+ */
+void testStartWithoutAFile() {
+    const std::string logPath = scratchPath("built-in.log");
+
+    LogStartOptions options;
+    options.fileName = scratchPath("no-logging-conf-here.conf");
+    options.debugLogFileGiven = true;
+    options.debugLogFile = logPath;
+
+    std::ostringstream captured;
+    std::streambuf* const saved = std::cout.rdbuf(captured.rdbuf());
+
+    LogManager::start(options);
+
+    emit(LogManager::get("cfg9.a"), INFO, "to the built-in default");
+
+    std::cout.rdbuf(saved);
+
+    CHECK(INFO == LogManager::root()->effectiveLevel());
+    CHECK(LogManager::isConfigured("root"));
+
+    // The old elog stream, at the DEBUG level it has always had
+    CHECK(DEBUG == LogManager::get("legacy")->effectiveLevel());
+    CHECK(LogManager::isConfigured("legacy"));
+
+    const std::vector<std::string> lines = readFileLines(logPath);
+
+    // The notice that there was no file, and then the record above
+    CHECK(2 == lines.size());
+    if (2 == lines.size()) {
+        // Human-readable columns, not JSON: the built-in debug log is text
+        CHECK('{' != lines[0][0]);
+        CHECK(contains(lines[0], "No logging.conf found; using built-in defaults"));
+        CHECK(contains(lines[1], "to the built-in default"));
+    }
+
+    // And the console of the built-in configuration saw the same record
+    CHECK(contains(captured.str(), "to the built-in default"));
+}
+
+/**
+ * The -d of the command line is where the debug log goes, whatever logging.conf
+ * said its path was.  Every other sink of the file is the file's own business.
+ */
+void testStartWithADebugLogFileGiven() {
+    const std::string askedForByFile = scratchPath("start-d-file.log");
+    const std::string askedForOnTheLine = scratchPath("start-d-cmdline.log");
+    const std::string other = scratchPath("start-d-other.log");
+
+    LogStartOptions options;
+    options.fileName = writeConf("start-d.conf", "sink.debuglog.type = file\n"
+                                                 "sink.debuglog.path = " +
+                                                     askedForByFile +
+                                                     "\n"
+                                                     "sink.other.type = file\n"
+                                                     "sink.other.path = " +
+                                                     other +
+                                                     "\n"
+                                                     "logger.cfg10.a = INFO, debuglog, other\n");
+    options.debugLogFileGiven = true;
+    options.debugLogFile = askedForOnTheLine;
+
+    LogManager::start(options);
+
+    emit(LogManager::get("cfg10.a"), INFO, "where -d said");
+
+    CHECK(1 == readFileLines(askedForOnTheLine).size());
+    CHECK(readWholeFile(askedForByFile).empty());
+    CHECK(1 == readFileLines(other).size());
+}
+
+/**
+ * And -D takes the debug log away altogether, with every mention of it: no debug
+ * log means no debug log whatever logging.conf asks for.
+ */
+void testStartWithNoDebugLog() {
+    const std::string debugLog = scratchPath("start-D-debug.log");
+    const std::string other = scratchPath("start-D-other.log");
+
+    LogStartOptions options;
+    options.fileName = writeConf("start-D.conf", "sink.debuglog.type = file\n"
+                                                 "sink.debuglog.path = " +
+                                                     debugLog +
+                                                     "\n"
+                                                     "sink.other.type = file\n"
+                                                     "sink.other.path = " +
+                                                     other +
+                                                     "\n"
+                                                     "logger.cfg11.a = INFO, debuglog, other\n");
+    options.debugLog = false;
+
+    LogManager::start(options);
+
+    emit(LogManager::get("cfg11.a"), INFO, "not to the debug log");
+
+    CHECK(readWholeFile(debugLog).empty());
+    CHECK(1 == readFileLines(other).size());
+}
+
+/**
+ * A file that is not a configuration changes nothing at all on a reload: what is
+ * in force stays in force, and what was wrong with the file is reported on
+ * "core.config".
+ */
+void testStartOnReloadKeepsTheConfiguration() {
+    const std::string keepLog = scratchPath("start-reload.log");
+
+    LogStartOptions options;
+    options.fileName = writeConf("start-reload.conf", "sink.s12.type = file\n"
+                                                      "sink.s12.path = " +
+                                                          keepLog +
+                                                          "\n"
+                                                          "logger.cfg12.a = INFO, s12\n");
+
+    LogManager::start(options);
+
+    emit(LogManager::get("cfg12.a"), INFO, "before");
+    CHECK(1 == readFileLines(keepLog).size());
+
+    // The sink that hears what start() has to say about the file
+    const std::shared_ptr<CaptureSink> reports = std::make_shared<CaptureSink>();
+    LogManager::get("core.config")->addSink(reports, TRACE);
+
+    // The same name, now holding something that is not a configuration
+    writeConf("start-reload.conf", "logger.root = NOPE\n");
+    options.reload = true;
+
+    LogManager::start(options);
+
+    CHECK(1 == reports->size());
+    for (const LogRecord& record : reports->records) {
+        CHECK(ERROR == record.level);
+        CHECK_EQ(record.logger, "core.config");
+        CHECK(0 == record.message.find("logging.conf: "));
+    }
+
+    // Nothing of the configuration in force was touched
+    emit(LogManager::get("cfg12.a"), INFO, "after");
+    CHECK(2 == readFileLines(keepLog).size());
+
+    LogManager::get("core.config")->removeSink(reports);
+}
+
 /**
  * The console sink the root starts with is the one nobody configured; the first
  * configuration that is applied takes it away, so that a record does not appear
@@ -2386,6 +2538,10 @@ int main() {
     testAFactoryErrorNamingAnotherSink();
     testASecretReadableByOthers();
     testLoadFileReportsAndKeeps();
+    testStartWithoutAFile();
+    testStartWithADebugLogFileGiven();
+    testStartWithNoDebugLog();
+    testStartOnReloadKeepsTheConfiguration();
     testBootstrapConsoleGoes();
 
     /* The bootstrap log files are attached to the root and stay there, so the
