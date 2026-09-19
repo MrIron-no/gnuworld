@@ -1768,6 +1768,75 @@ void testSinkThreshold() {
 }
 
 /**
+ * A KIND OF SINK SAYS WHAT LEVEL IT WANTS WHERE THE FILE SAYS NOTHING.
+ *
+ * LogSink::defaultThreshold() is TRACE, so a file sink with no "level" of its own
+ * still hears every record its logger sends.  A kind of sink for which that is
+ * nonsense - a pager - overrides it, and configure() attaches such a sink at that
+ * level instead.  A level the FILE gave always wins, in either direction.
+ */
+void testASinkTypeSaysItsOwnDefaultLevel() {
+    /// A kind of sink that wants warnings and above, like a pager
+    class WarnSink : public LogSink {
+      public:
+        void emit(const LogRecord&) override { ++count; }
+
+        Verbosity defaultThreshold() const override { return WARN; }
+
+        std::size_t count = 0;
+    };
+
+    const std::shared_ptr<WarnSink> pager = std::make_shared<WarnSink>();
+
+    LogManager::registerSinkType(
+        "wants-warn",
+        [pager](const SinkSpec&, std::string&) -> std::shared_ptr<LogSink> { return pager; });
+
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    // No "sink.p1.level" at all: the kind of sink is what decides
+    CHECK(parseLogConfig(writeConf("defaultlevel.conf", "sink.p1.type = wants-warn\n"
+                                                        "logger.cfg30.a = TRACE, p1\n"),
+                         config, errors));
+    CHECK(LogManager::configure(config, errors));
+
+    emit(LogManager::get("cfg30.a"), INFO, "chatter, which a pager does not want");
+    CHECK(0 == pager->count);
+
+    emit(LogManager::get("cfg30.a"), WARN, "trouble, which it does");
+    CHECK(1 == pager->count);
+
+    // And a level the file DID give wins, even below the kind's own default
+    LogConfig asked;
+
+    CHECK(parseLogConfig(writeConf("askedlevel.conf", "sink.p1.type = wants-warn\n"
+                                                      "sink.p1.level = DEBUG\n"
+                                                      "logger.cfg30.a = TRACE, p1\n"),
+                         asked, errors));
+    CHECK(LogManager::configure(asked, errors));
+
+    emit(LogManager::get("cfg30.a"), DEBUG, "which the file asked for");
+    CHECK(2 == pager->count);
+
+    // The kinds that say nothing are unchanged: a file sink with no level is TRACE
+    const std::string logPath = scratchPath("defaultlevel.log");
+
+    LogConfig plain;
+
+    CHECK(parseLogConfig(writeConf("plainlevel.conf", "sink.f1.type = file\n"
+                                                      "sink.f1.path = " +
+                                                          logPath +
+                                                          "\n"
+                                                          "logger.cfg30.b = TRACE, f1\n"),
+                         plain, errors));
+    CHECK(LogManager::configure(plain, errors));
+
+    emit(LogManager::get("cfg30.b"), TRACE, "the quietest record there is");
+    CHECK(1 == readFileLines(logPath).size());
+}
+
+/**
  * A file that cannot be applied is reported, once per problem, on "core.config",
  * and changes nothing at all.
  */
@@ -2123,6 +2192,7 @@ int main() {
     testSinkTypeRegistry();
     testRootIsConfigured();
     testSinkThreshold();
+    testASinkTypeSaysItsOwnDefaultLevel();
     testLoadFileReportsAndKeeps();
     testBootstrapConsoleGoes();
 

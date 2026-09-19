@@ -86,11 +86,12 @@ std::string withoutControlCharacters(const std::string& input);
  * may be attached to any logger - the root included - which is what the three
  * protections below are for.
  *
- * A LEVEL OF ITS OWN.  A pager nobody asked for a level of is at ERROR, not at
- * TRACE like every other sink: nobody wants a notification per protocol
- * message.  The threshold is the sink's own, because the level the file gave -
- * or did not give - is applied by LogManager::configure() before this class
- * hears about it.
+ * A LEVEL OF ITS OWN.  defaultThreshold() says ERROR, not the TRACE every other
+ * kind of sink defaults to: nobody wants a notification per protocol message.
+ * That is all this class does about the level - LogManager::configure() attaches
+ * the sink with it, or with the one "sink.<id>.level" gave, and the logger's
+ * per-sink threshold is what a record is then filtered by.  There is no second
+ * threshold here to disagree with it.
  *
  * A LOOP GUARD.  This sink's own delivery failures are logged on
  * "core.notifier", and with a worker thread they are logged from that thread,
@@ -134,11 +135,14 @@ class PushoverClient : public notifier {
 
     /**
      * A pager for these user keys with this token, sending to url (empty: the
-     * real service), dropping records less important than threshold, and at
-     * most rateCount of them per ratePer.
+     * real service), and at most rateCount notifications per ratePer.
+     *
+     * No threshold: what a record has to be worth to be sent is the threshold
+     * the logger holds this sink at, and defaultThreshold() below is what that
+     * becomes where logging.conf gave none.
      */
     PushoverClient(std::string token, pushoverKeysType users, std::string url = std::string(),
-                   Verbosity threshold = ERROR, std::size_t rateCount = 10,
+                   std::size_t rateCount = 10,
                    std::chrono::seconds ratePer = std::chrono::seconds(60));
 
     /// Drains the worker without running what is still queued, and joins it
@@ -171,6 +175,13 @@ class PushoverClient : public notifier {
      */
     void emit(const LogRecord& r) override;
 
+    /**
+     * ERROR, where every other kind of sink says TRACE: the level a pushover
+     * sink is attached with when logging.conf gave it none of its own.  A
+     * notification per protocol message is a pager nobody reads.
+     */
+    Verbosity defaultThreshold() const override { return ERROR; }
+
     bool sendMessage(int level, const std::string message) override;
 
     bool sendMessage(const std::string title, const std::string message);
@@ -202,9 +213,6 @@ class PushoverClient : public notifier {
     const std::string apiToken;
     const pushoverKeysType userKeys;
     const std::string apiUrl;
-
-    /// The least important record this sink pages about
-    const Verbosity threshold;
 
     std::atomic<std::size_t> statSuccessful{0};
     std::atomic<std::size_t> statErrors{0};

@@ -347,12 +347,60 @@ void testOnePostPerUserKey() {
     CHECK(sawUserOne);
     CHECK(sawUserTwo);
 
-    // A record the sink's own threshold refuses is not posted at all
+    /* A record below the threshold the sink is attached at is not posted: the
+     * logger filters it, this sink has no second threshold of its own */
     forgetCaptured();
 
     emit("deliver.a", INFO, "nothing worth waking anybody for");
 
     CHECK_EQ(capturedAfterAWhile().size(), std::size_t(0));
+}
+
+/**
+ * THE LEVEL IS THE FILE'S, AND WHERE THE FILE SAYS NOTHING IT IS THE SINK'S.
+ *
+ * defaultThreshold() is ERROR for a pushover sink, so a file that names no level
+ * pages about an ERROR and says nothing about a WARN - the opposite of the TRACE
+ * every other kind of sink defaults to.  A "sink.<id>.level" the file DID give
+ * wins in either direction, INFO included.
+ */
+void testTheLevelOfAPager() {
+    const std::string common("sink.page.token = " + token +
+                             "\nsink.page.userkey = user-one\nsink.page.url = " + urlFor("") +
+                             "\nsink.page.rate = 100/min\nlogger.root = TRACE, page\n");
+
+    // No level at all: ERROR, which is what a pager defaults to
+    CHECK(apply("sink.page.type = pushover\n" + common));
+
+    forgetCaptured();
+
+    emit("deliver.f", WARN, "a warning, which no pager was asked about");
+
+    CHECK_EQ(capturedAfterAWhile().size(), std::size_t(0));
+
+    forgetCaptured();
+
+    emit("deliver.f", ERROR, "and an error, which it was");
+
+    CHECK_EQ(capturedAtLeast(1).size(), std::size_t(1));
+
+    // And with the file asking for INFO, an INFO record is posted
+    CHECK(apply("sink.page.type = pushover\nsink.page.level = INFO\n" + common));
+
+    forgetCaptured();
+
+    emit("deliver.f", INFO, "which the file asked to hear about");
+
+    const std::vector<Post> posts = capturedAtLeast(1);
+
+    CHECK_EQ(posts.size(), std::size_t(1));
+
+    if (!posts.empty()) {
+        CHECK_EQ(posts.front().one("title"), std::string("[deliver.f] INFO"));
+
+        // An INFO record is the sentence alone: no function in front of it
+        CHECK_EQ(posts.front().one("message"), std::string("which the file asked to hear about"));
+    }
 }
 
 /**
@@ -712,6 +760,7 @@ int main() {
 
     testOnePostPerUserKey();
     testTheLoopGuard();
+    testTheLevelOfAPager();
     testNoSentenceCanAddAField();
     testATwoLineMessage();
     testTheTitleIsEscapedToo();

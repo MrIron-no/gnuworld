@@ -457,7 +457,12 @@ bool LogManager::configure(const LogConfig& config, std::vector<string>& errors)
         }
 
         built[spec.id] = sink;
-        thresholds[spec.id] = spec.level;
+
+        /* The level the file gave, or the one this KIND of sink says it wants
+         * where the file gave none: TRACE for a file or a console, ERROR for a
+         * pager.  A sink does no filtering of its own - this threshold is the
+         * only one - so the sink is the right place for that default to live */
+        thresholds[spec.id] = spec.levelGiven ? spec.level : sink->defaultThreshold();
     }
 
     if (!errors.empty()) {

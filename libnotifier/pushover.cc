@@ -265,10 +265,9 @@ std::string withoutControlCharacters(const std::string& input) {
 }
 
 PushoverClient::PushoverClient(std::string token, pushoverKeysType users, std::string url,
-                               Verbosity threshold, std::size_t rateCount,
-                               std::chrono::seconds ratePer)
+                               std::size_t rateCount, std::chrono::seconds ratePer)
     : apiToken(std::move(token)), userKeys(std::move(users)),
-      apiUrl(url.empty() ? std::string(defaultUrl()) : std::move(url)), threshold(threshold),
+      apiUrl(url.empty() ? std::string(defaultUrl()) : std::move(url)),
       rateLimit(rateCount, ratePer), failureReports(1, std::chrono::seconds(60)) {
 #ifdef HAVE_LIBCURL
     /* Here, and not in the request: this runs on the thread that builds the sink,
@@ -309,14 +308,10 @@ bool PushoverClient::isNotifierLogger(const std::string& logger) {
 }
 
 void PushoverClient::emit(const LogRecord& r) {
-    // The loop guard: this sink's own logger, and everything below it
+    /* The loop guard: this sink's own logger, and everything below it.  The only
+     * record this sink drops - what is worth a page is the threshold the logger
+     * holds it at, which is defaultThreshold() where the file named none */
     if (isNotifierLogger(r.logger))
-        return;
-
-    /* A pager's own threshold.  logging.conf's "level" is applied before a
-     * record ever gets here, but a file that gave none leaves that at TRACE,
-     * and TRACE is no level for a pager */
-    if (r.level > threshold)
         return;
 
     sendMessage(std::format("[{}] {}", r.logger.empty() ? std::string("root") : r.logger,
@@ -580,11 +575,10 @@ std::shared_ptr<LogSink> PushoverClient::makeSink([[maybe_unused]] const SinkSpe
             return nullptr;
         }
 
-    /* A pager nobody gave a level to is at ERROR: TRACE, which every other kind
-     * of sink defaults to, is a notification per protocol message */
-    const Verbosity level = spec.levelGiven ? spec.level : ERROR;
-
-    return std::make_shared<PushoverClient>(token, users, url, level, rateCount, ratePer);
+    /* Nothing about the level here: LogManager::configure() attaches the sink
+     * with the one the file gave, or with defaultThreshold() - ERROR - where it
+     * gave none */
+    return std::make_shared<PushoverClient>(token, users, url, rateCount, ratePer);
 #endif
 }
 

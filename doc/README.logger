@@ -769,6 +769,7 @@ class LogSink {
     virtual ~LogSink() = default;
     virtual void emit(const LogRecord&) = 0;       // thread-safe, never throws, never logs
     virtual void reopen() {}                       // SIGHUP: close and reopen a file, say
+    virtual Verbosity defaultThreshold() const { return TRACE; }  // with no sink.<id>.level
     virtual bool mainThreadOnly() const { return false; }
     virtual bool suppressOnReentry() const { return false; }
 };
@@ -796,8 +797,18 @@ class CaptureSink : public LogSink {
 ```
 
 `emit()` is called from whatever thread logged the record, so a sink locks
-itself; nothing about a `Logger`'s own mutex is held while a sink runs. Two
-flags change how the logger treats a sink:
+itself; nothing about a `Logger`'s own mutex is held while a sink runs.
+
+`defaultThreshold()` is the level `LogManager::configure()` attaches this
+kind of sink at when the file gives no `sink.<id>.level`: `TRACE` — every
+record the logger sends — for a file, a console, a channel; `ERROR` for the
+pushover sink, because nobody wants a push notification per protocol
+message. A level the file *did* give always wins. **A sink does no
+filtering of its own**: the per-sink threshold the logger holds is the one
+filter there is, so a sink with a second threshold inside it is a sink with
+two answers to the same question.
+
+Two flags change how the logger treats a sink:
 
 - `mainThreadOnly()` — true for the IRC sink: writing to the network
   connection is only safe from the thread that owns it, so a record that
@@ -850,10 +861,13 @@ Two conventions matter here. An error that already begins with
 `sink.<id>` is quoted as it stands, so a factory can name a key of its own
 (`sink.page.token: ...`) instead of a key behind a second prefix. And an
 error **never quotes an option's value**: an option may be a credential, and
-this text goes into a log file. `spec.levelGiven` says whether the file gave
-a level at all, which is how a kind of sink whose sensible default is not
-`TRACE` — a pager — tells "the file asked for TRACE" from "the file said
-nothing".
+this text goes into a log file. An error that begins with `sink.<id>` but not
+with `sink.<id>.` is prefixed like any other, so a sink named `a` cannot pass
+off a complaint about `sink.ab`.
+
+A factory says nothing about the level: `spec.levelGiven` tells
+`configure()` whether the file gave one, and where it did not the level is
+this kind of sink's `defaultThreshold()`.
 
 ## Threading and Re-entrancy
 

@@ -52,6 +52,18 @@ class LogSink {
     virtual void reopen() {}
 
     /**
+     * The threshold LogManager::configure() attaches this sink with when the
+     * file gives no "sink.<id>.level".
+     *
+     * TRACE - every record the logger sends - for every kind of sink but the
+     * ones for which that is nonsense: a pager says ERROR here, because nobody
+     * wants a push notification per protocol message.  A level the file DID
+     * give always wins, and a sink therefore has no threshold of its own to
+     * filter with: the logger's per-sink threshold is the one filter there is.
+     */
+    virtual Verbosity defaultThreshold() const { return TRACE; }
+
+    /**
      * True when this sink may only be written from the main thread.  The
      * logger then queues records that arrive on another thread and delivers
      * them from the main loop instead, in order.
