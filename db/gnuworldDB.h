@@ -55,10 +55,6 @@ class gnuworldDB {
      * Otherwise, no data is expected back, and the method will
      * return true if the command was successfully executed
      * (with no data returned).
-     *
-     * The implementation in pgsqlDB calls this argument "logQuery": there it has
-     * never decided anything about the data, only whether the statement is
-     * logged.
      */
     virtual bool Exec(const std::stringstream&, bool returnData = false) = 0;
 
@@ -72,10 +68,6 @@ class gnuworldDB {
      * Otherwise, no data is expected back, and the method will
      * return true if the command was successfully executed
      * (with no data returned).
-     *
-     * The implementation in pgsqlDB calls this argument "logQuery": there it has
-     * never decided anything about the data, only whether the statement is
-     * logged.
      */
     virtual bool Exec(const std::string&, bool returnData = false) = 0;
     virtual bool isConnected() const = 0;

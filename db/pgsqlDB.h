@@ -34,18 +34,10 @@
 #include "logger.h"
 
 /**
- * Reports the statement that just failed, as an ERROR record of the "<module>.sql"
- * logger of whoever owns the handle, with the message of the database and the
- * statement itself as fields.  The name of the calling function comes from the
- * compiler, so that a call site needs to say nothing but which handle it is.
- *
- * Nothing here is a macro of the logging system: it works in every translation
- * unit of every module, whether that module named a logger of its own or not.
+ * Reports the failure of the last statement of a handle, as an ERROR record of
+ * the "<module>.sql" logger of the module that owns it.  Works in any module.
  */
-#define SQL_ERROR(db) (db)->logError(__PRETTY_FUNCTION__)
-
-/// The name this macro had while it was the logger's own
-#define LOGSQL_ERROR(db) SQL_ERROR(db)
+#define LOGSQL_ERROR(db) (db)->logError(__PRETTY_FUNCTION__)
 
 namespace gnuworld {
 
@@ -55,28 +47,8 @@ class pgsqlDB : public gnuworldDB {
     PGconn* theDB;
     PGresult* lastResult;
 
-    /**
-     * The logger the statements of this handle go to: "<module>.sql" of the
-     * module that owns it, which logs errors and nothing else unless it is asked
-     * for more.  It belongs to the registry and outlives this handle.
-     */
+    /// "<module>.sql": statements at DEBUG, failures at ERROR
     Logger* sqlLog;
-
-    /**
-     * The statement Exec() was last given and that failed, which logError()
-     * reports.  A statement that worked is let go of as soon as it has: a
-     * handle lives as long as its bot, and one of these may carry a password
-     * hash or a TOTP key.
-     */
-    std::string lastQuery;
-
-    /**
-     * Whether that statement may be shown: a caller that asked Exec() not to
-     * log a statement - one that carries a secret, say - does not want to read
-     * it in the record of its failure either.  It is what the last Exec() was
-     * told, whether that statement worked or not.
-     */
-    bool lastQueryLoggable = true;
 
   public:
     pgsqlDB(xClient* bot, const std::string& dbHost, const unsigned short int dbPort,
@@ -84,22 +56,11 @@ class pgsqlDB : public gnuworldDB {
     pgsqlDB(xClient* bot, const std::string& connectInfo);
     virtual ~pgsqlDB();
 
-    /**
-     * Executes one statement.
-     *
-     * The base class gnuworldDB calls the second parameter "returnData"; here it
-     * has never had anything to do with the data that comes back, which is
-     * fetched with countTuples() and GetValue() either way.  All it decides is
-     * whether the statement itself is logged, which is what it is called here.
-     */
-    virtual bool Exec(const std::string&, bool logQuery = true);
-    virtual bool Exec(const std::stringstream&, bool logQuery = true);
+    virtual bool Exec(const std::string&, bool = true);
+    virtual bool Exec(const std::stringstream&, bool = true);
     virtual bool isConnected() const;
 
-    /**
-     * Reports the failure of the last statement, from the function named here.
-     * Call sites use SQL_ERROR(db) rather than this method itself.
-     */
+    /// What LOGSQL_ERROR(db) calls
     void logError(const char* func);
 
     virtual bool PutLine(const std::string&);

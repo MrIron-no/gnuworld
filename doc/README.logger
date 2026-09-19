@@ -717,28 +717,26 @@ registration is gone). Core's own extractors for `iClient`/`iServer`/
 `nullptr` and never removed.
 
 **Database errors.** Any module with a `dbHandle` gets `<module>.sql` and
-`SQL_ERROR` for free, no setup:
+`LOGSQL_ERROR` for free, no setup:
 
 ```cpp
 if (!db->Exec(query)) {
-    SQL_ERROR(db);   // ERROR record on "<module>.sql": message, `error`, `query`
+    LOGSQL_ERROR(db);   // ERROR record on "<module>.sql": message and `error`
     return false;
 }
 ```
 
-`SQL_ERROR(db)` (an alias `LOGSQL_ERROR(db)` is kept for source
-compatibility — it used to be the logger's own macro, now it is
-`dbHandle`'s) expands to `db->logError(__PRETTY_FUNCTION__)`, which logs
-`"SQL Error: {error}"` with fields `error` (the database's message) and
-`query` (the statement that failed — `"(not logged)"` if it was run with
-`Exec(query, false)`, `"(none)"` if none has run yet or the last one
-succeeded). Every `Exec()` call itself is a `DEBUG` record on the same
+`LOGSQL_ERROR(db)` (it used to be the logger's own macro and needed a
+`logger` member in scope; now it is `dbHandle`'s) expands to `db->logError(__PRETTY_FUNCTION__)`, which logs
+`"SQL Error: {error}"` with the field `error`, the database's message. The
+statement is not part of that record: ask for `logger.<module>.sql = DEBUG`
+and it is the record right before it. Every `Exec()` call itself is a `DEBUG` record on the same
 logger with field `query`, unless it is called `Exec(query, false)`, in
 which case it is skipped entirely — used for the handful of statements
 that carry a password hash, a TOTP secret or a SCRAM record:
 
 ```cpp
-// carries a credential: kept out of the query log and out of the error record
+// carries a credential: kept out of the query log
 if (!SQLDb->Exec(queryString, false)) {
     LOGSQL_ERROR(SQLDb);
     return false;
@@ -898,10 +896,10 @@ this kind of sink's `defaultThreshold()`.
 ## Security Notes
 
 1. **A JSON sink is the whole record**: client IPs, accounts, user@host, a
-   cservice command line (`command_line`), and the `query` of a failed SQL
-   statement. cservice keeps its own credential-bearing statements
-   (password hash, TOTP secret, SCRAM record) out of the query log and the
-   error record with `Exec(query, false)`; no other module's queries are
+   cservice command line (`command_line`), and - where a `<module>.sql`
+   logger is at `DEBUG` - every SQL statement (`query`). cservice keeps its
+   own credential-bearing statements (password hash, TOTP secret, SCRAM
+   record) out of that with `Exec(query, false)`; no other module's queries are
    reviewed for what they may contain. Treat a JSON log as sensitive,
    especially once it leaves this host for a log-shipping stack.
 2. **File permissions**: a log file this process creates is mode `0640`

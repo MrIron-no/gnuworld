@@ -33,7 +33,6 @@
 #include "gnuworldDB.h"
 #include "pgsqlDB.h"
 #include "client.h"
-#include "LogManager.h"
 #include "logger.h"
 
 namespace gnuworld {
@@ -43,30 +42,10 @@ using std::ends;
 using std::string;
 using std::stringstream;
 
-namespace {
-
-/**
- * The logger the statements of a handle of this bot go to: the "sql" child of
- * the module's own logger, quiet about everything but what failed.
- *
- * A handle without a bot - or one whose bot has no logger yet - is nobody's
- * module in particular and says so under "db.sql".
- */
-Logger* sqlLoggerOf(xClient* bot) {
-    if (nullptr != bot && nullptr != bot->getLogger())
-        return bot->getLogger()->child("sql", ERROR);
-
-    LogManager::setCodeDefault("db.sql", ERROR);
-
-    return LogManager::get("db.sql");
-}
-
-} // namespace
-
 pgsqlDB::pgsqlDB(xClient* _bot, const string& dbHost, const unsigned short int dbPort,
                  const string& dbName, const string& userName, const string& password)
     : gnuworldDB(dbHost, dbPort, dbName, userName, password), bot(_bot), theDB(0), lastResult(0),
-      sqlLog(sqlLoggerOf(_bot)) {
+      sqlLog(_bot->getLogger()->child("sql", ERROR)) {
     stringstream s;
     s << "host=" << dbHost << " dbname=" << dbName << " port=" << dbPort;
 
@@ -90,7 +69,8 @@ pgsqlDB::pgsqlDB(xClient* _bot, const string& dbHost, const unsigned short int d
     }
 }
 
-pgsqlDB::pgsqlDB(xClient* _bot, const string& connectInfo) : bot(_bot), sqlLog(sqlLoggerOf(_bot)) {
+pgsqlDB::pgsqlDB(xClient* _bot, const string& connectInfo)
+    : bot(_bot), sqlLog(_bot->getLogger()->child("sql", ERROR)) {
     // TODO
     // Allow exception to be thrown
     lastResult = 0;
@@ -116,14 +96,9 @@ pgsqlDB::~pgsqlDB() {
     }
 }
 
-bool pgsqlDB::Exec(const string& theQuery, bool logQuery) {
-    /* A caller that asked for no log of its queries did not ask for its errors
-     * to be silent, so a failure is still reported - but not with the statement,
-     * and a statement that may not be shown is not kept at all */
-    lastQuery = logQuery ? theQuery : string();
-    lastQueryLoggable = logQuery;
-
-    if (logQuery)
+bool pgsqlDB::Exec(const string& theQuery, bool log) {
+    /* Log query. */
+    if (log)
         LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
 
     // It is necessary to manually deallocate the last result
@@ -135,45 +110,21 @@ bool pgsqlDB::Exec(const string& theQuery, bool logQuery) {
     lastResult = PQexec(theDB, theQuery.c_str());
 
     ExecStatusType status = PQresultStatus(lastResult);
-    const bool worked =
-        PGRES_COPY_IN == status || PGRES_TUPLES_OK == status || PGRES_COMMAND_OK == status;
-
-    /* A statement that worked is not one anybody will report, and a handle of
-     * this bot lives as long as the bot does: what the statement carried - a
-     * password hash, a TOTP key - is let go of here rather than kept until the
-     * next statement happens to replace it.  A failure keeps it for logError() */
-    if (worked)
-        string().swap(lastQuery);
-
-    return worked;
+    if (PGRES_COPY_IN == status)
+        return true;
+    if (PGRES_TUPLES_OK == status)
+        return true;
+    if (PGRES_COMMAND_OK == status)
+        return true;
+    return false;
 }
 
-bool pgsqlDB::Exec(const stringstream& theQuery, bool logQuery) {
-    return Exec(theQuery.str(), logQuery);
+bool pgsqlDB::Exec(const stringstream& theQuery, bool retData) {
+    return Exec(theQuery.str(), retData);
 }
 
-/**
- * What went wrong with the last statement, said once: the message of the
- * database in the sentence, and the statement itself as a field, which the JSON
- * line carries and a one-line console record leaves out.
- *
- * There are two statements this shows nothing of: one that carries a secret,
- * which its caller said was not to be logged, and one that worked - the handle
- * no longer holds it, so there is nothing to report but that.
- */
 void pgsqlDB::logError(const char* func) {
-    // A statement that may not be shown was never kept, so ask the switch first
-    std::string query("(none)");
-
-    if (!lastQueryLoggable)
-        query = "(not logged)";
-    else if (!lastQuery.empty())
-        query = lastQuery;
-
-    sqlLog->createMessage(ERROR, func, "SQL Error: {error}")
-        .with("error", ErrorMessage())
-        .with("query", query)
-        .log();
+    sqlLog->createMessage(ERROR, func, "SQL Error: {error}").with("error", ErrorMessage()).log();
 }
 
 bool pgsqlDB::StartCopyIn(const string& writeMe) { return Exec(writeMe); }

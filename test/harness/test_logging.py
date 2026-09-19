@@ -1120,9 +1120,9 @@ async def test_a_statement_carrying_a_credential_is_kept_out_of_the_logs(
     docker_stack, fake_hub_p11, tmp_path, blocked_user_commit
 ):
     """sqlUser::commit() writes the password, the TOTP key and the SCRAM record
-    of a user.  Its statement is executed with logQuery = false, so neither the
-    DEBUG record of a successful one nor the ERROR record of a failed one shows
-    it - even under "logger.cservice.sql = DEBUG", which logs every other
+    of a user.  Its statement is executed with Exec(query, false), so no DEBUG
+    record shows it, and the ERROR record of a failed one never carries a
+    statement - even under "logger.cservice.sql = DEBUG", which logs every other
     statement in full."""
     # doc/cservice.addme.sql: what "Admin" has in the password column
     password_hash = "xEDi1V791f7bddc526de7e3b0602d0b2993ce21d"
@@ -1145,10 +1145,11 @@ async def test_a_statement_carrying_a_credential_is_kept_out_of_the_logs(
     logged = [r for r in records if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG"]
     assert logged, sorted({r.get("logger") for r in records})
 
+    # The failure is reported, by what the database said and nothing else
     errors = [r for r in records if r.get("logger") == "cservice.sql" and r.get("level") == "ERROR"]
-    withheld = [e for e in errors if e.get("query") == "(not logged)"]
-    assert withheld, errors
-    assert all("blocked" in e.get("error", "") for e in withheld), withheld
+    blocked = [e for e in errors if "blocked" in e.get("error", "")]
+    assert blocked, errors
+    assert not any("query" in e for e in errors), errors
 
     # And the hash the statement carried is nowhere in the file at all
     assert password_hash not in text
@@ -1171,7 +1172,7 @@ async def test_forced_sql_error_in_cservice(
     errors = [r for r in records if r.get("logger") == "cservice.sql" and r.get("level") == "ERROR"]
     assert errors, records
     assert any(
-        e.get("message", "").startswith("SQL Error:") and e.get("error") and e.get("query")
+        e.get("message", "").startswith("SQL Error:") and e.get("error")
         for e in errors
     )
 
