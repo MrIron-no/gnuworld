@@ -413,7 +413,9 @@ void xServer::mainLoop() {
                 break;
             }
 
-            LOG(INFO, "Received signal: {}", theSignal);
+            // The handler of the signal says what it means, at INFO; the number is
+            // for whoever is debugging the signal path
+            LOG(DEBUG, "Received signal: {}", theSignal);
 
             if (!PostSignal(theSignal)) {
                 keepRunning = false;

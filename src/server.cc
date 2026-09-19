@@ -88,6 +88,18 @@ GNUWORLD_MODULE_LOGGER("core");
 
 namespace gnuworld {
 
+namespace {
+
+/// The logger of what is loaded and attached, for a function that speaks of
+/// it once: looked up the first time and kept
+Logger* modulesLogger() {
+    static Logger* const modules = LogManager::get("core.modules");
+
+    return modules;
+}
+
+} // namespace
+
 using std::clog;
 using std::cout;
 using std::endl;
@@ -1123,8 +1135,7 @@ bool xServer::DetachClient(const string& moduleName, const string& reason) {
         }
     }
 
-    LOG_TO(LogManager::get("core.modules"), WARN, "Unable to find client moduleName: {}",
-           moduleName);
+    LOG_TO(modulesLogger(), WARN, "Unable to find client moduleName: {}", moduleName);
 
     return false;
 }
@@ -1182,8 +1193,7 @@ void xServer::UnloadClient(xClient* theClient, const string& reason) {
         }
     }
 
-    LOG_TO(LogManager::get("core.modules"), WARN, "Unable to find client: {}",
-           theClient->getNickName());
+    LOG_TO(modulesLogger(), WARN, "Unable to find client: {}", theClient->getNickName());
 }
 
 // This method is responsible for updating all internal
@@ -2861,7 +2871,7 @@ bool xServer::DetachClient(iClient* fakeClient, const string& quitMessage) {
     // xNetwork::removeFakeClient() will remove the client from
     // the network data structurs, and free its numeric
     if (0 == Network->removeClient(fakeClient)) {
-        LOG_MSG_TO(LogManager::get("core.modules"), ERROR,
+        LOG_MSG_TO(modulesLogger(), ERROR,
                    "Failed to remove fakeClient from network data structures: {client}")
             .with("client", fakeClient)
             .log();
