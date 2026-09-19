@@ -506,6 +506,10 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         NoticeChannelOps(st[1], st.assemble(2));
         return;
     }
+    if (st[0] == "isonchannel" && st.size() > 1) {
+        Notice(theClient, "{}: {}", st[1], isOnChannel(st[1]) ? "yes" : "no");
+        return;
+    }
 
     if (st[0] == "moo") {
         string raw = st.assemble(1);

@@ -102,6 +102,23 @@ async def test_a_stealth_module_does_not_part(stealth_gnutest_linked_p11):
 
 
 @pytest.mark.asyncio
+async def test_a_stealth_module_is_on_no_channel(stealth_gnutest_linked_p11):
+    """It has no client on the network, so it is on no channel - not even one
+    that exists. Before the null check in xClient::isOnChannel() this asked
+    Channel::findUser() about a null client and aborted on its assert."""
+    hub, proc = stealth_gnutest_linked_p11
+    asker = await setup(hub)
+
+    lines = await run(hub, asker, f"isonchannel {CHAN}")
+    alive(proc)
+    assert [l for l in lines if p10_token(l) == "O"] == [
+        f"{hub.peer_numeric} O {asker} :{CHAN}: no"
+    ]
+
+    no_module_numeric(hub)
+
+
+@pytest.mark.asyncio
 async def test_a_stealth_module_wallops_and_kills_as_the_server(stealth_gnutest_linked_p11):
     """A server WALLOPS and a server KILL are both legal, so these are sent -
     from the server's numeric, not from the one the uplink has never heard of."""
