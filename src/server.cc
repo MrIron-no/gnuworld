@@ -1733,7 +1733,7 @@ const string debugLogSinkId("debuglog");
  *     sink.debuglog.path   = debug.log
  *     sink.debuglog.format = text
  *     logger.root          = INFO, debuglog, console
- *     logger.legacy        = DEBUG
+ *     logger.legacy        = on
  *
  * would be, built here rather than written anywhere: an installation without a
  * logging.conf logs what it always logged.

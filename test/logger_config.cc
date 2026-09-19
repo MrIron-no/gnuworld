@@ -1058,6 +1058,64 @@ void testLoggerNames() {
 }
 
 /**
+ * "legacy" is the elog stream, and an elog line says nothing of how bad it is:
+ * every one of them is a DEBUG record, so a severity on that logger is either
+ * all of them or none.  The file says on or off, which is what it means.
+ */
+void testLegacyIsOnOrOff() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("legacy-on.conf", "sink.c.type = console\n"
+                                                     "logger.legacy = on, c\n"),
+                         config, errors));
+    CHECK(errors.empty());
+
+    const LoggerSpec* legacy = findLogger(config, "legacy");
+    CHECK(nullptr != legacy);
+    if (nullptr != legacy) {
+        CHECK(legacy->level && DEBUG == *legacy->level);
+        CHECK(1 == legacy->sinks.size());
+    }
+
+    CHECK(parseLogConfig(writeConf("legacy-off.conf", "logger.legacy = Off\n"), config, errors));
+    legacy = findLogger(config, "legacy");
+    CHECK(nullptr != legacy);
+    if (nullptr != legacy)
+        CHECK(legacy->level && OFF == *legacy->level);
+
+    // What the files written before this said, and meant the same by
+    CHECK(
+        parseLogConfig(writeConf("legacy-debug.conf", "logger.legacy = DEBUG\n"), config, errors));
+    legacy = findLogger(config, "legacy");
+    CHECK(nullptr != legacy && legacy->level && DEBUG == *legacy->level);
+
+    CHECK(
+        parseLogConfig(writeConf("legacy-trace.conf", "logger.legacy = TRACE\n"), config, errors));
+    legacy = findLogger(config, "legacy");
+    CHECK(nullptr != legacy && legacy->level && DEBUG == *legacy->level);
+
+    CHECK(parseLogConfig(writeConf("legacy-OFF.conf", "logger.legacy = OFF\n"), config, errors));
+    legacy = findLogger(config, "legacy");
+    CHECK(nullptr != legacy && legacy->level && OFF == *legacy->level);
+
+    /* A severity in between reads as a filter and is a switch-off: the file is
+     * told, in words that say what to write instead */
+    for (const char* const level : {"INFO", "warn", "ERROR", "FATAL"}) {
+        errors.clear();
+        CHECK(!parseLogConfig(
+            writeConf("legacy-level.conf", std::string("logger.legacy = ") + level + "\n"), config,
+            errors));
+        CHECK(anyErrorNames(errors, "logger.legacy"));
+        CHECK(1 == errors.size() && contains(errors[0], "on or off"));
+    }
+
+    // And on and off are words of that logger only
+    expectError("legacy-other.conf", "logger.core = on\n", "logger.core");
+    expectError("legacy-child.conf", "logger.legacy.x = on\n", "logger.legacy.x");
+}
+
+/**
  * Two file sinks on one file would be two streams appending to it, each with a
  * lock of its own: a record of one could land in the middle of a record of the
  * other.  The file is compared as it was written, and nothing more.
@@ -2307,6 +2365,7 @@ int main() {
     testErrorsAreCapped();
     testMonstrousFilesKeepTheConfiguration();
     testLoggerNames();
+    testLegacyIsOnOrOff();
     testDuplicateFileSinkPaths();
     testMissingFile();
     testConfigureRoutes();

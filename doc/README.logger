@@ -128,7 +128,7 @@ sink.debuglog.type  = file
 sink.debuglog.path  = debug.log      # or the -d value
 sink.debuglog.format = text
 logger.root   = INFO, debuglog, console
-logger.legacy = DEBUG
+logger.legacy = on
 ```
 
 and it logs, once, at INFO on `core`:
@@ -195,6 +195,7 @@ sink.<id>.userkey   = <key>[, <key> ...]                       # pushover only, 
 sink.<id>.url       = <endpoint>                               # pushover only, default the service
 
 logger.<dotted.name>     = LEVEL[, sinkid[, sinkid ...]]        # "root" names the root logger
+logger.legacy            = on | off[, sinkid[, sinkid ...]]     # the elog stream: a switch, not a level
 additivity.<dotted.name> = yes | no                             # default yes
 ```
 
@@ -947,10 +948,10 @@ this kind of sink's `defaultThreshold()`.
      does not apply — is dropped by the sink itself, so it cannot page about
      failing to page. Those failures are logged at most once a minute per
      sink, each record saying how many went unsaid behind it.
-6. **`logger.legacy = DEBUG` sends every unconverted module's `elog`
+6. **`logger.legacy = on` sends every unconverted module's `elog`
    chatter** to every sink the root has — ccontrol's own password `UPDATE`
-   debug line among it. On a production install keep `legacy` at `INFO`,
-   or `DEBUG` only on a text file of its own and nowhere else.
+   debug line among it. On a production install keep `legacy` `off`,
+   or `on` only with a text file of its own and nowhere else.
 7. **`logging.conf` is trusted input**: a path it names is used exactly as
    given, with no check against what an operator did or did not mean.
 8. **What each sink shows**, most revealing first:
@@ -974,8 +975,12 @@ still logs, unchanged. What it now does: text is buffered per thread (one
 `std::ostringstream` per thread, format state such as `std::hex` persists
 across statements exactly as a real stream's would) and, on `std::endl`,
 becomes one **`DEBUG`** record on the logger **`legacy`** — no function, no
-fields — so `logger.legacy = INFO` silences every elog line at once, and a
-`std::flush` is a no-op (there is nothing buffered to flush anywhere but
+fields. An elog line says nothing of how bad it is, so that logger is not
+filtered but switched: `logger.legacy = on` (every line) or `off` (none).
+`DEBUG`, `TRACE` and `OFF` are still read, as `on`, `on` and `off`; a
+severity in between, which looks like a filter and would hide everything, is
+an error that says so. A sink still applies its own `sink.<id>.level`, which
+has to let `DEBUG` through to show the stream. A `std::flush` is a no-op (there is nothing buffered to flush anywhere but
 memory). `elog.setStream(p)` turns the console sink on or off
 (`ConsoleSink::setEnabled(p != nullptr)`); `elog.openFile(name)` gives the
 root logger a file at that path (`LogManager::bootstrapFile`) — core itself
@@ -1256,7 +1261,7 @@ arrived yet); after that, the first record it cannot deliver makes one `WARN`
 on `core` — "The log channel #x does not exist on the network" — which the
 other sinks show, once per channel until the channel turns up. Then check the
 levels: a module that still writes to `elog` logs on `legacy` at `DEBUG`, so
-it needs `logger.legacy = DEBUG, <sink>` and a `sink.<id>.level` that lets
+it needs `logger.legacy = on, <sink>` and a `sink.<id>.level` that lets
 `DEBUG` through.
 
 **A field is not showing up in the text/console/IRC line.** Only JSON shows

@@ -1,3 +1,12 @@
+2026-09-19: logger.legacy is a switch
+
+The elog stream of the modules that have not moved to the logger is switched
+in logging.conf, not filtered: "logger.legacy = on" or "off", with the sinks
+after it as on any logger line.  An elog line says nothing of how bad it is,
+so each is a DEBUG record, and "logger.legacy = INFO" hid all of them while
+looking like a filter; that, WARN, ERROR and FATAL are now an error that says
+to write on or off.  DEBUG, TRACE and OFF are still read, as on, on and off.
+
 
 2026-09-19: A channel records who set each ban and when
 

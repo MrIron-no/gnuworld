@@ -44,6 +44,9 @@ namespace {
 /// What a key of logging.conf may begin with, and nothing else may
 const string sinkPrefix("sink.");
 const string loggerPrefix("logger.");
+
+/// The logger of the elog shim, which the file switches on or off
+const string legacyLoggerName("legacy");
 const string additivityPrefix("additivity.");
 
 /**
@@ -558,7 +561,34 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                 continue;
             }
 
-            if (!parseLevel(parts[0], level)) {
+            /* The elog stream is switched, not filtered: an elog line says
+             * nothing of how bad it is, so every one of them is a DEBUG record
+             * and a severity would be all of them or none.  DEBUG, TRACE and
+             * OFF are what files written before the switch said, and mean the
+             * same; INFO reads as a filter and is a switch-off, which is told */
+            if (legacyLoggerName == name) {
+                // Case for case the way parseLevel() reads a level: not at all
+                string word;
+                for (const char c : parts[0])
+                    word += static_cast<char>((c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c);
+
+                if ("on" == word) {
+                    level = DEBUG;
+                } else if ("off" == word) {
+                    level = OFF;
+                } else if (!parseLevel(parts[0], level)) {
+                    errors.push_back(shownKey + ": \"" + shown(parts[0]) +
+                                     "\" is neither on nor off");
+                    continue;
+                } else if (OFF != level && level < DEBUG) {
+                    errors.push_back(shownKey + ": the elog stream has no severities, every " +
+                                     "line of it is a DEBUG record, so \"" + shown(parts[0]) +
+                                     "\" would hide all of it: say on or off");
+                    continue;
+                } else if (OFF != level) {
+                    level = DEBUG;
+                }
+            } else if (!parseLevel(parts[0], level)) {
                 errors.push_back(shownKey + ": \"" + shown(parts[0]) + "\" is not a level");
                 continue;
             }
