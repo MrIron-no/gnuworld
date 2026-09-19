@@ -1128,42 +1128,6 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
                                     std::span<const std::string> problems) const;
 
     /**
-     * A line has at least as many parameters as the shortest form the
-     * protocol has for its command, the source counted: fewer is a protocol
-     * error.  A form that is legal but of no use to us is not: the handler
-     * leaves that one alone.
-     */
-    void RequireParameters(std::string_view where, const xParameters& line,
-                           xParameters::size_type minimum) const {
-        if (line.size() < minimum) {
-            const std::string problem =
-                std::format("{} parameters, where the shortest form has {}", line.size(), minimum);
-            ProtocolError(where, std::span(&problem, 1));
-        }
-    }
-
-    /**
-     * A number the uplink itself writes into the line, such as a timestamp
-     * or a count: if it is not one, that is a protocol error.  `what` names
-     * it in the log: "channel timestamp".  Text the uplink only passes on
-     * for somebody else is not for these: parseNumber() it, and cope.
-     */
-    template <std::integral T>
-    T RequireNumber(std::string_view where, std::string_view what, std::string_view text) const {
-        if (const std::optional<T> value = parseNumber<T>(text)) {
-            return *value;
-        }
-        const std::string problem = std::format("invalid {}: {}", what, text);
-        ProtocolError(where, std::span(&problem, 1));
-    }
-
-    /// RequireNumber() for a time.  ircu writes them unsigned.
-    time_t RequireTimestamp(std::string_view where, std::string_view what,
-                            std::string_view text) const {
-        return static_cast<time_t>(RequireNumber<std::uint64_t>(where, what, text));
-    }
-
-    /**
      * Check the list of glines for any that are about to
      * expire.
      */
@@ -1870,6 +1834,38 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     allowControlSetType allowControlSet;
 };
+
+/* What ServerCommandHandler.h declares and could not define: these need all
+ * of xServer, which needs ServerCommandHandler */
+
+inline void ServerCommandHandler::protocolError(std::span<const std::string> problems) const {
+    theServer->ProtocolError(where, problems);
+}
+
+inline void ServerCommandHandler::requireParameters(const xParameters& line,
+                                                    xParameters::size_type minimum) const {
+    if (line.size() < minimum) {
+        const std::string problem =
+            std::format("{} parameters, where the shortest form has {}", line.size(), minimum);
+        protocolError(std::span(&problem, 1));
+    }
+}
+
+inline std::uint64_t ServerCommandHandler::requireNumber(std::string_view text) const {
+    if (const std::optional<std::uint64_t> value = parseNumber<std::uint64_t>(text)) {
+        return *value;
+    }
+    const std::string problem = std::format("invalid number: {}", text);
+    protocolError(std::span(&problem, 1));
+}
+
+inline time_t ServerCommandHandler::requireTimestamp(std::string_view text) const {
+    if (const std::optional<std::uint64_t> value = parseNumber<std::uint64_t>(text)) {
+        return static_cast<time_t>(*value);
+    }
+    const std::string problem = std::format("invalid timestamp: {}", text);
+    protocolError(std::span(&problem, 1));
+}
 
 } // namespace gnuworld
 

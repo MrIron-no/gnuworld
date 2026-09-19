@@ -44,7 +44,7 @@ CREATE_HANDLER(msg_T)
 // kAI T #omniplex :-=[ Washington.DC.US.Krushnet.Org / Luxembourg.
 // LU.EU.KrushNet.Org Admin Channel ]=-
 bool msg_T::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_T>", Param, 3);
+    requireParameters(Param, 3);
 
     Channel* theChan = Network->findChannel(Param[1]);
     if (0 == theChan) {
@@ -69,7 +69,7 @@ bool msg_T::Execute(const xParameters& Param) {
         newTopic = Param[5];
 #ifdef TOPIC_TRACK
         setTopic(theChan, Param[5]);
-        setTopicTS(theChan, theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
+        setTopicTS(theChan, requireTimestamp(Param[3]));
         setTopicWhoSet(theChan, Param[4]);
         hasWhoSet = true;
 #endif // TOPIC_TRACK
@@ -79,7 +79,7 @@ bool msg_T::Execute(const xParameters& Param) {
         newTopic = Param[4];
 #ifdef TOPIC_TRACK
         setTopic(theChan, Param[4]);
-        setTopicTS(theChan, theServer->RequireTimestamp("msg_T>", "topic timestamp", Param[3]));
+        setTopicTS(theChan, requireTimestamp(Param[3]));
 #endif // TOPIC_TRACK
     } else {
         /* this is a .11 hub! (3 arguments) */

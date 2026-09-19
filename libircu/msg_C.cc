@@ -59,7 +59,7 @@ bool msg_C::Execute(const xParameters& Param) {
     // Verify that there exist sufficient arguments to successfully
     // handle this command
     // client_numeric #channel[,#channel2,...] timestamp
-    theServer->RequireParameters("msg_C>", Param, 3);
+    requireParameters(Param, 3);
 
     // Find the client in question.
     iClient* theClient = Network->findClient(Param[0]);
@@ -74,8 +74,7 @@ bool msg_C::Execute(const xParameters& Param) {
     }
 
     // Grab the creation time.
-    const time_t creationTime =
-        theServer->RequireTimestamp("msg_C>", "channel timestamp", Param[Param.size() - 1]);
+    const time_t creationTime = requireTimestamp(Param[Param.size() - 1]);
 
     iServer* nickUplink = 0;
     char serverYY[3];

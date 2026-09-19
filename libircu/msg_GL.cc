@@ -46,7 +46,7 @@ CREATE_HANDLER(msg_GL)
  */
 bool msg_GL::Execute(const xParameters& Params) {
     // <source> GL <target> <+|-><mask> ...: ircu's ms_gline() takes three
-    theServer->RequireParameters("msg_GL>", Params, 3);
+    requireParameters(Params, 3);
 
     if ('-' == Params[2][0]) {
         // Removing a gline
@@ -76,9 +76,8 @@ bool msg_GL::Execute(const xParameters& Params) {
     }
 
     // <source> GL <target> +<mask> <expire> [<lastmod> [<lifetime>]] :<reason>
-    const time_t expires = theServer->RequireTimestamp("msg_GL>", "expire time", Params[3]);
-    const time_t lastmod =
-        (Params.size() > 5) ? theServer->RequireTimestamp("msg_GL>", "lastmod", Params[4]) : 0;
+    const time_t expires = requireTimestamp(Params[3]);
+    const time_t lastmod = (Params.size() > 5) ? requireTimestamp(Params[4]) : 0;
 
     Gline* newGline = new (std::nothrow)
         Gline(Params[0], Params[2] + 1, Params[Params.size() - 1], expires, lastmod);

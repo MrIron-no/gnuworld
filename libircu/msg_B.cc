@@ -59,7 +59,7 @@ using std::vector;
 
 class msg_B : public ServerCommandHandler {
   public:
-    msg_B(xServer* theServer) : ServerCommandHandler(theServer) {}
+    msg_B(xServer* theServer) : ServerCommandHandler(theServer, "msg_B>") {}
     virtual ~msg_B() {}
 
     virtual bool Execute(const xParameters&);
@@ -115,7 +115,7 @@ CREATE_LOADER(msg_B)
 bool msg_B::Execute(const xParameters& Param) {
     // Make sure there are at least four arguments supplied:
     // servernumeric #channel time_stamp arguments
-    theServer->RequireParameters("msg_B>", Param, 3);
+    requireParameters(Param, 3);
 
     // Attempt to find the channel in the network channel table
     Channel* theChan = Network->findChannel(Param[1]);
@@ -123,7 +123,7 @@ bool msg_B::Execute(const xParameters& Param) {
     // True if we already know this channel with an older timestamp, in
     // which case the incoming channel lost and its members are fresh
     // joins to ours.  Decides how hidden members are interpreted.
-    const time_t burstTS = theServer->RequireTimestamp("msg_B>", "channel timestamp", Param[2]);
+    const time_t burstTS = requireTimestamp(Param[2]);
     const bool incomingIsNewer = (theChan != NULL) && (theChan->getCreationTime() < burstTS);
 
     // Who a ban of this burst is recorded as having been set by, where the
@@ -183,9 +183,9 @@ bool msg_B::Execute(const xParameters& Param) {
             Param[whichToken], args,
             {.allowLeftover = true, .protocol = theServer->getUplink()->getProtocol()});
         if (!parsed.ok()) {
-            theServer->ProtocolError("msg_B>", parsed.problems);
+            protocolError(parsed.problems);
         }
-        theServer->ApplyChannelModes(theChan, 0, parsed.changes, "msg_B>", burstSource);
+        theServer->ApplyChannelModes(theChan, 0, parsed.changes, where, burstSource);
 
         whichToken += 1 + parsed.argsUsed;
     }
@@ -447,7 +447,7 @@ void msg_B::parseBurstBans(Channel* theChan, const string& theBans, const string
         if ((st.size() % stride) != 0) {
             const std::string problem =
                 std::format("the ban section has {} tokens, not a multiple of 3", st.size());
-            theServer->ProtocolError("msg_B::parseBurstBans>", std::span(&problem, 1));
+            protocolError(std::span(&problem, 1));
         }
     }
 

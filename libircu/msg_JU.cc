@@ -41,7 +41,7 @@ CREATE_HANDLER(msg_JU)
  */
 bool msg_JU::Execute(const xParameters& Param) {
 
-    theServer->RequireParameters("msg_JU>", Param, 6);
+    requireParameters(Param, 6);
     if (Param[2][0] == '+') {
         /*
          * A new jupe is interduced, need to create an iServer for it
@@ -64,8 +64,7 @@ bool msg_JU::Execute(const xParameters& Param) {
             Reason = Reason.substr(1);
         };
         iServer* jupeServer = new (std::nothrow)
-            iServer(base64toint(Param[0]), temp2, SName,
-                    theServer->RequireTimestamp("msg_JU>", "lastmod", CTime), Reason);
+            iServer(base64toint(Param[0]), temp2, SName, requireTimestamp(CTime), Reason);
         assert(jupeServer != 0);
         jupeServer->setJupe();
         if (!Network->addServer(jupeServer)) {

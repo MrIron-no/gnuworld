@@ -46,7 +46,7 @@ CREATE_HANDLER(msg_Q)
  */
 bool msg_Q::Execute(const xParameters& Param) {
 
-    theServer->RequireParameters("msg_Q>", Param, 1);
+    requireParameters(Param, 1);
 
     iClient* theClient = Network->findClient(Param[0]);
     if (NULL == theClient) {

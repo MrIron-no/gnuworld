@@ -53,7 +53,7 @@ CREATE_HANDLER(msg_CM)
  *  from channel #channel.
  */
 bool msg_CM::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_CM>", Param, 3);
+    requireParameters(Param, 3);
 
     Channel* tmpChan = Network->findChannel(Param[1]);
     if (!tmpChan) {
@@ -66,7 +66,7 @@ bool msg_CM::Execute(const xParameters& Param) {
     std::vector<std::string> problems;
     const std::vector<Channel::ModeChange> changes = tmpChan->changesToClear(Param[2], problems);
     if (!problems.empty()) {
-        theServer->ProtocolError("msg_CM>", problems);
+        protocolError(problems);
     }
 
     // Go ahead and post the server mode event
@@ -83,7 +83,7 @@ bool msg_CM::Execute(const xParameters& Param) {
     if (serverSource != 0)
         theServer->PostChannelEvent(EVT_SERVERMODE, tmpChan, static_cast<void*>(serverSource));
 
-    theServer->ApplyChannelModes(tmpChan, 0, changes, "msg_CM>");
+    theServer->ApplyChannelModes(tmpChan, 0, changes, where);
 
     return true;
 }

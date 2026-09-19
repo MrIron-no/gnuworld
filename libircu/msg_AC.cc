@@ -45,7 +45,7 @@ CREATE_HANDLER(msg_AC)
  * Note: ACCOUNT_ID and ACCOUNT_FLAGS are optional
  */
 bool msg_AC::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_AC>", Param, 3);
+    requireParameters(Param, 3);
 
     // Find the target user
     iClient* theClient = Network->findClient(Param[1]);
@@ -61,12 +61,10 @@ bool msg_AC::Execute(const xParameters& Param) {
     iClient::flagType account_flags = 0;
 
     if (Param.has(3)) {
-        account_id = static_cast<unsigned int>(
-            theServer->RequireNumber<std::uint64_t>("msg_AC>", "account id", Param[3]));
+        account_id = static_cast<unsigned int>(requireNumber(Param[3]));
     }
     if (Param.has(4)) {
-        account_flags = static_cast<iClient::flagType>(
-            theServer->RequireNumber<std::uint64_t>("msg_AC>", "account flags", Param[4]));
+        account_flags = static_cast<iClient::flagType>(requireNumber(Param[4]));
     }
 
     // Is this a change of flags or a new login?

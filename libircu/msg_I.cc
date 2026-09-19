@@ -42,7 +42,7 @@ CREATE_HANDLER(msg_I)
 // ABAHo I X :#lksdlkj                           (non-ts)
 // ABAHo I X :#lksdlkj 1234567890                (ts)
 bool msg_I::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_I>", Param, 3);
+    requireParameters(Param, 3);
 
     iClient* srcClient = Network->findClient(Param[0]);
     if (NULL == srcClient) {

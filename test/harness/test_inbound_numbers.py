@@ -1,7 +1,7 @@
 """Numbers the uplink writes into a line: timestamps, the account id.
 
 ircu formats these itself, so one that is not a number cannot be parsed:
-xServer::RequireNumber() makes it a protocol error and gnuworld aborts, as it
+ServerCommandHandler::requireNumber() makes it a protocol error and gnuworld aborts, as it
 does for a mode it cannot parse (test_inbound_modes.py). atoi() used to turn
 such a field into 0, which as a timestamp is the oldest there is and wins every
 conflict.
@@ -21,22 +21,22 @@ from test_inbound_modes import _expect_abort, _setup, CHAN
 NOT_A_NUMBER = [
     # line, with {c} a channel that exists, {ts} its timestamp, {s} the hub,
     # {u} a client on it and {now} the time
-    ("{s} B #new soon +tn {u}:o", "invalid channel timestamp: soon"),
-    ("{s} B {c} 12x {u}:o", "invalid channel timestamp: 12x"),
-    ("{u} J #other -5", "invalid channel timestamp: -5"),
-    ("{u} C #other now", "invalid channel timestamp: now"),
-    ("{u} T {c} {ts} later :a topic", "invalid topic timestamp: later"),
-    ("{u} RV {c} never", "invalid channel timestamp: never"),
-    ("{u} N renamed 0x10", "invalid nick timestamp: 0x10"),
-    ("{s} N fresh 1 then fresh fake.testnet +i B]AAAB ABAAX :Fake User", "invalid nick timestamp: then"),
-    ("{s} N fresh 1 {now} fresh fake.testnet +ir acc:id B]AAAB ABAAX :Fake", "invalid account id: id"),
-    ("{s} N fresh 1 {now} fresh fake.testnet +ir acc:7:f B]AAAB ABAAX :Fake", "invalid account flags: f"),
-    ("{s} AC {u} someone seven", "invalid account id: seven"),
-    ("{s} AC {u} someone 7 flags", "invalid account flags: flags"),
-    ("{s} S leaf.testnet 2 0 yesterday P11 ACAAB +s6 :A leaf", "invalid link time: yesterday"),
-    ("{s} GL * +*@bad.example soon {now} {now} :a reason", "invalid expire time: soon"),
-    ("{s} GL * +*@bad.example 3600 then {now} :a reason", "invalid lastmod: then"),
-    ("{s} JU * +juped.testnet 3600 then :a reason", "invalid lastmod: then"),
+    ("{s} B #new soon +tn {u}:o", "invalid timestamp: soon"),
+    ("{s} B {c} 12x {u}:o", "invalid timestamp: 12x"),
+    ("{u} J #other -5", "invalid timestamp: -5"),
+    ("{u} C #other now", "invalid timestamp: now"),
+    ("{u} T {c} {ts} later :a topic", "invalid timestamp: later"),
+    ("{u} RV {c} never", "invalid timestamp: never"),
+    ("{u} N renamed 0x10", "invalid timestamp: 0x10"),
+    ("{s} N fresh 1 then fresh fake.testnet +i B]AAAB ABAAX :Fake User", "invalid timestamp: then"),
+    ("{s} N fresh 1 {now} fresh fake.testnet +ir acc:id B]AAAB ABAAX :Fake", "invalid number: id"),
+    ("{s} N fresh 1 {now} fresh fake.testnet +ir acc:7:f B]AAAB ABAAX :Fake", "invalid number: f"),
+    ("{s} AC {u} someone seven", "invalid number: seven"),
+    ("{s} AC {u} someone 7 flags", "invalid number: flags"),
+    ("{s} S leaf.testnet 2 0 yesterday P11 ACAAB +s6 :A leaf", "invalid timestamp: yesterday"),
+    ("{s} GL * +*@bad.example soon {now} {now} :a reason", "invalid timestamp: soon"),
+    ("{s} GL * +*@bad.example 3600 then {now} :a reason", "invalid timestamp: then"),
+    ("{s} JU * +juped.testnet 3600 then :a reason", "invalid timestamp: then"),
     ("{s} CF when some.key :a value", "invalid timestamp: when"),
 ]
 

@@ -51,7 +51,7 @@ CREATE_HANDLER(msg_D)
  * The source of the kill could be a server or a client.
  */
 bool msg_D::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_D>", Param, 3);
+    requireParameters(Param, 3);
 
     // <source> D <victim> :<path> <reason>     P10
     // <source> D <victim> <path> :<reason>     P11

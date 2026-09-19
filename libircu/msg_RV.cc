@@ -55,7 +55,7 @@ CREATE_HANDLER(msg_RV)
  * We are a leaf, so there is nothing to relay.
  */
 bool msg_RV::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_RV>", Param, 3);
+    requireParameters(Param, 3);
 
     iClient* theClient = Network->findClient(Param[0]);
     if (0 == theClient) {
@@ -79,7 +79,7 @@ bool msg_RV::Execute(const xParameters& Param) {
 
     // A reveal for a newer incarnation of the channel lost the timestamp
     // race: it is not about the channel we know.
-    const time_t chanTS = theServer->RequireTimestamp("msg_RV>", "channel timestamp", Param[2]);
+    const time_t chanTS = requireTimestamp(Param[2]);
     if (chanTS > theChan->getCreationTime()) {
         return true;
     }

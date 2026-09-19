@@ -51,7 +51,7 @@ CREATE_HANDLER(msg_L)
 bool msg_L::Execute(const xParameters& Param) {
     // Verify that there are at least 2 arguments:
     // client_numeric #channel
-    theServer->RequireParameters("msg_L>", Param, 2);
+    requireParameters(Param, 2);
 
     // Find the client in question
     iClient* theClient = Network->findClient(Param[0]);

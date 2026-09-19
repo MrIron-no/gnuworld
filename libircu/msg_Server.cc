@@ -73,7 +73,7 @@ bool msg_Server::Execute(const xParameters& Param) {
         //		<< endl ;
 
         // It's our uplink
-        theServer->RequireParameters("msg_Server>", Param, 6);
+        requireParameters(Param, 6);
 
         // Here's the deal:
         // We are just connecting to the network
@@ -85,11 +85,10 @@ bool msg_Server::Execute(const xParameters& Param) {
         unsigned int uplinkIntYY = base64toint(Param[5], 2);
 
         // Our uplink has its own numeric as its uplinkIntYY.
-        iServer* tmpUplink = new (std::nothrow)
-            iServer(uplinkIntYY,
-                    Param[5], // yyxxx
-                    Param[0], // name
-                    theServer->RequireTimestamp("msg_Server>", "link time", Param[3]));
+        iServer* tmpUplink = new (std::nothrow) iServer(uplinkIntYY,
+                                                        Param[5], // yyxxx
+                                                        Param[0], // name
+                                                        requireTimestamp(Param[3]));
         assert(tmpUplink != 0);
 
         // Param[ 4 ] is "P10", "J10", "P11", "J11", ...  The J-token

@@ -58,7 +58,7 @@ CREATE_HANDLER(msg_SQ)
  */
 bool msg_SQ::Execute(const xParameters& Param) {
 
-    theServer->RequireParameters("msg_SQ>", Param, 2);
+    requireParameters(Param, 2);
 
     iServer* squitServer = 0;
     if (strchr(Param[1], '.') != NULL) {

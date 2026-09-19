@@ -23,6 +23,12 @@
 #define __SERVERCOMMANDHANDLER_H                                                                   \
     "$Id: ServerCommandHandler.h,v 1.3 2003/06/28 01:21:18 dan_karrels Exp $"
 
+#include <cstdint>
+#include <ctime>
+#include <span>
+#include <string>
+#include <string_view>
+
 #include "xparameters.h"
 #include "ELog.h"
 #include "ChannelUser.h"
@@ -35,6 +41,30 @@ class xServer;
 class ServerCommandHandler {
   protected:
     xServer* theServer;
+
+    /// "msg_GL>": what a protocol error of this handler is reported under
+    const char* const where;
+
+    /*
+     * What a handler asks of the line it was given.  The uplink writes these
+     * itself, so one that is not what it should be is a protocol error: see
+     * xServer::ProtocolError(), which does not return.  Text the uplink only
+     * passes on for somebody else is not for these: parseNumber() it, and
+     * cope.  Defined at the end of server.h, where xServer is complete.
+     */
+
+    /// The line cannot be parsed: say what is wrong with it, and abort
+    [[noreturn]] void protocolError(std::span<const std::string> problems) const;
+
+    /// At least as many parameters as the shortest form of the command has,
+    /// the source counted.  A legal form of no use to us is not an error.
+    void requireParameters(const xParameters& line, xParameters::size_type minimum) const;
+
+    /// A number, such as a count or an id
+    std::uint64_t requireNumber(std::string_view text) const;
+
+    /// A time.  ircu writes them unsigned.
+    time_t requireTimestamp(std::string_view text) const;
 
     /*
      * The handlers are the IRC parser: what the network says has happened,
@@ -69,7 +99,8 @@ class ServerCommandHandler {
     static void setTopicTS(Channel* theChan, time_t when) { theChan->setTopicTS(when); }
 
   public:
-    ServerCommandHandler(xServer* _theServer) : theServer(_theServer) {}
+    ServerCommandHandler(xServer* _theServer, const char* _where)
+        : theServer(_theServer), where(_where) {}
     virtual ~ServerCommandHandler() {}
 
     virtual bool Execute(const xParameters&) = 0;
@@ -78,7 +109,7 @@ class ServerCommandHandler {
 #define CREATE_HANDLER(name)                                                                       \
     class name : public ServerCommandHandler {                                                     \
       public:                                                                                      \
-        name(xServer* theServer) : ServerCommandHandler(theServer) {}                              \
+        name(xServer* theServer) : ServerCommandHandler(theServer, #name ">") {}                   \
         virtual ~name() {}                                                                         \
                                                                                                    \
         virtual bool Execute(const xParameters&);                                                  \

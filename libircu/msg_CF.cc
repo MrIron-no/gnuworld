@@ -43,7 +43,7 @@ CREATE_HANDLER(msg_CF)
  * source CF <timestamp> <key> :<value>
  */
 bool msg_CF::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_CF>", Param, 3);
+    requireParameters(Param, 3);
 
     iServer* sourceServer = Network->findServer(Param[0]);
     if (NULL == sourceServer) {
@@ -51,7 +51,7 @@ bool msg_CF::Execute(const xParameters& Param) {
         return false;
     }
 
-    const time_t timestamp = theServer->RequireTimestamp("msg_CF>", "timestamp", Param[1]);
+    const time_t timestamp = requireTimestamp(Param[1]);
     std::string key(Param[2]);
     std::string value = Param.size() > 3 ? Param.assemble(3) : "";
 

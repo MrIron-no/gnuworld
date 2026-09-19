@@ -68,7 +68,7 @@ CREATE_HANDLER(msg_S)
 bool msg_S::Execute(const xParameters& params) {
     // We need at least 9 tokens
     // <uplink> S <name> <hops> <start> <link> <proto> <numeric> [+<flags>] :<description>
-    theServer->RequireParameters("msg_S>", params, 8);
+    requireParameters(params, 8);
 
     int uplinkIntYY = base64toint(params[0]);
     iServer* uplinkServer = Network->findServer(uplinkIntYY);
@@ -81,7 +81,7 @@ bool msg_S::Execute(const xParameters& params) {
     const string serverName(params[1]);
     // Don't care about hop count
     // Don't care about start time
-    const time_t connectTime = theServer->RequireTimestamp("msg_S>", "link time", params[4]);
+    const time_t connectTime = requireTimestamp(params[4]);
     // params[ 5 ] is the protocol token: P10/J10/P11/J11
 
     int serverIntYY = base64toint(params[6], 2);

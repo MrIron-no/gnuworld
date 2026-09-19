@@ -45,7 +45,7 @@ using std::string;
 
 class msg_J : public ServerCommandHandler {
   public:
-    msg_J(xServer* theServer) : ServerCommandHandler(theServer) {}
+    msg_J(xServer* theServer) : ServerCommandHandler(theServer, "msg_J>") {}
     virtual ~msg_J() {}
 
     virtual bool Execute(const xParameters&);
@@ -66,7 +66,7 @@ CREATE_LOADER(msg_J)
 bool msg_J::Execute(const xParameters& Param) {
     // Verify that sufficient arguments have been provided
     // client_numeric #channel[,#channel2,...]
-    theServer->RequireParameters("msg_J>", Param, 2);
+    requireParameters(Param, 2);
 
     // A JOIN may come without a timestamp, as ircu's ms_join() takes it: the
     // time of the join is then the time it is now, below.
@@ -90,7 +90,7 @@ bool msg_J::Execute(const xParameters& Param) {
     if (Param.size() < 3)
         joinTs = ::time(NULL);
     else
-        joinTs = theServer->RequireTimestamp("msg_J>", "channel timestamp", Param[2]);
+        joinTs = requireTimestamp(Param[2]);
     for (StringTokenizer::size_type i = 0; i < st.size(); i++) {
         // Is it a modeless channel?
         if ('+' == st[i][0]) {

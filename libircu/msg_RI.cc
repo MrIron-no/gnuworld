@@ -62,7 +62,7 @@ bool msg_RI::Execute(const xParameters& params) {
 
     // From a server: <server> RI <target> <requester> <sec> <usec> :<remark>
     // From an oper:   <oper> RI <target mask> <start server> :<remark>
-    theServer->RequireParameters("msg_RI>", params, 3);
+    requireParameters(params, 3);
     if (params.size() < 5) {
         // The oper's form, which asks the start server to do the pinging.
         // Legal, and not something we do.

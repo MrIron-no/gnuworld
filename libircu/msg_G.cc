@@ -65,7 +65,7 @@ CREATE_HANDLER(msg_G)
 // The format of <remotets> = <seconds>.<useconds>
 //
 bool msg_G::Execute(const xParameters& params) {
-    theServer->RequireParameters("msg_G>", params, 2);
+    requireParameters(params, 2);
 
     string s(theServer->getCharYY());
     s += " Z ";

@@ -52,7 +52,7 @@ using std::vector;
 
 class msg_M : public ServerCommandHandler {
   public:
-    msg_M(xServer* theServer) : ServerCommandHandler(theServer) {}
+    msg_M(xServer* theServer) : ServerCommandHandler(theServer, "msg_M>") {}
     virtual ~msg_M() {}
 
     virtual bool Execute(const xParameters&);
@@ -70,7 +70,7 @@ CREATE_LOADER(msg_M)
 // i M #3dx +o eAA
 // J[K M DEMET_33 :+i
 bool msg_M::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_M>", Param, 3);
+    requireParameters(Param, 3);
 
     // This source stuff really isn't used here, but it's here for
     // debugging and validation.
@@ -143,7 +143,7 @@ bool msg_M::Execute(const xParameters& Param) {
         Param[2], args,
         {.trailingTimestamp = true, .protocol = theServer->getUplink()->getProtocol()});
     if (!parsed.ok()) {
-        theServer->ProtocolError("msg_M>", parsed.problems);
+        protocolError(parsed.problems);
     }
 
     // An older timestamp means the sender knows an older instance of the
@@ -164,7 +164,7 @@ bool msg_M::Execute(const xParameters& Param) {
     const string modeSource =
         (clientSource != 0) ? clientSource->getNickName() : serverSource->getName();
 
-    theServer->ApplyChannelModes(theChan, theUser, parsed.changes, "msg_M>", modeSource);
+    theServer->ApplyChannelModes(theChan, theUser, parsed.changes, where, modeSource);
 
     return true;
 }

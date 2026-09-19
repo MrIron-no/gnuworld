@@ -40,7 +40,7 @@ using std::string;
 CREATE_HANDLER(msg_M351)
 
 bool msg_M351::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_M351>", Param, 2);
+    requireParameters(Param, 2);
 
     xClient* theClient = Network->findLocalClient(Param[1]);
     if (NULL == theClient) {

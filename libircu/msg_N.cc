@@ -87,7 +87,7 @@ CREATE_HANDLER(msg_N)
  * :Generic Client - description
  */
 bool msg_N::Execute(const xParameters& params) {
-    theServer->RequireParameters("msg_N>", params, 3);
+    requireParameters(params, 3);
 
     iServer* nickUplink = 0;
     if (3 == params.size()) {
@@ -100,8 +100,7 @@ bool msg_N::Execute(const xParameters& params) {
 
     // <numeric> N <new nick> <nick ts>, or
     // <server> N <nick> <hops> <nick ts> <user> <host> ...
-    const time_t nickTS =
-        theServer->RequireTimestamp("msg_N>", "nick timestamp", params[3 == params.size() ? 2 : 3]);
+    const time_t nickTS = requireTimestamp(params[3 == params.size() ? 2 : 3]);
 
     if (!nickUplink->isBursting()) {
         // Set the server's lag time
@@ -196,13 +195,11 @@ bool msg_N::Execute(const xParameters& params) {
         if (2 <= st.size()) {
             // id present
             // ircu writes the id and the flags itself, from 64 bit numbers
-            account_id = static_cast<unsigned int>(
-                theServer->RequireNumber<std::uint64_t>("msg_N>", "account id", st[1]));
+            account_id = static_cast<unsigned int>(requireNumber(st[1]));
         } // if( 2 <= st.size() )
         if (3 == st.size()) {
             // flags present
-            account_flags = static_cast<unsigned short int>(
-                theServer->RequireNumber<std::uint64_t>("msg_N>", "account flags", st[2]));
+            account_flags = static_cast<unsigned short int>(requireNumber(st[2]));
         } // if( 3 == st.size() )
     } // if( !account.empty() )
 

@@ -54,7 +54,7 @@ CREATE_HANDLER(msg_XQ)
  * [IN ]: ABAAA XQ Az tokengoeshere :message goes here :)
  */
 bool msg_XQ::Execute(const xParameters& Param) {
-    theServer->RequireParameters("msg_XQ>", Param, 4);
+    requireParameters(Param, 4);
 
     iServer* serverSource = 0;
     iClient* clientSource = 0;

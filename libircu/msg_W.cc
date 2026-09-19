@@ -43,7 +43,7 @@ CREATE_HANDLER(msg_W)
 bool msg_W::Execute(const xParameters& Param) {
     // <source> W <server> :<nick>[,<nick>...]; ircu's ms_whois() also takes
     // "W :<nick>", which names no server and so is not for us to answer
-    theServer->RequireParameters("msg_W>", Param, 2);
+    requireParameters(Param, 2);
     if (Param.size() != 3) {
         return true;
     }
