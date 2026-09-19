@@ -1236,10 +1236,6 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     /// The line being processed, as it was received: for ProtocolError()
     std::string currentLine;
 
-    /// One line in elog for each problem: "<where> (<channel>): ...".
-    void logModeProblems(std::string_view where, std::string_view channelName,
-                         std::span<const std::string> problems) const;
-
     /*
      * What the channel methods (Mode(), Op(), Ban(), Kick()...) of xServer
      * and of xClient are made of.  Not part of the API for modules.

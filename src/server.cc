@@ -1413,7 +1413,9 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         Channel::ParsedModes parsed =
             Channel::parseModes(tokens[0], std::span(tokens).subspan(1),
                                 {.protocol = (Uplink != 0) ? Uplink->getProtocol() : 11});
-        logModeProblems("xServer::JoinChannel>", chanName, parsed.problems);
+        for (const std::string& problem : parsed.problems) {
+            LOG(WARN, "({}): {}", chanName, problem);
+        }
 
         for (Channel::ModeChange& change : parsed.changes) {
             const Channel::ModeType type = change.mode.type;
@@ -2132,7 +2134,9 @@ bool xServer::ClearMode(Channel* theChan, const std::string& modes, const iClien
     // letter that is no mode is left out, and the rest is cleared.
     std::vector<std::string> problems;
     std::vector<Channel::ModeChange> changes = theChan->changesToClear(modes, problems);
-    logModeProblems("xServer::ClearMode>", theChan->getName(), problems);
+    for (const std::string& problem : problems) {
+        LOG(WARN, "({}): {}", theChan->getName(), problem);
+    }
 
     string letters;
     const unsigned int protocol = (Uplink != 0) ? Uplink->getProtocol() : 11;
@@ -2689,7 +2693,9 @@ bool xServer::Mode(Channel* theChan, const string& modes, const string& args, co
             tokens[index], std::span(tokens).subspan(index + 1),
             {.allowLeftover = true, .protocol = (Uplink != 0) ? Uplink->getProtocol() : 11});
         if (!parsed.ok()) {
-            logModeProblems("xServer::Mode>", theChan->getName(), parsed.problems);
+            for (const std::string& problem : parsed.problems) {
+                LOG(WARN, "({}): {}", theChan->getName(), problem);
+            }
             return false;
         }
         requested.insert(requested.end(), parsed.changes.begin(), parsed.changes.end());
@@ -3044,7 +3050,9 @@ bool xServer::BurstChannel(const string& chanName, const string& chanModes,
             Channel::parseModes(tokens[0], std::span(tokens).subspan(1),
                                 {.protocol = (Uplink != 0) ? Uplink->getProtocol() : 11});
         if (!parsed.ok()) {
-            logModeProblems("xServer::BurstChannel>", chanName, parsed.problems);
+            for (const std::string& problem : parsed.problems) {
+                LOG(WARN, "({}): {}", chanName, problem);
+            }
             return false;
         }
         for (const Channel::ModeChange& change : parsed.changes) {

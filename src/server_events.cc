@@ -695,7 +695,10 @@ void xServer::ApplyChannelModes(Channel* theChan, ChannelUser* sourceUser,
 
     // What could not be applied is ours to report: the caller has nothing
     // to do about it.
-    logModeProblems(where, theChan->getName(), problems);
+    // "where" names the caller, which the function captured here cannot
+    for (const std::string& problem : problems) {
+        LOG(WARN, "{} ({}): {}", where, theChan->getName(), problem);
+    }
 }
 
 void xServer::ProtocolError(std::string_view where, std::span<const std::string> problems) const {
@@ -718,15 +721,6 @@ void xServer::ProtocolError(std::string_view where, std::span<const std::string>
     say(std::format("{} Aborting: the state of the network is no longer known.", where));
 
     ::abort();
-}
-
-void xServer::logModeProblems(std::string_view where, std::string_view channelName,
-                              std::span<const std::string> problems) const {
-    for (const std::string& problem : problems) {
-        // "where" names the caller, which the captured function - always this
-        // one - cannot: it stays part of the message
-        LOG(WARN, "{} ({}): {}", where, channelName, problem);
-    }
 }
 
 } // namespace gnuworld
