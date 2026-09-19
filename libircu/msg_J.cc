@@ -68,8 +68,13 @@ bool msg_J::Execute(const xParameters& Param) {
     // client_numeric #channel[,#channel2,...]
     requireParameters(Param, 2);
 
-    // A JOIN may come without a timestamp, as ircu's ms_join() takes it: the
-    // time of the join is then the time it is now, below.
+    // A JOIN may come without a timestamp: ircu's ms_join() takes one, as
+    // "JOIN 0" and other servers' software send it.  ircu then changes no
+    // creation time at all, and gives a channel the JOIN creates the time 0,
+    // its "not known yet", which a later BURST or CREATE fills in.  0 means
+    // nothing of the kind here - it is the oldest time there is - so such a
+    // channel is created as of now, and any older time that follows makes it
+    // older; like ircu, an existing channel is left as it is.
 
     // Find the client in question.
     iClient* Target = Network->findClient(Param[0]);
@@ -86,11 +91,8 @@ bool msg_J::Execute(const xParameters& Param) {
     // Tokenize by ',', as the client may join more than one
     // channel at once.
     StringTokenizer st(Param[1], ',');
-    time_t joinTs = 0;
-    if (Param.size() < 3)
-        joinTs = ::time(NULL);
-    else
-        joinTs = requireTimestamp(Param[2]);
+    const bool hasTimestamp = Param.size() >= 3;
+    const time_t joinTs = hasTimestamp ? requireTimestamp(Param[2]) : ::time(NULL);
     for (StringTokenizer::size_type i = 0; i < st.size(); i++) {
         // Is it a modeless channel?
         if ('+' == st[i][0]) {
@@ -190,7 +192,7 @@ bool msg_J::Execute(const xParameters& Param) {
                         continue ;
                         }
         */
-        else if (joinTs < theChan->getCreationTime()) {
+        else if (hasTimestamp && joinTs < theChan->getCreationTime()) {
             // The time of join is earlier than the creation time of the channel
             // Need to clear all the modes of the channel
             removeAllModes(theChan);

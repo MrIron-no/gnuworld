@@ -61,6 +61,33 @@ async def test_join_to_a_channel_we_do_not_know_is_a_create(debug_linked_p11):
 
 
 @pytest.mark.asyncio
+async def test_join_without_a_timestamp_changes_no_creation_time(debug_linked_p11):
+    """ircu's ms_join() takes a JOIN with no timestamp and leaves the channel's
+    creation time alone.  A channel made by a server whose clock runs ahead of
+    ours is younger than "now": a JOIN that says nothing of time must not make
+    it older and wipe its modes."""
+    hub, _proc = debug_linked_p11
+    asker, n, _ts = await _setup(hub)
+    ahead = int(time.time()) + 3600
+
+    await hub.send_raw(f"{n['other']} C #ahead {ahead}")
+    await hub.send_raw(f"{n['other']} M #ahead +i {ahead}")
+    await hub.send_raw(f"{n['plain']} J #ahead")
+
+    info = await chaninfo(hub, asker, "#ahead")
+    assert info.created == ahead
+    assert info.modes == "i"
+    assert info.members == {"other": "+o", "plain": "none"}
+
+    # And where that JOIN is what creates the channel, it is created as of now
+    before = int(time.time())
+    await hub.send_raw(f"{n['plain']} J #fresh")
+    info = await chaninfo(hub, asker, "#fresh")
+    assert before - 2 <= info.created <= int(time.time()) + 2
+    assert info.members == {"plain": "+o"}
+
+
+@pytest.mark.asyncio
 async def test_one_join_to_several_channels(debug_linked_p11):
     """A JOIN may name several channels: a member of each, and the op only
     where the JOIN created the channel."""
