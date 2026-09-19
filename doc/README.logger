@@ -1248,6 +1248,17 @@ message below the logger's effective level is dropped before it is even
 built (see [Levels and Inheritance](#levels-and-inheritance) for how that
 level is decided).
 
+**Nothing arrives in an `irc` sink's channel.** A server notice goes to a
+channel the network has, and a channel exists only while somebody is in it:
+name a channel one of your bots joins, or sit in it. Until the uplink's burst
+is over the sink drops what it is given in silence (the channel may not have
+arrived yet); after that, the first record it cannot deliver makes one `WARN`
+on `core` — "The log channel #x does not exist on the network" — which the
+other sinks show, once per channel until the channel turns up. Then check the
+levels: a module that still writes to `elog` logs on `legacy` at `DEBUG`, so
+it needs `logger.legacy = DEBUG, <sink>` and a `sink.<id>.level` that lets
+`DEBUG` through.
+
 **A field is not showing up in the text/console/IRC line.** Only JSON shows
 every field; text, console and IRC show only the rendered sentence — a
 field the template did not name with `{key}` never appears outside JSON.

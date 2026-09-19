@@ -27,6 +27,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -39,6 +40,7 @@
 #include "LogRecord.h"
 #include "Network.h"
 #include "logger.h"
+#include "misc.h"
 #include "server.h"
 
 namespace gnuworld {
@@ -193,6 +195,41 @@ void IrcLogSink::flushAll() {
         sink->flush();
 }
 
+/**
+ * The channels that were found missing and said to be, lower-cased.  Of the
+ * process and not of a sink: a reload makes a new sink for the same channel, and
+ * that is no reason to say it again.  A channel is taken out when it is found,
+ * so one that disappears later is news once more.  Main thread only, as
+ * deliver() is, and never destroyed, like the registry.
+ */
+static std::set<std::string>& missingChannels() {
+    static std::set<std::string>* const channels = new std::set<std::string>();
+
+    return *channels;
+}
+
+/**
+ * A server notice goes to a channel the network has, and a channel nobody is in
+ * is one it does not have: the record is lost, which the file that names the
+ * channel gives no hint of.  Said once per channel, to the other sinks - this
+ * one hears it too, finds the channel in the set, and says nothing.
+ *
+ * Not before the uplink's burst is over: the channel may be on its way, and the
+ * records of start-up are lost to a channel sink whatever it is given.
+ */
+static void sayChannelIsMissing(const xServer& theServer, const std::string& theChannel) {
+    if (0 == theServer.getBurstEnd() || theServer.isBursting())
+        return;
+
+    if (!missingChannels().insert(string_lower(theChannel)).second)
+        return;
+
+    LOG_TO(LogManager::get("core"), WARN,
+           "The log channel {} does not exist on the network, so what is logged to it is lost: "
+           "a channel exists while somebody, a bot of ours included, is in it",
+           theChannel);
+}
+
 void IrcLogSink::deliver(const LogRecord& record) {
     std::string theChannel;
     bool theHighlight = false;
@@ -215,8 +252,14 @@ void IrcLogSink::deliver(const LogRecord& record) {
 
     Channel* const theChan = Network->findChannel(theChannel);
 
-    if (nullptr == theChan)
+    if (nullptr == theChan) {
+        sayChannelIsMissing(*theServer, theChannel);
+
         return;
+    }
+
+    if (!missingChannels().empty())
+        missingChannels().erase(string_lower(theChannel));
 
     /* The rate limit, taken off here and nowhere else: what is counted is a
      * RECORD, however many notices it is about to become, and only a record

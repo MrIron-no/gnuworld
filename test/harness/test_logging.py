@@ -548,6 +548,44 @@ async def test_irc_sink_delivers_a_notice_with_highlighted_value(docker_stack, f
         assert "\x02" not in notice2
 
 
+@pytest.mark.asyncio
+async def test_irc_sink_says_once_that_its_channel_does_not_exist(docker_stack, fake_hub, tmp_path):
+    """A channel nobody is in is a channel the network does not have: nothing
+    can be sent there, and the other sinks are told so - once, however many
+    records are lost to it and however often the file is reloaded."""
+    _require_local()
+    hub = fake_hub
+    logging_conf = (
+        "sink.console.type = console\n"
+        "sink.chan.type = irc\n"
+        "sink.chan.channel = #nobodyhere\n"
+        "logger.root = INFO, console, chan\n"
+    )
+
+    async with link_bare(docker_stack, hub, tmp_path, logging_conf=logging_conf) as (
+        hub, proc, conf_dir,
+    ):
+        await proc.wait_for_stdout("Completed net burst", timeout=30.0)
+
+        # Two reloads: each logs records the sink cannot deliver, and each
+        # replaces the sink with a new one for the same channel
+        for _ in range(2):
+            await send_gnuworld_signal(proc, signal.SIGHUP)
+            await asyncio.sleep(1.0)
+
+        said = [line for line in proc.stdout_lines
+                if "#nobodyhere" in line and "does not exist" in line]
+
+        assert len(said) == 1, said
+        assert " WARN " in said[0] and " core " in said[0], said[0]
+
+        # And not while the burst could still have brought the channel: the
+        # records of start-up and of the burst are lost in silence
+        lines = proc.stdout_lines
+        burstDone = next(i for i, line in enumerate(lines) if "Completed net burst" in line)
+        assert lines.index(said[0]) >= burstDone
+
+
 # --------------------------------------------------------------------------
 # 9b. "sink.<id>.rate" on an irc sink: beyond the rate a record is dropped,
 #     however many records the logger it is on produces.

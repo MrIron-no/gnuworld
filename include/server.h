@@ -949,6 +949,12 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     inline void setBurstEnd(const time_t newVal) { burstEnd = newVal; }
 
     /**
+     * The time the uplink's burst ended on this link, 0 for as long as
+     * it has not.
+     */
+    inline time_t getBurstEnd() const { return burstEnd; }
+
+    /**
      * Set the time of the most recent start of burst.
      * This method should ONLY be called by the server command
      * handlers.
