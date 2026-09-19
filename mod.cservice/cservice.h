@@ -55,10 +55,6 @@
 #include "dbHandle.h"
 #include "prometheus.h"
 
-#ifdef USE_THREAD
-#include "threadworker.h"
-#endif
-
 /* Every file of this module logs under the module's name.  This is what the LOG
  * and LOG_MSG macros resolve, so no class here has to carry a Logger* of its own
  * for them; it has to stand outside every namespace. */
@@ -154,11 +150,6 @@ class cservice : public xClient {
   protected:
     /* Configfile */
     EConfig* cserviceConfig;
-
-#ifdef USE_THREAD
-    /* Thread object. */
-    ThreadWorker threadWorker;
-#endif
 
     /**
      * Register log handlers for custom objects.

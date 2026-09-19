@@ -177,13 +177,7 @@ void cservice::OnShutdown(const std::string& reason) {
     MyUplink->UnloadClient(this, reason);
 }
 
-cservice::cservice(const string& args)
-    : xClient(args)
-#ifdef USE_THREAD
-      ,
-      threadWorker()
-#endif
-{
+cservice::cservice(const string& args) : xClient(args) {
 
     /* Register custom logger objects. */
     registerLogHandlers();
@@ -7199,7 +7193,7 @@ void cservice::warnOfRemovedLoggingKeys() {
             "bin/logging.example.conf)",
             getConfigFileName());
 
-        return;
+        break;
     }
 }
 
