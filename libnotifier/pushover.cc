@@ -53,6 +53,19 @@ namespace {
 const std::string notifierLogger("core.notifier");
 
 #ifdef HAVE_LIBCURL
+/**
+ * Throws the endpoint's answer away.
+ *
+ * Without a write callback of its own libcurl writes what it received to
+ * STDOUT: every notification would put Pushover's {"status":1,...} on the
+ * terminal of whoever started this process, from a worker thread, in the
+ * middle of whatever else is there.  Nothing here reads the body - the HTTP
+ * status is what says whether a notification was accepted.
+ */
+std::size_t discardResponse(char*, std::size_t size, std::size_t count, void*) {
+    return size * count;
+}
+
 /// The parts of a comma separated list, each without the space around it
 std::vector<std::string> splitList(const std::string& value) {
     static const std::string blanks(" \t\r\n\v\f");
@@ -289,6 +302,9 @@ bool PushoverClient::sendToUser([[maybe_unused]] std::size_t position,
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_1_1);
+
+        // Or libcurl writes the service's answer to this process's stdout
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &discardResponse);
 
         CURLcode rc = curl_easy_perform(curl);
         long status = 0;
