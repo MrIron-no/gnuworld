@@ -55,10 +55,7 @@ bool INVITECommand::Exec(iClient* theClient, const string& Message) {
     bot->MsgChanLog("INVITE %s\n", st.assemble(1).c_str());
 
     // If the channel doesnt begin with # add it
-    string chanName = st[1];
-    if (chanName[0] != '#') {
-        chanName.insert(chanName.begin(), '#');
-    }
+    const string chanName = withChannelPrefix(st[1]);
 
     iClient* inviteClient = 0;
     if (st.size() > 2) {

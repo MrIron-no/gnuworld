@@ -257,15 +257,6 @@ bool xClient::Mode(Channel* theChan, const string& modes, const string& args, bo
     return MyUplink->Mode(theChan, modes, args, modeAsServer ? nullptr : getInstance());
 }
 
-namespace {
-
-/// A channel name given with or without its '#'.
-string channelName(const string& name) {
-    return (!name.empty() && '#' == name[0]) ? name : '#' + name;
-}
-
-} // namespace
-
 /*
  * Every message below is sent by xServer::sendText(), from getInstance():
  * this client, or the server if it is a stealth module with no client on the
@@ -358,8 +349,8 @@ bool xClient::Message(const string& chanName, const string& Message) {
     if (chanName.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->sendText(xServer::TextType::PRIVMSG, getInstance(), channelName(chanName),
-                              Message);
+    return MyUplink->sendText(xServer::TextType::PRIVMSG, getInstance(),
+                              withChannelPrefix(chanName), Message);
 }
 
 bool xClient::Notice(const iClient* Target, const string& Message) {
@@ -374,7 +365,7 @@ bool xClient::Notice(const string& Channel, const string& Message) {
     if (Channel.empty() || Message.empty() || !isConnected()) {
         return false;
     }
-    return MyUplink->sendText(xServer::TextType::NOTICE, getInstance(), channelName(Channel),
+    return MyUplink->sendText(xServer::TextType::NOTICE, getInstance(), withChannelPrefix(Channel),
                               Message);
 }
 

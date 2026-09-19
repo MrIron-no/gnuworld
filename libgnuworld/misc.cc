@@ -178,6 +178,10 @@ void string_toupper(string& Key) {
  * Return true if this string consists of all numerical
  * [0,9] characters.
  * Return false otherwise. */
+string withChannelPrefix(const string& name) {
+    return (!name.empty() && '#' == name[0]) ? name : '#' + name;
+}
+
 bool IsNumeric(std::string_view s) {
     for (const char c : s) {
         if (!isdigit(static_cast<unsigned char>(c))) {

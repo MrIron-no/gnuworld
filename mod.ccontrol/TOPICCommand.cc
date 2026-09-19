@@ -53,10 +53,7 @@ bool TOPICCommand::Exec(iClient* theClient, const string& Message) {
     bot->MsgChanLog("TOPIC %s\n", st.assemble(1).c_str());
 
     // If the channel doesnt begin with # add it
-    string chanName = st[1];
-    if (chanName[0] != '#') {
-        chanName.insert(chanName.begin(), '#');
-    }
+    const string chanName = withChannelPrefix(st[1]);
 
     string topic;
     if (st.size() == 2)

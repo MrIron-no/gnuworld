@@ -49,10 +49,7 @@ bool KICKCommand::Exec(iClient* theClient, const string& Message) {
     }
 
     // Check if the channel begins with # , if not add it
-    string chanName = st[1];
-    if (chanName[0] != '#') {
-        chanName.insert(chanName.begin(), '#');
-    }
+    const string chanName = withChannelPrefix(st[1]);
 
     if (chanName.size() > channel::MaxName) {
         bot->Notice(theClient, "Channel name can't be more than %d characters", channel::MaxName);

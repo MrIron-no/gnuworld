@@ -407,10 +407,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             return;
         }
 
-        string chanName(st[1]);
-        if (chanName[0] != '#') {
-            chanName.insert(chanName.begin(), '#');
-        }
+        const string chanName(withChannelPrefix(st[1]));
 
         Channel* theChan = Network->findChannel(chanName);
         if (theChan == nullptr) {
@@ -468,10 +465,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             return;
         }
 
-        string chanName(st[1]);
-        if (chanName[0] != '#') {
-            chanName.insert(chanName.begin(), '#');
-        }
+        const string chanName(withChannelPrefix(st[1]));
 
         Channel* theChan = Network->findChannel(chanName);
         if (theChan == nullptr) {

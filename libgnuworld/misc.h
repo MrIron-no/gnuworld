@@ -176,6 +176,11 @@ bool IsTimeSpec(const string&);
 bool IsNumeric(std::string_view);
 
 /**
+ * A channel name given with or without its '#': the name with it.
+ */
+string withChannelPrefix(const string& name);
+
+/**
  * Returns the time which is given as #<d/h/m/s> as seconds
  */
 time_t extractTime(string Length, unsigned int defaultUnits);
