@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import re
 import asyncio
+import os
+import signal
+import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,6 +18,7 @@ from gnuworld_proc import (
     CONTAINER_UPLINK,
     DockerStack,
     GnuworldProc,
+    LOCAL_BINARY,
     use_docker,
 )
 
@@ -91,6 +95,234 @@ def _prepare_conf_dir(tmp_path: Path) -> Path:
     conf_dir = tmp_path / "etc-gnuworld"
     conf_dir.mkdir()
     return conf_dir
+
+
+# --------------------------------------------------------------------------
+# Logging test helpers (test_logging.py).  Additive only: nothing above this
+# point is changed, and no existing fixture's behaviour changes.
+# --------------------------------------------------------------------------
+
+
+def override_conf_keys(path: Path, overrides: dict[str, str]) -> None:
+    """Replaces ``key = ...`` lines of an already-written conf file in place.
+
+    Same technique as GnuworldProc.write_module_config/write_cservice_config,
+    for the confs those helpers do not take an override dict for (the main
+    GNUWorld.conf, or a cservice.conf key not among write_cservice_config's
+    own parameters). Every key must already appear exactly once.
+    """
+    text = path.read_text(encoding="utf-8")
+    for key, value in overrides.items():
+        text, count = re.subn(rf"(?m)^{re.escape(key)}\s*=.*$", f"{key} = {value}", text)
+        assert count == 1, f"{key} not found once in {path}"
+    path.write_text(text, encoding="utf-8")
+
+
+class LocalGnuworldProc(GnuworldProc):
+    """gnuworld started with the caller's own command-line flags, from the
+    build tree only.
+
+    The logging tests need combinations GnuworldProc.start() does not offer
+    (no -D, an explicit -d, etc): what the harness's own fixtures fix at
+    "-c ... -L -D" is exactly the command line these tests are about. Docker
+    mode is not supported here - these cases are about the on-disk debug.log
+    / logging.conf behaviour of a local checkout, not about the installed
+    image - so a test using this skips under GNUWORLD_HARNESS=docker.
+    """
+
+    def __init__(self, conf_dir: Path, extra_args: list[str]):
+        super().__init__(conf_dir=conf_dir, local=True)
+        self.extra_args = extra_args
+
+    async def start(self) -> None:
+        if not (self.conf_dir / "GNUWorld.conf").is_file():
+            raise FileNotFoundError(f"Missing {self.conf_dir / 'GNUWorld.conf'}")
+        if not LOCAL_BINARY.is_file():
+            raise FileNotFoundError(
+                f"{LOCAL_BINARY} is not built: run make at the top of the repository"
+            )
+        cmd = [str(LOCAL_BINARY), "-f", str(self.conf_dir.resolve() / "GNUWorld.conf"), "-L",
+               *self.extra_args]
+        self.proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(self.conf_dir.resolve()),
+            start_new_session=True,
+        )
+        self._reader_task = asyncio.create_task(self._read_stdout())
+
+
+async def send_gnuworld_signal(proc: GnuworldProc, sig: int) -> None:
+    """Sends a signal (SIGHUP for a reload, in practice) to a running
+    GnuworldProc, in the build tree or in Docker."""
+    if proc.local:
+        os.killpg(proc.proc.pid, sig)
+        return
+
+    signame = signal.Signals(sig).name.removeprefix("SIG")
+    await asyncio.to_thread(
+        subprocess.run,
+        ["docker", "exec", proc.container_name, "kill", f"-{signame}", "1"],
+        capture_output=True,
+        check=True,
+    )
+
+
+async def drop_connection(hub: FakeHub) -> None:
+    """Closes the current TCP connection from gnuworld without tearing down
+    the hub's listening socket (hub.close() does both), so that a second
+    gnuworld connection - a reconnect - can still be accepted.
+
+    Reaches into FakeHub's own connection state, which it does not expose a
+    method for: accepting a second connection at all is not something any
+    other test needs, only the IrcLogSink::forgetServer() reconnect case.
+    """
+    if hub._writer is not None:
+        hub._writer.close()
+        try:
+            await hub._writer.wait_closed()
+        except (OSError, ConnectionError):
+            pass
+    hub._reader = None
+    hub._writer = None
+    hub.connected = False
+    hub.burst_complete = False
+    hub.peer_name = None
+    hub.peer_numeric = None
+
+
+@asynccontextmanager
+async def link_bare(
+    docker_stack,
+    hub: FakeHub,
+    tmp_path: Path,
+    *,
+    logging_conf: str | None = None,
+    auto_reconnect: bool = False,
+    burst: list[str] | None = None,
+):
+    """gnuworld with no modules, against ``hub`` - like the ``gnuworld``
+    fixture, but lets a test drop its own logging.conf before start (named by
+    an absolute "logging_conf" key, so it is found whether gnuworld runs
+    locally or, its conf dir bind-mounted, in Docker), turn auto-reconnect on,
+    and give the hub's net burst (to create a channel before EB/EA, for an IRC
+    sink to find). Yields (hub, proc, conf_dir).
+    """
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf", uplink=CONTAINER_UPLINK, port=hub.port, password=hub.password,
+    )
+    if logging_conf is not None:
+        (conf_dir / "logging.conf").write_text(logging_conf, encoding="utf-8")
+        with (conf_dir / "GNUWorld.conf").open("a", encoding="utf-8") as fh:
+            fh.write(f"\nlogging_conf = {root}/logging.conf\n")
+    if auto_reconnect:
+        override_conf_keys(conf_dir / "GNUWorld.conf", {"auto_reconnect": "yes"})
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=45.0, burst=burst)
+        await proc.wait_for_stdout("Connected", timeout=30.0)
+        yield hub, proc, conf_dir
+    finally:
+        await proc.terminate()
+
+
+@asynccontextmanager
+async def link_cservice_logging(
+    docker_stack,
+    hub: FakeHub,
+    tmp_path: Path,
+    *,
+    burst: list[str] | None = None,
+    logging_conf: str | None = None,
+    cservice_overrides: dict[str, str] | None = None,
+):
+    """gnuworld with mod.cservice (X) and stealth mod.debug on a P11 link, like
+    cservice_linked, but lets a test supply the hub's net burst (to create a
+    channel cservice's debug_channel names before the IRC sink needs it), an
+    optional logging.conf, and extra cservice.conf key overrides.
+
+    Yields (hub, proc, conf_dir).
+    """
+    require_module("cservice")
+    require_module("debug")
+    docker_stack.up()
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_cservice_config(conf_dir / "cservice.conf")
+    if cservice_overrides:
+        override_conf_keys(conf_dir / "cservice.conf", cservice_overrides)
+    GnuworldProc.write_debug_config(conf_dir / "debug.conf")
+    if logging_conf is not None:
+        (conf_dir / "logging.conf").write_text(logging_conf, encoding="utf-8")
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        module_lines=f"module = libcservice.la {root}/cservice.conf\n"
+        f"module = libdebug.la {root}/debug.conf",
+    )
+    if logging_conf is not None:
+        with (conf_dir / "GNUWorld.conf").open("a", encoding="utf-8") as fh:
+            fh.write(f"\nlogging_conf = {root}/logging.conf\n")
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=90.0, burst=burst)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        assert hub.get_user_numnick("X"), "mod.cservice did not introduce X (module or database?)"
+        yield hub, proc, conf_dir
+    finally:
+        await proc.terminate()
+
+
+@asynccontextmanager
+async def link_ccontrol_logging(
+    docker_stack,
+    hub: FakeHub,
+    tmp_path: Path,
+    *,
+    logging_conf: str | None = None,
+):
+    """gnuworld with mod.ccontrol, like ccontrol_linked, but lets a test drop
+    its own logging.conf before start. Local mode only (see link_bare):
+    ccontrol_linked itself supports Docker, but the extra logging_conf plumbing
+    here is only exercised locally by test_logging.py. Yields (hub, proc, conf_dir).
+    """
+    require_module("ccontrol")
+    docker_stack.up()
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_ccontrol_config(conf_dir / "ccontrol.conf")
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        module_lines=f"module = libccontrol.la {root}/ccontrol.conf",
+    )
+    if logging_conf is not None:
+        (conf_dir / "logging.conf").write_text(logging_conf, encoding="utf-8")
+        with (conf_dir / "GNUWorld.conf").open("a", encoding="utf-8") as fh:
+            fh.write(f"\nlogging_conf = {root}/logging.conf\n")
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=90.0)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        assert hub.get_user_numnick("euworld") or any(
+            " N euworld " in line for line in hub.received
+        ), "ccontrol did not burst euworld (module/DB load failed?)"
+        yield hub, proc, conf_dir
+    finally:
+        await proc.terminate()
 
 
 @pytest_asyncio.fixture
