@@ -34,7 +34,6 @@
 #include <cassert>
 
 #include "Network.h"
-#include "ELog.h"
 #include "iClient.h"
 #include "iServer.h"
 #include "Channel.h"
@@ -45,10 +44,12 @@
 #include "StringTokenizer.h"
 #include "ip.h"
 #include "gnuworld_config.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.state");
 
 namespace gnuworld {
 
-using std::endl;
 using std::list;
 using std::make_pair;
 using std::map;
@@ -64,8 +65,7 @@ bool xNetwork::addClient(iClient* newClient) {
 
     if (!numericMap.insert(numericMapType::value_type(newClient->getIntYYXXX(), newClient))
              .second) {
-        elog << "xNetwork::addClient> Insert into numericMap failed for numeric "
-             << newClient->getIntYYXXX() << endl;
+        LOG(WARN, "Insert into numericMap failed for numeric {}", newClient->getIntYYXXX());
         return false;
     }
 
@@ -88,8 +88,7 @@ bool xNetwork::addClient(xClient* newClient) {
 
     if (findLocalNick(newClient->getNickName()) != 0) {
         // Nickname already exists on this serer
-        elog << "xNetwork::addClient(xClient*)> Found existing "
-             << "nickname: " << newClient->getNickName() << endl;
+        LOG(WARN, "Found existing nickname: {}", newClient->getNickName());
         return false;
     }
 
@@ -98,8 +97,7 @@ bool xNetwork::addClient(xClient* newClient) {
     unsigned int intXXX = 0;
 
     if (!allocateClientNumeric(newClient->getIntYY(), intXXX)) {
-        elog << "xNetwork::addClient(xClient)> Unable to "
-             << "allocate local client numeric for: " << *newClient << endl;
+        LOG(ERROR, "Unable to allocate local client numeric for: {}", newClient->getNickName());
         return false;
     }
 
@@ -107,8 +105,7 @@ bool xNetwork::addClient(xClient* newClient) {
     newClient->setIntXXX(intXXX);
 
     if (!localClients.insert(make_pair(newClient->getIntYYXXX(), newClient)).second) {
-        elog << "xNetwork::addClient(xClient)> Unable to insert "
-             << "new client into localClients: " << *newClient << endl;
+        LOG(WARN, "Unable to insert new client into localClients: {}", newClient->getNickName());
         newClient->setIntXXX(0);
         return false;
     }
@@ -128,8 +125,9 @@ bool xNetwork::addServer(iServer* newServer) {
     //	<< endl ;
 
     if (!serverMap.insert(serverMapType::value_type(newServer->getIntYY(), newServer)).second) {
-        elog << "xNetwork::addServer> Insert into serverMap failed"
-             << " for server: " << *newServer << endl;
+        LOG_MSG(WARN, "Insert into serverMap failed for server: {server}")
+            .with("server", newServer)
+            .log();
         return false;
     }
 
@@ -311,8 +309,7 @@ iClient* xNetwork::removeClient(const string& yyxxx) {
 iClient* xNetwork::removeClient(const unsigned int& intYYXXX) {
     numericMapType::iterator ptr = numericMap.find(intYYXXX);
     if (ptr == numericMap.end()) {
-        elog << "xNetwork::removeClient> Unable to find client "
-             << "numeric: " << intYYXXX << endl;
+        LOG(WARN, "Unable to find client numeric: {}", intYYXXX);
         return 0;
     }
 
@@ -341,9 +338,10 @@ iClient* xNetwork::removeClient(const unsigned int& intYYXXX) {
 
         ChannelUser* theChanUser = (*chanPtr)->removeUser(retMe);
         if (NULL == theChanUser) {
-            elog << "xNetwork::removeClient> Unable to find "
-                 << "ChannelUser in channel " << (*chanPtr)->getName()
-                 << ", for iClient: " << *retMe << endl;
+            LOG_MSG(WARN, "Unable to find ChannelUser in channel {chan}, for iClient: {client}")
+                .with("chan", *chanPtr)
+                .with("client", retMe)
+                .log();
         }
         delete theChanUser;
         theChanUser = 0;
@@ -374,15 +372,13 @@ xClient* xNetwork::removeLocalClient(xClient* theClient) {
     localClientIterator cItr = localClients.find(theClient->getIntYYXXX());
     if (cItr == localClient_end()) {
         // client not found
-        elog << "xNetwork::removeLocalClient> Unable to "
-             << "find local client: " << *theClient << endl;
+        LOG(WARN, "Unable to find local client: {}", theClient->getNickName());
         return 0;
     }
     localClients.erase(cItr);
 
     if (!freeClientNumeric(theClient->getIntYYXXX())) {
-        elog << "xNetwork::removeLocalClient> Failed to free "
-             << "client numeric for client: " << *theClient << endl;
+        LOG(ERROR, "Failed to free client numeric for client: {}", theClient->getNickName());
         return 0;
     }
 
@@ -406,8 +402,7 @@ iServer* xNetwork::removeServer(const unsigned int& YY, bool postEvent) {
     // Did we find the server?
     if (sItr == servers_end()) {
         // Nope, log an error
-        elog << "xNetwork::removeServer> Failed to find server "
-             << "numeric: " << YY << endl;
+        LOG(WARN, "Failed to find server numeric: {}", YY);
 
         // Let the caller know that the remove failed
         return 0;
@@ -501,7 +496,7 @@ Channel* xNetwork::removeChannel(const string& name) {
 
     channelIterator ptr = channelMap.find(name);
     if (ptr == channels_end()) {
-        elog << "xNetwork::removeChannel> Failed to find channel: " << name << endl;
+        LOG(WARN, "Failed to find channel: {}", name);
         return 0;
     }
     tmpChan = ptr->second;
@@ -529,8 +524,7 @@ void xNetwork::rehashNick(const string& yyxxx, const string& newNick, const time
 
     iClient* theClient = findClient(yyxxx);
     if (NULL == theClient) {
-        elog << "xNetwork::rehashNick> Unable to find numeric: " << yyxxx
-             << ", new nick: " << newNick << endl;
+        LOG(WARN, "Unable to find numeric: {}, new nick: {}", yyxxx, newNick);
         return;
     }
 
@@ -563,7 +557,7 @@ void xNetwork::addNick(iClient* theClient) {
     // This is a protected method, theClient is guaranteed to
     // be non-NULL.
     if (!nickMap.insert(nickMapType::value_type(theClient->getNickName(), theClient)).second) {
-        elog << "xNetwork::addNick> Failed to add nick: " << theClient->getNickName() << endl;
+        LOG(WARN, "Failed to add nick: {}", theClient->getNickName());
     }
 }
 
@@ -893,8 +887,7 @@ bool xNetwork::allocateClientNumeric(unsigned int intYY, unsigned int& newIntXXX
     if (rsItr == reservedNumericMap.end()) {
         // Can't find the fake server to which this client
         // is to be attached.
-        elog << "xNetwork::allocateClientNumeric> Unable to "
-             << "find intYY: " << intYY << endl;
+        LOG(WARN, "Unable to find intYY: {}", intYY);
         return false;
     }
 
@@ -921,7 +914,7 @@ bool xNetwork::allocateClientNumeric(unsigned int intYY, unsigned int& newIntXXX
 
     // Check if all values were examined
     if (newIntXXX > maxIntXXX) {
-        elog << "xNetwork::allocateClientNumeric> Exceeded maxIntXXX " << endl;
+        LOG(ERROR, "Exceeded maxIntXXX");
         return false;
     }
 
@@ -945,8 +938,7 @@ void xNetwork::setServer(xServer* _theServer) {
 
     // Reserve the server's numeric
     if (!reservedNumericMap.insert(make_pair(theServer->getIntYY(), set<unsigned int>())).second) {
-        elog << "xNetwork::setServer> Failed to add core server "
-             << "numeric to reservedNumericMap" << endl;
+        LOG(WARN, "Failed to add core server numeric to reservedNumericMap");
     }
 }
 
@@ -963,16 +955,14 @@ bool xNetwork::addFakeClient(iClient* fakeClient, xClient* ownerClient) {
     // Make sure the fake server to which this iClient is being
     // associated at least has its server intYY numeric reserved
     if (reservedNumericMap.find(fakeClient->getIntYY()) == reservedNumericMap.end()) {
-        elog << "xNetwork::addFakeClient> Unable to find "
-             << "fakeServer intYY " << fakeClient->getIntYY() << " for fake client: " << *fakeClient
-             << endl;
+        LOG(WARN, "Unable to find fakeServer intYY {} for fake client: {}", fakeClient->getIntYY(),
+            fakeClient->getNickName());
         return false;
     }
 
     // Make sure the nickname does not collide
     if (findNick(fakeClient->getNickName()) != 0) {
-        elog << "xNetwork::addFakeClient> Found matching nickname: " << fakeClient->getNickName()
-             << endl;
+        LOG(WARN, "Found matching nickname: {}", fakeClient->getNickName());
         return false;
     }
 
@@ -980,8 +970,7 @@ bool xNetwork::addFakeClient(iClient* fakeClient, xClient* ownerClient) {
     // Get an intXXX
     unsigned int intXXX = 0;
     if (!allocateClientNumeric(fakeClient->getIntYY(), intXXX)) {
-        elog << "xNetwork::addFakeClient> Unable to "
-             << "allocate client numeric for: " << *fakeClient << endl;
+        LOG(ERROR, "Unable to allocate client numeric for: {}", fakeClient->getNickName());
         return false;
     }
 
@@ -994,21 +983,19 @@ bool xNetwork::addFakeClient(iClient* fakeClient, xClient* ownerClient) {
     if (!fakeClientMap
              .insert(make_pair(fakeClient->getIntYYXXX(), make_pair(fakeClient, ownerClient)))
              .second) {
-        elog << "xNetwork::addFakeClient> Failed to insert into "
-             << "fakeClientMap: " << *fakeClient << ", with controlling xClient: ";
+        const string ownerName = (0 == ownerClient) ? string("NULL") : ownerClient->getNickName();
 
-        if (0 == ownerClient) {
-            elog << "NULL";
-        } else {
-            elog << *ownerClient;
-        }
-        elog << endl;
+        LOG_MSG(WARN, "Failed to insert into fakeClientMap: {client}, with controlling xClient: {}",
+                ownerName)
+            .with("client", fakeClient)
+            .log();
         return false;
     }
 
     if (!numericMap.insert(make_pair(fakeClient->getIntYYXXX(), fakeClient)).second) {
-        elog << "xNetwork::addFakeClient> Failed to add client "
-             << "to the numericMap: " << *fakeClient << endl;
+        LOG_MSG(WARN, "Failed to add client to the numericMap: {client}")
+            .with("client", fakeClient)
+            .log();
 
         fakeClientMap.erase(fakeClient->getIntYYXXX());
         freeClientNumeric(fakeClient->getIntYYXXX());
@@ -1046,15 +1033,13 @@ iClient* xNetwork::removeFakeClient(iClient* fakeClient) {
 
     fakeClientIterator cItr = fakeClientMap.find(fakeClient->getIntYYXXX());
     if (cItr == fakeClient_end()) {
-        elog << "xNetwork::removeFakeClient> Unable to find fake "
-             << "client: " << *fakeClient << endl;
+        LOG_MSG(WARN, "Unable to find fake client: {client}").with("client", fakeClient).log();
     } else {
         fakeClientMap.erase(cItr);
     }
 
     if (!freeClientNumeric(fakeClient->getIntYYXXX())) {
-        elog << "xNetwork::removeFakeClient> Failed to free "
-             << "client numeric: " << fakeClient->getIntYYXXX() << endl;
+        LOG(WARN, "Failed to free client numeric: {}", fakeClient->getIntYYXXX());
     }
 
     // All successful
@@ -1077,8 +1062,9 @@ bool xNetwork::addFakeServer(iServer* fakeServer, xClient* owningClient) {
 
     // Verify that the server name does not exist
     if (findServerName(fakeServer->getName()) != 0) {
-        elog << "xNetwork::addFakeServer> Server name already "
-             << "exists in normal list of iServers: " << *fakeServer << endl;
+        LOG_MSG(WARN, "Server name already exists in normal list of iServers: {server}")
+            .with("server", fakeServer)
+            .log();
         return false;
     }
 
@@ -1089,8 +1075,7 @@ bool xNetwork::addFakeServer(iServer* fakeServer, xClient* owningClient) {
     // Allocate a new numeric
     unsigned int intYY = 0;
     if (!allocateServerNumeric(intYY)) {
-        elog << "xNetwork::addFakeServer> Failed to "
-             << "allocate fake numeric" << endl;
+        LOG(ERROR, "Failed to allocate fake numeric");
         return false;
     }
 
@@ -1101,8 +1086,9 @@ bool xNetwork::addFakeServer(iServer* fakeServer, xClient* owningClient) {
     if (!fakeServerMap
              .insert(make_pair(fakeServer->getIntYY(), make_pair(fakeServer, owningClient)))
              .second) {
-        elog << "xNetwork::addFakeServer> Failed to insert "
-             << "new server into fakeServerMap: " << *fakeServer << endl;
+        LOG_MSG(WARN, "Failed to insert new server into fakeServerMap: {server}")
+            .with("server", fakeServer)
+            .log();
 
         // A numeric had been allocated for this server,
         // free that numeric.
@@ -1112,8 +1098,9 @@ bool xNetwork::addFakeServer(iServer* fakeServer, xClient* owningClient) {
     }
 
     if (!serverMap.insert(make_pair(fakeServer->getIntYY(), fakeServer)).second) {
-        elog << "xNetwork::addFakeServer> Failed to add new server "
-             << "to serverMap: " << *fakeServer << endl;
+        LOG_MSG(WARN, "Failed to add new server to serverMap: {server}")
+            .with("server", fakeServer)
+            .log();
 
         freeServerNumeric(fakeServer->getIntYY());
         fakeServerMap.erase(fakeServer->getIntYY());
@@ -1133,13 +1120,14 @@ iServer* xNetwork::findFakeServerName(const string& name) const {
     for (const_fakeServerIterator sItr = fakeServers_begin(); sItr != fakeServers_end(); ++sItr) {
         if (!strcasecmp(name, sItr->second.first->getName())) {
             // Found it
-            elog << "xNetwork::findServerName> Found name: " << name
-                 << ", matching server: " << *(sItr->second.first) << endl;
+            LOG_MSG(DEBUG, "Found name: {}, matching server: {server}", name)
+                .with("server", sItr->second.first)
+                .log();
             return sItr->second.first;
         }
     } // for()
 
-    elog << "xNetwork::findFakeServerName> Unable to find server name: " << name << endl;
+    LOG(WARN, "Unable to find server name: {}", name);
 
     return 0;
 }
@@ -1152,17 +1140,15 @@ bool xNetwork::freeClientNumeric(unsigned int intYYXXX) {
 
     reservedNumeric_iterator rsItr = reservedNumericMap.find(intYY);
     if (rsItr == reservedNumericMap.end()) {
-        elog << "xNetwork::freeClientNumeric> Unable to find "
-             << "server intYY for intYY/intXXX/intYYXXX: " << intYY << '/' << intXXX << '/'
-             << intYYXXX << endl;
+        LOG(WARN, "Unable to find server intYY for intYY/intXXX/intYYXXX: {}/{}/{}", intYY, intXXX,
+            intYYXXX);
         return false;
     }
 
     set<unsigned int>::iterator numItr = rsItr->second.find(intXXX);
     if (numItr == rsItr->second.end()) {
-        elog << "xNetwork::freeClientNumeric> Unable to find "
-             << "client intXXX for intYY/intXXX/intYYXXX: " << intYY << '/' << intXXX << '/'
-             << intYYXXX << endl;
+        LOG(WARN, "Unable to find client intXXX for intYY/intXXX/intYYXXX: {}/{}/{}", intYY, intXXX,
+            intYYXXX);
         return false;
     }
 
@@ -1203,29 +1189,27 @@ bool xNetwork::allocateServerNumeric(unsigned int& intYY) {
         //		<< endl ;
 
         if (!reservedNumericMap.insert(make_pair(intYY, set<unsigned int>())).second) {
-            elog << "xNetwork::allocateServerNumeric> Failed "
-                 << "to reserve intYY: " << intYY << endl;
+            LOG(ERROR, "Failed to reserve intYY: {}", intYY);
             return false;
         }
         return true;
     } // for()
 
-    elog << "xNetwork::allocateServerNumeric> Looped unsigned "
-         << "int" << endl;
+    LOG(ERROR, "Looped unsigned int");
     return false;
 }
 
 bool xNetwork::freeServerNumeric(unsigned int intYY) {
     reservedNumeric_iterator sItr = reservedNumericMap.find(intYY);
     if (sItr == reservedNumericMap.end()) {
-        elog << "xNetwork::freeServerNumeric> Unable to find "
-             << "numeric: " << intYY << endl;
+        LOG(WARN, "Unable to find numeric: {}", intYY);
         return false;
     }
 
     if (!sItr->second.empty()) {
-        elog << "xNetwork::freeServerNumeric> Releasing numeric " << intYY << " which has "
-             << sItr->second.empty() << " client numerics reserved" << endl;
+        // empty() rather than size(), as it always was
+        LOG(WARN, "Releasing numeric {} which has {} client numerics reserved", intYY,
+            static_cast<int>(sItr->second.empty()));
     }
 
     reservedNumericMap.erase(sItr);
@@ -1237,15 +1221,13 @@ iServer* xNetwork::removeFakeServer(iServer* fakeServer) {
 
     fakeServerIterator sItr = fakeServerMap.find(fakeServer->getIntYY());
     if (sItr == fakeServers_end()) {
-        elog << "xNetwork::removeFakeServer> Unable to find fake "
-             << "server: " << *fakeServer << endl;
+        LOG_MSG(WARN, "Unable to find fake server: {server}").with("server", fakeServer).log();
     } else {
         fakeServerMap.erase(sItr);
     }
 
     if (!freeServerNumeric(fakeServer->getIntYY())) {
-        elog << "xNetwork::removeFakeServer> Failed to free "
-             << "server numeric: " << fakeServer->getIntYY() << endl;
+        LOG(WARN, "Failed to free server numeric: {}", fakeServer->getIntYY());
     }
 
     // All successful
@@ -1254,7 +1236,7 @@ iServer* xNetwork::removeFakeServer(iServer* fakeServer) {
 
 iServer* xNetwork::removeFakeServerName(const string& name) {
     if (name.empty()) {
-        elog << "xNetwork::removeFakeServerName> Empty name" << endl;
+        LOG(WARN, "Empty name");
         return 0;
     }
 
@@ -1262,16 +1244,15 @@ iServer* xNetwork::removeFakeServerName(const string& name) {
     for (; sItr != fakeServers_end(); ++sItr) {
         if (!strcasecmp(sItr->second.first->getName(), name)) {
             // Found it
-            elog << "xNetwork::removeFakeServerName> Found "
-                 << "matching server name for name: " << name
-                 << ", server: " << *(sItr->second.first) << endl;
+            LOG_MSG(DEBUG, "Found matching server name for name: {}, server: {server}", name)
+                .with("server", sItr->second.first)
+                .log();
 
             return removeFakeServer(sItr->second.first);
         }
     } // for()
 
-    elog << "xNetwork::removeFakeServerName> Unable to find "
-         << "matching server name for name: " << name << endl;
+    LOG(WARN, "Unable to find matching server name for name: {}", name);
 
     return 0;
 }

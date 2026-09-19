@@ -36,13 +36,14 @@
 #include "Network.h"
 #include "xparameters.h"
 #include "StringTokenizer.h"
-#include "ELog.h"
 #include "match.h"
 #include "misc.h"
 #include "server.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.state");
 
 namespace gnuworld {
-using std::endl;
 using std::string;
 using std::stringstream;
 using std::vector;
@@ -80,8 +81,10 @@ bool Channel::addUser(ChannelUser* newUser) {
     //	<< endl ;
 
     if (!userList.insert(userListType::value_type(newUser->getIntYYXXX(), newUser)).second) {
-        elog << "Channel::addUser> (" << getName() << "): "
-             << "Unable to add user: " << *newUser << endl;
+        LOG_MSG(WARN, "({chan}): Unable to add user: {client}")
+            .with("chan", this)
+            .with("client", newUser)
+            .log();
         return false;
     }
 
@@ -159,8 +162,10 @@ ChannelUser* Channel::findUser(const iClient* theClient) const {
 bool Channel::removeUserMode(const ChannelUser::modeType& whichMode, iClient* theClient) {
     ChannelUser* theChanUser = findUser(theClient);
     if (NULL == theChanUser) {
-        elog << "Channel::removeUserMode> (" << getName() << ") "
-             << "Unable to find user: " << theClient->getCharYYXXX() << endl;
+        LOG_MSG(WARN, "({chan}) Unable to find user: {client_numeric}")
+            .with("chan", this)
+            .with("client", theClient)
+            .log();
         return false;
     }
     theChanUser->removeMode(whichMode);
@@ -171,8 +176,10 @@ bool Channel::setUserMode(const ChannelUser::modeType& whichMode, iClient* theCl
     // findUser() is also public, and so will verify theClient's pointer
     ChannelUser* theChanUser = findUser(theClient);
     if (NULL == theChanUser) {
-        elog << "Channel::setUserMode> (" << getName() << ") "
-             << "Unable to find user: " << theClient->getCharYYXXX() << endl;
+        LOG_MSG(WARN, "({chan}) Unable to find user: {client_numeric}")
+            .with("chan", this)
+            .with("client", theClient)
+            .log();
         return false;
     }
     theChanUser->setMode(whichMode);
@@ -183,8 +190,10 @@ bool Channel::getUserMode(const ChannelUser::modeType& whichMode, iClient* theCl
     // findUser() is also public, and so will verify theClient's pointer
     ChannelUser* theChanUser = findUser(theClient);
     if (NULL == theChanUser) {
-        elog << "Channel::getUserMode> (" << getName() << ") "
-             << "Unable to find user: " << theClient->getCharYYXXX() << endl;
+        LOG_MSG(WARN, "({chan}) Unable to find user: {client_numeric}")
+            .with("chan", this)
+            .with("client", theClient)
+            .log();
         return false;
     }
     return theChanUser->getMode(whichMode);

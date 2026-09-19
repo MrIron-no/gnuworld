@@ -30,7 +30,7 @@
 #include <cstdlib> // exit()
 #include "ltdl.h"
 
-#include "ELog.h"
+#include "logger.h"
 
 namespace gnuworld {
 
@@ -92,8 +92,12 @@ template <typename modType, typename argType = std::string> class moduleLoader {
         // Must call lt_dlinit() to initialize libltdl.
         // This method may be called more than once
         if (lt_dlinit() != 0) {
-            elog << "moduleLoader> Failed to initialize "
-                 << "module loading system: " << lt_dlerror() << std::endl;
+            // lt_dlerror() is a null pointer when it has nothing to say
+            const char* const error = lt_dlerror();
+
+            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR,
+                   "Failed to initialize module loading system: {}",
+                   nullptr == error ? "(null)" : error);
             setError();
             return;
         }
@@ -121,8 +125,11 @@ template <typename modType, typename argType = std::string> class moduleLoader {
         moduleHandle = lt_dlopen(fileName.c_str());
 
         if (0 == moduleHandle) {
-            elog << "moduleLoader> Error opening module (" << moduleName << "): " << lt_dlerror()
-                 << std::endl;
+            const char* const error = lt_dlerror();
+
+            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR,
+                   "Error opening module ({}): {}", moduleName,
+                   nullptr == error ? "(null)" : error);
             setError();
             return;
         }
@@ -139,7 +146,10 @@ template <typename modType, typename argType = std::string> class moduleLoader {
      */
     virtual ~moduleLoader() {
         if (lt_dlclose(moduleHandle) != 0) {
-            elog << "~moduleLoader> Error closing module: " << lt_dlerror() << std::endl;
+            const char* const error = lt_dlerror();
+
+            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR, "Error closing module: {}",
+                   nullptr == error ? "(null)" : error);
         }
         moduleHandle = 0;
     }
@@ -162,7 +172,10 @@ template <typename modType, typename argType = std::string> class moduleLoader {
         const std::string symbolName = std::string("_gnuwinit") + symbolSuffix;
         modFunc = (GNUWModuleFunc)lt_dlsym(moduleHandle, symbolName.c_str());
         if (0 == modFunc) {
-            elog << "moduleLoader::loadObject> Error: " << lt_dlerror() << std::endl;
+            const char* const error = lt_dlerror();
+
+            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR, "Error: {}",
+                   nullptr == error ? "(null)" : error);
             setError();
             return 0;
         }
@@ -171,7 +184,8 @@ template <typename modType, typename argType = std::string> class moduleLoader {
 
         // Types usable by this class must support comparison against 0
         if (0 == modPtr) {
-            elog << "moduleLoader> Unable to instantiate modType." << std::endl;
+            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR,
+                   "Unable to instantiate modType.");
             setError();
         }
 

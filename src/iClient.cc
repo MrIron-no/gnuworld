@@ -34,6 +34,9 @@
 #include "ip.h"
 #include "gnuworld_config.h"
 #include "Network.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.state");
 
 namespace gnuworld {
 
@@ -145,8 +148,7 @@ void iClient::setModes(const string& newModes) {
             break;
         default:
             // Unknown mode
-            elog << "iClient> Unknown user mode: " << newModes[i]
-                 << ", in modes string: " << newModes << std::endl;
+            LOG(WARN, "Unknown user mode: {}, in modes string: {}", newModes[i], newModes);
             break;
         } // switch
     } // for

@@ -24,8 +24,10 @@
 
 #include "LoadClientTimerHandler.h"
 #include "server.h"
-#include "ELog.h"
 #include "gnuworld_config.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.modules");
 
 namespace gnuworld {
 
@@ -40,7 +42,7 @@ void LoadClientTimerHandler::OnTimer(const timerID&, void*) {
     // Load the client from the module, attach it to the server, and
     // burst it onto the network
     if (!theServer->AttachClient(moduleName, configFileName, true)) {
-        elog << "LoadClientTimer> Failed to load client module: " << moduleName << std::endl;
+        LOG(ERROR, "Failed to load client module: {}", moduleName);
         return;
     }
 

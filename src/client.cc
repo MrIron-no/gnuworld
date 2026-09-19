@@ -47,16 +47,17 @@
 #include "client.h"
 #include "EConfig.h"
 #include "StringTokenizer.h"
-#include "ELog.h"
 #include "LogManager.h"
+#include "logger.h"
 #ifdef HAVE_PGSQL
 #include "MigrationChecker.h"
 #endif
 #include "events.h"
 
+GNUWORLD_MODULE_LOGGER("core.modules");
+
 namespace gnuworld {
 
-using std::endl;
 using std::make_pair;
 using std::string;
 using std::stringstream;
@@ -196,7 +197,7 @@ bool xClient::Mode(const string& Value) {
             break;
 
         default:
-            elog << "xClient::Mode> Unknown mode: " << *ptr << endl;
+            LOG(WARN, "Unknown mode: {}", *ptr);
             break;
         } // switch()
     } // close while
@@ -820,7 +821,7 @@ void xClient::OnJoin(const string& chanName) {
     // elog << "xClient::OnJoin " << chanName << endl;
     Channel* theChan = Network->findChannel(chanName);
     if (NULL == theChan) {
-        elog << "xClient::OnJoin> Failed to find channel: " << chanName << endl;
+        LOG(WARN, "Failed to find channel: {}", chanName);
         return;
     }
     OnJoin(theChan);
@@ -835,7 +836,7 @@ void xClient::OnPart(Channel* theChan) {
 void xClient::OnPart(const string& chanName) {
     Channel* theChan = Network->findChannel(chanName);
     if (NULL == theChan) {
-        elog << "xClient::OnPart> Failed to find channel: " << chanName << endl;
+        LOG(WARN, "Failed to find channel: {}", chanName);
         return;
     }
     OnPart(theChan);

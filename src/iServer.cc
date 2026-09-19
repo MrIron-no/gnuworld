@@ -30,6 +30,9 @@
 #include "Numeric.h"
 #include "gnuworld_config.h"
 #include "NetworkTarget.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.state");
 
 namespace gnuworld {
 
@@ -51,7 +54,7 @@ iServer::~iServer() {}
  */
 void iServer::setProtocolToken(const string& token) {
     if (token.size() < 2) {
-        elog << "iServer> Malformed protocol token: " << token << std::endl;
+        LOG(WARN, "Malformed protocol token: {}", token);
         return;
     }
     if ('J' == token[0]) {
@@ -60,7 +63,7 @@ void iServer::setProtocolToken(const string& token) {
     char* end = 0;
     unsigned long version = strtoul(token.c_str() + 1, &end, 10);
     if (end == token.c_str() + 1 || 0 == version) {
-        elog << "iServer> Unrecognised protocol version in token: " << token << std::endl;
+        LOG(WARN, "Unrecognised protocol version in token: {}", token);
         return;
     }
     protocol = static_cast<unsigned int>(version);
@@ -87,8 +90,7 @@ void iServer::setFlags(const string& newFlags) {
             break;
         default:
             // Unknown flag
-            elog << "iServer> Unknown server flag: " << newFlags[i]
-                 << ", in flags string: " << newFlags << std::endl;
+            LOG(WARN, "Unknown server flag: {}, in flags string: {}", newFlags[i], newFlags);
             break;
         }
     }
