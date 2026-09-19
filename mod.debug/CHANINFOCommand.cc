@@ -118,12 +118,30 @@ void CHANINFOCommand::Exec(const iClient* theClient, const std::string& Message)
         // not know who set one leaves the name empty; no details at all
         // would be a bug in the bookkeeping, not a ban nobody set.
         const Channel::BanInfo* banInfo = theChan->getBanInfo(*banItr);
-        const std::string setBy =
-            (banInfo != nullptr && !banInfo->setBy.empty()) ? banInfo->setBy : "(unknown)";
-        const std::string setAt = (banInfo != nullptr && banInfo->setAt != 0)
-                                      ? std::format("{} ({} ago)", prettyTime(banInfo->setAt),
-                                                    prettyDuration(banInfo->setAt))
-                                      : "(unknown)";
+
+        // A P11 burst carries the name as another server wrote it: nothing
+        // of it that would draw on a terminal goes into the notice
+        std::string setBy;
+        if (banInfo != nullptr) {
+            for (const char c : banInfo->setBy) {
+                if (static_cast<unsigned char>(c) >= 0x20 && c != 0x7f) {
+                    setBy += c;
+                }
+            }
+        }
+        if (setBy.empty()) {
+            setBy = "(unknown)";
+        }
+
+        // The time of a burst ban is the wire's too, and a clock that runs
+        // ahead is no duration prettyDuration() can say
+        std::string setAt = "(unknown)";
+        if (banInfo != nullptr && banInfo->setAt != 0) {
+            setAt = (banInfo->setAt > ::time(nullptr))
+                        ? std::format("{} (in the future)", prettyTime(banInfo->setAt))
+                        : std::format("{} ({} ago)", prettyTime(banInfo->setAt),
+                                      prettyDuration(banInfo->setAt));
+        }
 
         bot->Notice(theClient, "  {}  set by {}  at {}", *banItr, setBy, setAt);
     }

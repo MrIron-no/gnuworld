@@ -96,6 +96,23 @@ async def test_a_p11_burst_ban_keeps_what_the_triplet_says(docker_stack, fake_hu
 
 
 @pytest.mark.asyncio
+async def test_what_a_p11_triplet_says_is_shown_safely(docker_stack, fake_hub_p11, tmp_path):
+    """The setter and the time are another server's words: a control character
+    of the name stays out of the notice, and a time ahead of ours is still a
+    line that can be read."""
+    ts = int(time.time()) - 3600
+    banTS = int(time.time()) + 86400
+
+    async with link_debug(fake_hub_p11, tmp_path) as (hub, _proc):
+        asker = await _asker(hub)
+        await _burst_channel(hub, ts, bans=f" :%{NARROW} {banTS} Old\x02Op")
+
+        info = await chaninfo(hub, asker, CHAN)
+        assert info.ban_setters == {NARROW: "OldOp"}
+        assert info.ban_times == {NARROW: banTS}
+
+
+@pytest.mark.asyncio
 async def test_a_p10_burst_ban_is_the_bursting_servers(docker_stack, fake_hub, tmp_path):
     """A P10 burst is a flat list of masks: nobody to name but the sender."""
     ts = int(time.time()) - 3600
