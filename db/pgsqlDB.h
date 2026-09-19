@@ -65,6 +65,13 @@ class pgsqlDB : public gnuworldDB {
     /// The statement Exec() was last given, which a failure reports
     std::string lastQuery;
 
+    /**
+     * Whether that statement may be shown: a caller that asked Exec() not to
+     * log a statement - one that carries a secret, say - does not want to read
+     * it in the record of its failure either.
+     */
+    bool lastQueryLoggable = true;
+
   public:
     pgsqlDB(xClient* bot, const std::string& dbHost, const unsigned short int dbPort,
             const std::string& dbName, const std::string& userName, const std::string& password);

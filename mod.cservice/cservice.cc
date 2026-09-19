@@ -430,6 +430,20 @@ cservice::~cservice() {
     legacyConsoleSink.reset();
     legacyFileSink.reset();
 
+    /* The notifiers too: they hold a pointer to this client, and a record of the
+     * next instance of the module must not reach a notifier of this one */
+    if (pushover) {
+        logger->removeSink(pushover);
+        pushover.reset();
+    }
+
+#ifdef HAVE_PROMETHEUS
+    if (prometheus) {
+        logger->removeSink(prometheus);
+        prometheus.reset();
+    }
+#endif
+
     logger->setLegacyLevel(std::nullopt);
     logger->child("sql")->setLegacyLevel(std::nullopt);
     logger->setAdditive(true);

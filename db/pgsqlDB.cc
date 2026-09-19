@@ -117,10 +117,11 @@ pgsqlDB::~pgsqlDB() {
 }
 
 bool pgsqlDB::Exec(const string& theQuery, bool logQuery) {
-    /* Remembered whether it is logged or not: what a failure reports is the
-     * statement that failed, and a caller that asked for no log of its queries
-     * did not ask for its errors to be silent */
+    /* Remembered whether it is logged or not: a caller that asked for no log of
+     * its queries did not ask for its errors to be silent.  But what such a
+     * failure shows of the statement is decided by the same switch */
     lastQuery = theQuery;
+    lastQueryLoggable = logQuery;
 
     if (logQuery)
         LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
@@ -155,7 +156,7 @@ bool pgsqlDB::Exec(const stringstream& theQuery, bool logQuery) {
 void pgsqlDB::logError(const char* func) {
     sqlLog->createMessage(ERROR, func, "SQL Error: {error}")
         .with("error", ErrorMessage())
-        .with("query", lastQuery)
+        .with("query", lastQueryLoggable ? lastQuery : std::string("(not logged)"))
         .log();
 }
 
