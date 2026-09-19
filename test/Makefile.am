@@ -24,6 +24,7 @@ noinst_PROGRAMS = test_burst \
 	test_logger_basic \
 	test_logger_hierarchy \
 	test_logger_config \
+	test_logger_ratelimit \
 	test_elog_shim \
 	test_logger_adversarial
 
@@ -156,6 +157,13 @@ test_logger_config_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworl
 	-DLOGGING_EXAMPLE_CONF=\"$(top_srcdir)/bin/logging.example.conf\"
 test_logger_config_LDADD = libgnuworld.la $(threadLib)
 
+# The token bucket a sink that talks to the outside world holds, on libgnuworld
+# alone.  Every case that is about the refill injects the clock rather than
+# sleeping, so this is as fast as any other unit test here.
+test_logger_ratelimit_SOURCES = test/logger_ratelimit.cc
+test_logger_ratelimit_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_ratelimit_LDADD = libgnuworld.la $(threadLib)
+
 # The deprecated elog in front of the logger, on libgnuworld alone.
 test_elog_shim_SOURCES = test/elog_shim.cc
 test_elog_shim_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
@@ -174,4 +182,4 @@ test_logger_adversarial_LDADD = libgnuworld.la $(threadLib)
 # interactive or benchmarks, not tests.
 TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
 	test_logger_format test_logger_sinks test_logger_basic test_logger_hierarchy \
-	test_logger_config test_elog_shim test_logger_adversarial
+	test_logger_config test_logger_ratelimit test_elog_shim test_logger_adversarial

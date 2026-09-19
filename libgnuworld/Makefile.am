@@ -47,6 +47,7 @@ EXTRA_DIST += \
 	libgnuworld/LogConfig.h \
 	libgnuworld/LogFormat.h \
 	libgnuworld/LogManager.h \
+	libgnuworld/LogRateLimit.h \
 	libgnuworld/LogRecord.h \
 	libgnuworld/LogRender.h \
 	libgnuworld/LogSink.h \
