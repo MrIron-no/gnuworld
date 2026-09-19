@@ -112,7 +112,11 @@ async def test_no_logging_conf_writes_text_debug_log_and_appends(fake_hub, tmp_p
         assert TEXT_LINE.match(line), f"line does not match the text layout: {line!r}"
 
     assert any("No logging.conf found; using built-in defaults" in l for l in lines)
-    assert any(re.search(r"\blegacy\b", l) for l in lines), "no 'legacy' line in debug.log"
+    # Core itself logs through the logger: a bare start, with no module that
+    # still writes to elog, leaves no "legacy" line, but it does say on
+    # "core.net" that it connected
+    assert any(re.search(r"  core\.net\s+Connected to ", l) for l in lines), \
+        "no 'core.net' connection line in debug.log"
 
     first_line = lines[0]
     first_count = len(lines)

@@ -1484,6 +1484,11 @@ void atomicityBody() {
         }
     });
 
+    // The writer is logging before the first swap: on a busy machine it may
+    // otherwise not have been scheduled at all by the time the last one is done
+    while (0 == logged.load(std::memory_order_relaxed))
+        std::this_thread::yield();
+
     for (int round = 0; round < 200; ++round) {
         std::vector<std::string> roundErrors;
 
