@@ -584,11 +584,12 @@ void xServer::OnChannelModeV(Channel* theChan, ChannelUser* sourceUser,
 // sourceUser is the source of the mode change; this variable
 // may be NULL if a server is setting the mode
 void xServer::OnChannelModeB(Channel* theChan, ChannelUser* sourceUser,
-                             xServer::banVectorType& banVector) {
+                             xServer::banVectorType& banVector,
+                             std::span<const Channel::BanInfo> banInfo) {
 
     // Channel::onModeB() may modify banVector with the extra bans
     // that have been removed due to overlaps
-    theChan->onModeB(banVector);
+    theChan->onModeB(banVector, banInfo);
 
     // First deliver this channel event to any listeners for all channel
     // events.
@@ -625,7 +626,7 @@ void xServer::OnChannelModeB(Channel* theChan, ChannelUser* sourceUser,
  */
 void xServer::ApplyChannelModes(Channel* theChan, ChannelUser* sourceUser,
                                 std::span<const Channel::ModeChange> changes,
-                                std::string_view where) {
+                                std::string_view where, std::string_view setBy) {
     std::vector<std::string> problems;
 
     modeVectorType modeVector;
@@ -685,7 +686,11 @@ void xServer::ApplyChannelModes(Channel* theChan, ChannelUser* sourceUser,
         OnChannelModeV(theChan, sourceUser, voiceVector);
     }
     if (!banVector.empty()) {
-        OnChannelModeB(theChan, sourceUser, banVector);
+        // One line, one source: every ban on it was set by setBy, now.  A
+        // removal's entry is not read.
+        const std::vector<Channel::BanInfo> banInfo(banVector.size(),
+                                                    Channel::BanInfo{std::string(setBy), 0});
+        OnChannelModeB(theChan, sourceUser, banVector, banInfo);
     }
 
     // What could not be applied is ours to report: the caller has nothing

@@ -156,7 +156,15 @@ bool msg_M::Execute(const xParameters& Param) {
         }
     }
 
-    theServer->ApplyChannelModes(theChan, theUser, parsed.changes, "msg_M>");
+    // Who a ban on this line is recorded as having been set by: the nick of
+    // a user source, the name of a server source (an OPMODE or a server
+    // MODE).  theUser cannot say: it is NULL for a user who is not on the
+    // channel as well as for a server.  One of the two is set, or the source
+    // lookup above has already returned.
+    const string modeSource =
+        (clientSource != 0) ? clientSource->getNickName() : serverSource->getName();
+
+    theServer->ApplyChannelModes(theChan, theUser, parsed.changes, "msg_M>", modeSource);
 
     return true;
 }

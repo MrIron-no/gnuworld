@@ -2303,7 +2303,11 @@ bool xServer::changeModes(Channel* theChan, std::vector<Channel::ModeChange> req
     // module may answer an event with traffic of its own, which has to
     // follow the mode that caused it.
     sendChannelModes(numericOf(from), theChan, wire);
-    ApplyChannelModes(theChan, eventSource, wire, "xServer::changeModes>");
+
+    // A ban of ours is recorded as the bot's, or as this server's where the
+    // change is the server's own
+    ApplyChannelModes(theChan, eventSource, wire, "xServer::changeModes>",
+                      (from != 0) ? from->getNickName() : getName());
 
     if (joined != 0) {
         joined->Part(theChan);

@@ -15,6 +15,7 @@ noinst_PROGRAMS = test_burst \
 	test_xparameters_tags \
 	test_stringtokenizer_trailing \
 	test_channelmodes \
+	test_channelbans \
 	test_checkedformat \
 	test_numbers \
 	test_logger_render \
@@ -118,6 +119,14 @@ test_channelmodes_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 	-I${top_srcdir}/libnotifier -I${top_srcdir}/db
 test_channelmodes_LDADD = libgnuworld.la
 
+# The ban bookkeeping is Channel's too, but it lives in src/Channel.cc, which
+# needs the network tables and the connection: this one links the whole core
+# and builds a Channel of its own, no xServer running.
+test_channelbans_SOURCES = test/channelbans.cc
+test_channelbans_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier -I${top_srcdir}/db
+test_channelbans_LDADD = libgnuworldcore.la libgnuworld.la
+
 test_checkedformat_SOURCES = test/checkedformat.cc
 test_checkedformat_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_checkedformat_LDADD = libgnuworld.la
@@ -201,7 +210,7 @@ test_pushover_delivery_LDADD = libnotifier.la libgnuworld.la $(threadLib)
 
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
-TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
+TESTS = test_channelmodes test_channelbans test_checkedformat test_numbers test_logger_render \
 	test_logger_format test_logger_sinks test_logger_basic test_logger_hierarchy \
 	test_logger_config test_logger_ratelimit test_elog_shim test_logger_adversarial \
 	test_pushover_text

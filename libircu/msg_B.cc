@@ -65,7 +65,9 @@ class msg_B : public ServerCommandHandler {
 
   protected:
     void parseBurstUsers(Channel*, const string&, bool incomingIsNewer);
-    void parseBurstBans(Channel*, const string&);
+    void parseBurstBans(Channel*, const string&, const string& burstSource);
+
+    string sourceServerName(const xParameters&) const;
 };
 
 CREATE_LOADER(msg_B)
@@ -123,6 +125,10 @@ bool msg_B::Execute(const xParameters& Param) {
     const time_t burstTS = theServer->RequireTimestamp("msg_B>", "channel timestamp", Param[2]);
     const bool incomingIsNewer = (theChan != NULL) && (theChan->getCreationTime() < burstTS);
 
+    // Who a ban of this burst is recorded as having been set by, where the
+    // burst itself does not say: the server it came from, as ircu does it.
+    const string burstSource = sourceServerName(Param);
+
     // Was the channel found?
     if (NULL == theChan) {
         // The channel does not yet exist, go ahead and create it.
@@ -178,7 +184,7 @@ bool msg_B::Execute(const xParameters& Param) {
         if (!parsed.ok()) {
             theServer->ProtocolError("msg_B>", parsed.problems);
         }
-        theServer->ApplyChannelModes(theChan, 0, parsed.changes, "msg_B>");
+        theServer->ApplyChannelModes(theChan, 0, parsed.changes, "msg_B>", burstSource);
 
         whichToken += 1 + parsed.argsUsed;
     }
@@ -201,7 +207,7 @@ bool msg_B::Execute(const xParameters& Param) {
         } else if ('%' == Param[whichToken][0]) {
             // Channel bans
             // Be sure to skip over the '%'
-            parseBurstBans(theChan, Param[whichToken] + 1);
+            parseBurstBans(theChan, Param[whichToken] + 1, burstSource);
         } else {
             // Userlist
             parseBurstUsers(theChan, Param[whichToken], incomingIsNewer);
@@ -402,7 +408,22 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
     }
 }
 
-void msg_B::parseBurstBans(Channel* theChan, const string& theBans) {
+/**
+ * The name of the server a BURST came from, or an empty string when the
+ * network table does not have it (yet).  The source is a server numeric, or
+ * a name during a link's own handshake; msg_M reads its source the same way.
+ */
+string msg_B::sourceServerName(const xParameters& Param) const {
+    const iServer* sourceServer = (NULL != strchr(Param[0], '.'))
+                                      ? Network->findServerName(Param[0])
+                                      : Network->findServer(Param[0]);
+    if (0 == sourceServer) {
+        return string();
+    }
+    return sourceServer->getName();
+}
+
+void msg_B::parseBurstBans(Channel* theChan, const string& theBans, const string& burstSource) {
     // This is a protected method, so the method arguments are
     // guaranteed to be valid
 
@@ -443,14 +464,26 @@ void msg_B::parseBurstBans(Channel* theChan, const string& theBans) {
     banVectorType banVector;
     banVector.reserve(st.size() / stride);
 
-    // Channel only stores the mask, so the timestamp and setter of a
-    // P11 triplet are skipped over.
+    // Who set each ban and when.  A P11 triplet says so; a P10 burst does
+    // not, so such a ban is recorded as the bursting server's, set now,
+    // which is what ircu does with one.
+    vector<Channel::BanInfo> banInfo;
+    banInfo.reserve(st.size() / stride);
+
     for (StringTokenizer::size_type i = 0; i < st.size(); i += stride) {
         banVector.push_back(banVectorType::value_type(true, st[i]));
+        if (isP11) {
+            // st[ i ]: mask, st[ i + 1 ]: time the ban was set, validated
+            // above, st[ i + 2 ]: who set it.
+            banInfo.push_back(
+                Channel::BanInfo{st[i + 2], parseNumber<time_t>(st[i + 1]).value_or(0)});
+        } else {
+            banInfo.push_back(Channel::BanInfo{burstSource, 0});
+        }
     }
 
     if (!banVector.empty()) {
-        theServer->OnChannelModeB(theChan, 0, banVector);
+        theServer->OnChannelModeB(theChan, 0, banVector, banInfo);
     }
 }
 

@@ -253,21 +253,41 @@ bool Channel::revealUser(const iClient* theClient) {
     return true;
 }
 
-void Channel::setBan(const string& newBan) {
-    // xServer will worry about removing conflicting bans
-    banList.push_front(newBan);
+bool Channel::banMaskCompare::operator()(const string& lhs, const string& rhs) const {
+    return strcasecmp(lhs, rhs) < 0;
+}
+
+void Channel::setBan(const string& newBan, const string& setBy, time_t setAt) {
+    // xServer will worry about removing conflicting bans.  A mask that is
+    // banned already is not listed twice, it only takes the new details.
+    if (!findBan(newBan)) {
+        banList.push_front(newBan);
+    }
+
+    // 0 is "now": the caller was there when the ban was set
+    banInfoList[newBan] = BanInfo{setBy, (0 == setAt) ? ::time(0) : setAt};
 }
 
 bool Channel::removeBan(const string& banMask) {
     for (banIterator ptr = banList_begin(), end = banList_end(); ptr != end; ++ptr) {
         if (!strcasecmp(*ptr, banMask)) {
             banList.erase(ptr);
+            // The details go with the ban: see banInfoList
+            banInfoList.erase(banMask);
             // Ban found, return true
             return true;
         }
     }
     // Ban not found
     return false;
+}
+
+const Channel::BanInfo* Channel::getBanInfo(const string& banMask) const {
+    banInfoListType::const_iterator ptr = banInfoList.find(banMask);
+    if (ptr == banInfoList.end()) {
+        return 0;
+    }
+    return &(ptr->second);
 }
 
 bool Channel::findBan(const string& banMask) const {
@@ -383,15 +403,20 @@ void Channel::onModeV(const vector<std::pair<bool, ChannelUser*>>& voiceVector) 
  *  an overlapping ban will be put into the banVector,
  *  followed by all bans that it overrides.
  */
-void Channel::onModeB(xServer::banVectorType& banVector) {
+void Channel::onModeB(xServer::banVectorType& banVector, std::span<const BanInfo> banInfo) {
     typedef xServer::banVectorType banVectorType;
 
     banVectorType origBans(banVector);
     banVector.clear();
 
+    // A caller that knows who set these bans gives one entry for each of
+    // them, in this order.  The overlapped bans appended below are removals
+    // and have none.
+    assert(banInfo.empty() || banInfo.size() == origBans.size());
+
     // Walk through the list of bans being removed/added
-    for (banVectorType::const_iterator newBanPtr = origBans.begin(); newBanPtr != origBans.end();
-         ++newBanPtr) {
+    for (banVectorType::size_type which = 0; which < origBans.size(); ++which) {
+        const banVectorType::const_iterator newBanPtr = origBans.begin() + which;
         banVector.push_back(*newBanPtr);
 
         // Is the ban being set or removed?
@@ -419,7 +444,9 @@ void Channel::onModeB(xServer::banVectorType& banVector) {
                 //				<< *currentBanPtr
                 //				<< endl ;
 
-                // Overlap, remove the old ban
+                // Overlap, remove the old ban.  Its details go with it,
+                // or the next ban to carry this mask would inherit them.
+                banInfoList.erase(*currentBanPtr);
                 currentBanPtr = banList.erase(currentBanPtr);
 
             } else {
@@ -432,7 +459,11 @@ void Channel::onModeB(xServer::banVectorType& banVector) {
         // Setting this ban will add the ban into
         // later comparisons, but not this comparison,
         // which is what we want.
-        setBan(newBanPtr->second);
+        if (banInfo.empty()) {
+            setBan(newBanPtr->second);
+        } else {
+            setBan(newBanPtr->second, banInfo[which].setBy, banInfo[which].setAt);
+        }
 
     } // outer for()
 }

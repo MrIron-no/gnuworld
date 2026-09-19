@@ -1078,8 +1078,14 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * are set/unset on a particular channel.
      * Keep in mind that the source ChannelUser may be NULL
      * if the mode is being set/unset by a server.
+     * `banInfo`, when it is not empty, holds one entry for each ban given,
+     * in the same order: who set it and when, for the channel to record
+     * (see Channel::BanInfo).  It is not passed on to the modules, whose
+     * xClient::OnChannelModeB() is unchanged; they read a ban's details
+     * from the channel, with Channel::getBanInfo().
      */
-    virtual void OnChannelModeB(Channel*, ChannelUser*, banVectorType&);
+    virtual void OnChannelModeB(Channel*, ChannelUser*, banVectorType&,
+                                std::span<const Channel::BanInfo> banInfo = {});
 
     /**
      * Apply channel mode changes: the one place where a parsed change
@@ -1091,10 +1097,16 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * a +o/+v whose target is unknown or not on the channel, which happens
      * when the change crosses a KILL or a KICK of ours on the way.
      * `where` starts the log lines: "msg_M>".
+     *
+     * `setBy` is what a ban of this change is recorded as having been set
+     * by: the nick of a user source, the name of a server source, empty
+     * where the caller cannot know.  `sourceUser` is not enough for it: it
+     * is null for a client that is not on the channel as well as for a
+     * server.  A caller with nothing but removals has no use for it.
      */
     virtual void ApplyChannelModes(Channel*, ChannelUser* sourceUser,
                                    std::span<const Channel::ModeChange> changes,
-                                   std::string_view where);
+                                   std::string_view where, std::string_view setBy = {});
 
     /**
      * A line from the uplink that cannot be parsed.  Our picture of the

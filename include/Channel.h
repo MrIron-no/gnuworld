@@ -394,6 +394,32 @@ class Channel {
     bool getUserMode(const ChannelUser::modeType& whichMode, iClient*) const;
 
     /**
+     * Who set one of this channel's bans, and when.
+     *
+     * P10 carries neither with a ban, so this is what gnuworld saw rather
+     * than what the network holds: for a live MODE +b the source's name and
+     * the time the line arrived, for a burst ban what the burst says if it
+     * says anything (P11 bursts a "mask timestamp setter" triplet) and
+     * otherwise the bursting server and the time it arrived.  That is how
+     * ircu records a ban too.  setBy is empty where the path that set the
+     * ban cannot know.
+     */
+    struct BanInfo {
+        /// A user's nick, a server's name, or empty: not known.
+        std::string setBy;
+
+        /// When the ban was set, never 0 for a ban the channel holds.
+        time_t setAt = 0;
+    };
+
+    /**
+     * Who set the given ban and when, or NULL if this channel has no such
+     * ban.  The comparison is removeBan()'s: case insensitive, not a
+     * wildcard match.
+     */
+    const BanInfo* getBanInfo(const std::string& banMask) const;
+
+    /**
      * Find a ban in the channel's ban list which lexically matches
      * the given banMask.
      */
@@ -631,9 +657,14 @@ class Channel {
     bool revealUser(const iClient* theClient);
 
     /**
-     * Add a ban to this Channel's ban list.
+     * Add a ban to this Channel's ban list, recording who set it and when;
+     * see BanInfo for what the two are.  An empty setBy is a path that
+     * cannot know, and a setAt of 0 means now.  A mask that is banned
+     * already keeps its place in the list and takes the new details: a ban
+     * set now must never be left with an older ban's setter.
      */
-    void setBan(const std::string& banMask);
+    void setBan(const std::string& banMask, const std::string& setBy = std::string(),
+                time_t setAt = 0);
 
     /**
      * Remove a ban from this channel's ban list.  This does a lexical
@@ -646,7 +677,10 @@ class Channel {
     /**
      * Remove all the bans in the channels ban list.
      */
-    inline void removeAllBans() { banList.clear(); }
+    inline void removeAllBans() {
+        banList.clear();
+        banInfoList.clear();
+    }
 
     /**
      * Remove all channel modes on users and the channel itself.
@@ -768,8 +802,12 @@ class Channel {
      * This method will add to the vector passed to it any
      * bans that have been removed as a result of newly added
      * overlapping bans.
+     * banInfo, when it is not empty, holds one entry for each ban given, in
+     * the same order: who set it and when, as setBan() takes them.  A caller
+     * that knows neither passes nothing.
      */
-    virtual void onModeB(std::vector<std::pair<bool, std::string>>&);
+    virtual void onModeB(std::vector<std::pair<bool, std::string>>&,
+                         std::span<const BanInfo> banInfo = {});
 
     /**
      * The name of this channel.
@@ -824,6 +862,30 @@ class Channel {
      * The structure used to store the channel bans.
      */
     banListType banList;
+
+    /**
+     * Compare two ban masks the way removeBan() compares them: case
+     * insensitively.  This is misc.h's noCaseCompare, on misc.h's
+     * strcasecmp, but written out here and defined in Channel.cc because
+     * Channel.h cannot include misc.h: misc.h includes match.h, which
+     * includes iClient.h, which needs this class declared.
+     */
+    struct banMaskCompare {
+        bool operator()(const std::string& lhs, const std::string& rhs) const;
+    };
+
+    /**
+     * The type used to hold the details of each ban, keyed by its mask and
+     * compared the way removeBan() compares masks: case insensitively.
+     */
+    typedef std::map<std::string, BanInfo, banMaskCompare> banInfoListType;
+
+    /**
+     * The details of each ban in banList, one entry per ban.  Every path
+     * that adds or removes a ban keeps the two in step: an entry left behind
+     * would hand a new ban of the same mask an old setter and time.
+     */
+    banInfoListType banInfoList;
 
 #ifdef USE_THREAD
     /**
