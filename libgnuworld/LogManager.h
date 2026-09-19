@@ -66,6 +66,18 @@ class LogManager {
     static Logger* get(const std::string& name);
 
     /**
+     * The name a logger is really known under: without its empty segments, and
+     * empty for the root, which is written "root" in the configuration file.
+     * "a..b", ".a.b" and "a.b." all give "a.b".
+     *
+     * This is public because whoever reads a name out of a file has to compare
+     * the names the way the registry does: "logger.x" and "logger..x" are two
+     * lines about one logger, and only this says so.  A name is read case for
+     * case, so "ROOT" is a logger of that name and not the root.
+     */
+    static std::string normaliseName(const std::string& name);
+
+    /**
      * The root of the hierarchy, whose name is empty and which every other
      * logger descends from.
      */
@@ -136,10 +148,16 @@ class LogManager {
      * Every sink is built first: if any of them cannot be made - an unknown
      * type, a file that will not open - nothing at all changes, the reasons are
      * in errors, and this returns false.  Only once they all exist does the
-     * configuration take effect: every logger of the process loses the level,
-     * the sinks and the additivity a previous configuration gave it, the specs
-     * are applied to the loggers they name, and the root loses the console sink
-     * it had while nothing was configured.
+     * configuration take effect: every logger of the process is given the level,
+     * the sinks and the additivity the new configuration has for it, or none of
+     * the three when the new configuration does not mention it, and the root
+     * loses the console sink it had while nothing was configured.
+     *
+     * Each logger changes in one go, under its own mutex: a record logged
+     * meanwhile finds that logger configured as it was or as it now is, never
+     * with its level and its sinks taken away.  Across loggers there is no such
+     * promise, and none is needed: a record walking up the hierarchy may meet a
+     * child already on the new configuration and a parent still on the old.
      *
      * What the code did is left alone: sinks attached with Logger::addSink, the
      * defaults of child(name, level), the levels of the legacy module keys and
@@ -181,9 +199,6 @@ class LogManager {
 
     /// The logger of this normalised name, creating it and its ancestors
     static Logger* getLocked(State&, const std::string& name);
-
-    /// Drops the empty segments of a name, and turns "root" into ""
-    static std::string normaliseName(const std::string& name);
 
     /// Tells the text sinks how wide the logger name column has to be
     static void updateNameWidthLocked(State&);

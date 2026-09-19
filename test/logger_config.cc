@@ -189,6 +189,74 @@ const LoggerSpec* findLogger(const LogConfig& config, const std::string& name) {
     return nullptr;
 }
 
+/// The same text with every line ending written the way a Windows editor writes it
+std::string withCrLf(const std::string& body) {
+    std::string out;
+
+    for (const char c : body) {
+        if ('\n' == c)
+            out += '\r';
+
+        out += c;
+    }
+
+    return out;
+}
+
+/// How many lines of text there are, counting one without a newline of its own
+std::size_t countLines(const std::string& text) {
+    std::size_t lines = 0;
+
+    for (const char c : text)
+        if ('\n' == c)
+            ++lines;
+
+    return (text.empty() || '\n' == text[text.size() - 1]) ? lines : lines + 1;
+}
+
+/// Every field of two configurations, so that a file's twin really is its twin
+void checkSameConfig(const std::string& what, const LogConfig& left, const LogConfig& right) {
+    if (left.sinks.size() != right.sinks.size() || left.loggers.size() != right.loggers.size()) {
+        ++failures;
+        std::cerr << __FILE__ << ": " << what << ": " << left.sinks.size() << '/'
+                  << left.loggers.size() << " against " << right.sinks.size() << '/'
+                  << right.loggers.size() << '\n';
+        return;
+    }
+
+    for (std::size_t at = 0; at < left.sinks.size(); ++at) {
+        const SinkSpec& a = left.sinks[at];
+        const SinkSpec& b = right.sinks[at];
+
+        CHECK_EQ(a.id, b.id);
+        CHECK_EQ(a.type, b.type);
+        CHECK_EQ(a.path, b.path);
+        CHECK_EQ(a.channel, b.channel);
+        CHECK(a.json == b.json);
+        CHECK(a.level == b.level);
+        CHECK(a.colour == b.colour);
+        CHECK(a.highlight == b.highlight);
+    }
+
+    for (std::size_t at = 0; at < left.loggers.size(); ++at) {
+        const LoggerSpec& a = left.loggers[at];
+        const LoggerSpec& b = right.loggers[at];
+
+        CHECK_EQ(a.name, b.name);
+        CHECK(a.level == b.level);
+        CHECK(a.additive == b.additive);
+        CHECK(a.sinks == b.sinks);
+    }
+}
+
+/// The sink that counts what it is given, for the case about the swap
+class CountingSink : public LogSink {
+  public:
+    void emit(const LogRecord&) override { count.fetch_add(1, std::memory_order_relaxed); }
+
+    std::atomic<std::size_t> count{0};
+};
+
 /* ------------------------------------------------------------------ *
  * Parsing a whole file
  * ------------------------------------------------------------------ */
@@ -345,6 +413,135 @@ void testWhitespaceAndCase() {
     }
 }
 
+/**
+ * A file saved on Windows is the same file: the '\r' of every line ending is
+ * not part of a level, of a sink id or of a yes, and a byte order mark in front
+ * of the first key is not part of that key either.
+ */
+void testLineEndingsAndByteOrderMark() {
+    const std::string logPath = scratchPath("crlf.log");
+    /* The first line is a key line, because that is the line a byte order mark
+     * lands on below; a comment of its own comes after it */
+    const std::string body = "sink.main.type = file\n"
+                             "# Written on Windows\n"
+                             "sink.main.path = " +
+                             logPath +
+                             "\n"
+                             "sink.main.format = text\n"
+                             "sink.main.level = WARN\n"
+                             "sink.con.type = console\n"
+                             "sink.con.colour = no\n"
+                             "logger.root = INFO, main\n"
+                             "logger.crlf.a = DEBUG, main, con\n"
+                             "additivity.crlf.a = no\n";
+
+    LogConfig unix;
+    LogConfig windows;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("crlf-unix.conf", body), unix, errors));
+
+    for (const std::string& error : errors)
+        std::cerr << "  unexpected error: " << error << '\n';
+
+    CHECK(parseLogConfig(writeConf("crlf-windows.conf", withCrLf(body)), windows, errors));
+    CHECK(errors.empty());
+
+    for (const std::string& error : errors)
+        std::cerr << "  unexpected error: " << error << '\n';
+
+    checkSameConfig("crlf", unix, windows);
+
+    // And what the two of them say, so that this is not two wrongs agreeing
+    const SinkSpec* const main = findSink(windows, "main");
+    CHECK(nullptr != main);
+    if (nullptr != main) {
+        CHECK_EQ(main->path, logPath);
+        CHECK(!main->json);
+        CHECK(WARN == main->level);
+    }
+
+    const SinkSpec* const console = findSink(windows, "con");
+    CHECK(nullptr != console);
+    if (nullptr != console)
+        CHECK(ConsoleSink::Colour::No == console->colour);
+
+    const LoggerSpec* const a = findLogger(windows, "crlf.a");
+    CHECK(nullptr != a);
+    if (nullptr != a) {
+        CHECK(a->level && DEBUG == *a->level);
+        CHECK(2 == a->sinks.size());
+        if (2 == a->sinks.size()) {
+            CHECK_EQ(a->sinks[0], "main");
+            CHECK_EQ(a->sinks[1], "con");
+        }
+        CHECK(a->additive.has_value() && false == *a->additive);
+    }
+
+    /* A byte order mark in front of the first key is dropped, so the file is
+     * the file it looks like */
+    LogConfig marked;
+
+    CHECK(parseLogConfig(writeConf("bom.conf", "\xEF\xBB\xBF" + withCrLf(body)), marked, errors));
+    CHECK(errors.empty());
+
+    for (const std::string& error : errors)
+        std::cerr << "  unexpected error: " << error << '\n';
+
+    checkSameConfig("bom", unix, marked);
+
+    /* A mark in front of a comment is one EConfig itself stumbles over, and is
+     * then the one thing the errors talk about */
+    LogConfig marked_comment;
+
+    CHECK(!parseLogConfig(writeConf("bom-comment.conf", "\xEF\xBB\xBF# a comment\n" + body),
+                          marked_comment, errors));
+    CHECK(1 == errors.size());
+
+    if (1 == errors.size()) {
+        CHECK(contains(errors[0], "byte order mark"));
+        CHECK(contains(errors[0], "save it without one"));
+    }
+}
+
+/**
+ * An error quotes what the file said, and what the file said may be anything at
+ * all: a control character of a value is written as an escape, never passed on
+ * into a log line, a terminal or a channel.
+ */
+void testControlCharactersInErrors() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(!parseLogConfig(writeConf("control.conf", std::string("logger.x = wa\x01rn\n")), config,
+                          errors));
+    CHECK(!errors.empty());
+
+    bool escaped = false;
+
+    for (const std::string& error : errors) {
+        if (contains(error, "\\x01"))
+            escaped = true;
+
+        for (const char c : error) {
+            const unsigned char byte = static_cast<unsigned char>(c);
+
+            if (byte < 0x20 || 0x7f == byte) {
+                ++failures;
+                std::cerr << __FILE__ << ": a raw control character in [" << error << "]\n";
+                break;
+            }
+        }
+    }
+
+    if (!escaped) {
+        ++failures;
+        std::cerr << __FILE__ << ": no error writes the control character as \\x01\n";
+        for (const std::string& error : errors)
+            std::cerr << "    error: " << error << '\n';
+    }
+}
+
 /* ------------------------------------------------------------------ *
  * Every kind of error: the whole file goes, and the key is named
  * ------------------------------------------------------------------ */
@@ -436,6 +633,126 @@ void testErrors() {
     // A logger line with no name at all
     expectError("e-noname.conf", "logger. = INFO\n", "logger.");
     expectError("e-noaddname.conf", "additivity. = yes\n", "additivity.");
+
+    /* A line EConfig itself refuses, which is the whole file gone: the line it
+     * stumbled over is named, whether what is missing is the value or the key */
+    expectError("e-novalue.conf", "sink.m.type = console\nsink.m.level =\n", "line 2");
+    expectError("e-nokey.conf", "sink.m.type = console\n= console\n", "line 2");
+    expectError("e-equals.conf", "===\n", "line 1");
+}
+
+/**
+ * The name of a logger line is the name the registry knows, and it is that name
+ * before the file is looked at for duplicates: "logger.x" and "logger..x" are
+ * two lines about one logger, which is an error, and a name that is nothing but
+ * empty segments is no name at all.  The case of a name is part of it.
+ */
+void testLoggerNames() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    // The empty segments are not segments, on either kind of line
+    CHECK(parseLogConfig(writeConf("names.conf", "logger.a..b = INFO\n"
+                                                 "additivity.x. = no\n"),
+                         config, errors));
+    CHECK(errors.empty());
+
+    for (const std::string& error : errors)
+        std::cerr << "  unexpected error: " << error << '\n';
+
+    const LoggerSpec* const b = findLogger(config, "a.b");
+    CHECK(nullptr != b);
+    if (nullptr != b)
+        CHECK(b->level && INFO == *b->level);
+
+    const LoggerSpec* const x = findLogger(config, "x");
+    CHECK(nullptr != x);
+    if (nullptr != x) {
+        CHECK(!x->level.has_value());
+        CHECK(x->additive.has_value() && false == *x->additive);
+    }
+
+    // The root is written "root"; "ROOT" is a logger of that name and no more
+    LogConfig roots;
+
+    CHECK(parseLogConfig(writeConf("roots.conf", "logger.root = INFO\n"
+                                                 "logger.ROOT = DEBUG\n"),
+                         roots, errors));
+    CHECK(errors.empty());
+
+    for (const std::string& error : errors)
+        std::cerr << "  unexpected error: " << error << '\n';
+
+    CHECK(2 == roots.loggers.size());
+
+    const LoggerSpec* const theRoot = findLogger(roots, "");
+    CHECK(nullptr != theRoot);
+    if (nullptr != theRoot)
+        CHECK(theRoot->level && INFO == *theRoot->level);
+
+    const LoggerSpec* const shouted = findLogger(roots, "ROOT");
+    CHECK(nullptr != shouted);
+    if (nullptr != shouted)
+        CHECK(shouted->level && DEBUG == *shouted->level);
+
+    // Two lines about one logger, however they are spelled
+    expectError("names-dup.conf", "logger.x = INFO\nlogger..x = DEBUG\n", "logger.");
+    expectError("names-dupadd.conf", "additivity.x = yes\nadditivity..x. = no\n", "additivity.");
+
+    // And a name that is nothing but the dots
+    expectError("names-empty.conf", "logger.. = INFO\n", "empty logger name");
+    expectError("names-emptyadd.conf", "additivity... = yes\n", "empty logger name");
+}
+
+/**
+ * Two file sinks on one file would be two streams appending to it, each with a
+ * lock of its own: a record of one could land in the middle of a record of the
+ * other.  The file is compared as it was written, and nothing more.
+ */
+void testDuplicateFileSinkPaths() {
+    const std::string logPath = scratchPath("shared.log");
+
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(!parseLogConfig(writeConf("shared.conf", "sink.a.type = file\n"
+                                                   "sink.a.path = " +
+                                                       logPath +
+                                                       "\n"
+                                                       "sink.b.type = file\n"
+                                                       "sink.b.path = " +
+                                                       logPath + "\n"),
+                          config, errors));
+
+    bool named = false;
+
+    for (const std::string& error : errors)
+        if (contains(error, "sink.a.path") && contains(error, "sink.b.path"))
+            named = true;
+
+    if (!named) {
+        ++failures;
+        std::cerr << __FILE__ << ": no error names both sink.a.path and sink.b.path\n";
+        for (const std::string& error : errors)
+            std::cerr << "    error: " << error << '\n';
+    }
+
+    /* Two spellings of one file are two files here: resolving a path is the
+     * business of whoever opens it, not of the parser */
+    LogConfig spelled;
+
+    CHECK(parseLogConfig(writeConf("spelled.conf", "sink.a.type = file\n"
+                                                   "sink.a.path = " +
+                                                       logPath +
+                                                       "\n"
+                                                       "sink.b.type = file\n"
+                                                       "sink.b.path = ./" +
+                                                       logPath + "\n"),
+                         spelled, errors));
+    CHECK(errors.empty());
+
+    for (const std::string& error : errors)
+        std::cerr << "  unexpected error: " << error << '\n';
 }
 
 /**
@@ -986,6 +1303,125 @@ void concurrencyBody() {
         thread.join();
 }
 
+/**
+ * A record logged while a configuration is being applied sees the logger as it
+ * was or as it is to be, and never as neither of the two: one thread logs on
+ * "atomic.x" without pause while the configuration is replaced two hundred
+ * times, and every record it logged arrives, once, at one of the two sinks.
+ */
+void atomicityBody() {
+    const std::shared_ptr<CountingSink> first = std::make_shared<CountingSink>();
+    const std::shared_ptr<CountingSink> second = std::make_shared<CountingSink>();
+
+    LogManager::registerSinkType(
+        "count-one",
+        [first](const SinkSpec&, std::string&) -> std::shared_ptr<LogSink> { return first; });
+    LogManager::registerSinkType(
+        "count-two",
+        [second](const SinkSpec&, std::string&) -> std::shared_ptr<LogSink> { return second; });
+
+    LogConfig one;
+    LogConfig two;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("atomic-one.conf", "sink.a1.type = count-one\n"
+                                                      "logger.atomic.x = DEBUG, a1\n"),
+                         one, errors));
+    CHECK(parseLogConfig(writeConf("atomic-two.conf", "sink.a2.type = count-two\n"
+                                                      "logger.atomic.x = DEBUG, a2\n"),
+                         two, errors));
+    CHECK(errors.empty());
+
+    // The first configuration is in force before the first record is logged
+    CHECK(LogManager::configure(one, errors));
+
+    std::atomic<bool> stop(false);
+    std::atomic<std::size_t> logged(0);
+
+    std::thread writer([&stop, &logged]() {
+        Logger* const logger = LogManager::get("atomic.x");
+
+        while (!stop.load(std::memory_order_relaxed)) {
+            emit(logger, DEBUG, "atomic");
+            logged.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    for (int round = 0; round < 200; ++round) {
+        std::vector<std::string> roundErrors;
+
+        CHECK(LogManager::configure(two, roundErrors));
+        CHECK(LogManager::configure(one, roundErrors));
+    }
+
+    stop.store(true);
+    writer.join();
+
+    const std::size_t attempted = logged.load();
+    const std::size_t arrived = first->count.load() + second->count.load();
+
+    CHECK(attempted > 0);
+
+    if (arrived != attempted) {
+        ++failures;
+        std::cerr << __FILE__ << ": " << attempted << " record(s) logged, " << arrived
+                  << " arrived (" << first->count.load() << " + " << second->count.load() << ")\n";
+    }
+}
+
+void testSwapAtomicity() {
+    std::atomic<bool> done(false);
+    std::thread runner([&done]() {
+        atomicityBody();
+        done.store(true);
+    });
+
+    // As above: a lock that is never let go of fails this, it does not hang
+    for (int tenth = 0; tenth < 1200 && !done.load(); ++tenth)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    if (!done.load()) {
+        std::cerr << __FILE__ << ": the atomic swap did not finish: deadlock?\n";
+        std::cerr.flush();
+        std::cout.flush();
+        std::_Exit(1);
+    }
+
+    runner.join();
+}
+
+/**
+ * A start-up log file that will not open says so, once, on stderr: a process
+ * with no logging.conf would otherwise lose every record it ever logs without a
+ * word.  The sink is attached all the same - a SIGHUP reopens it - and logging
+ * through a dead sink is no trouble at all.
+ */
+void testBootstrapFileCannotOpen() {
+    const std::string path = scratchPath("no/such/dir/x.log");
+
+    std::ostringstream captured;
+    std::streambuf* const saved = std::cerr.rdbuf(captured.rdbuf());
+
+    LogManager::bootstrapFile(path);
+
+    const std::string complained = captured.str();
+
+    // The same path again is the same sink, and says nothing more
+    LogManager::bootstrapFile(path);
+
+    const std::string afterwards = captured.str();
+
+    std::cerr.rdbuf(saved);
+
+    CHECK(contains(complained, "cannot open log file"));
+    CHECK(contains(complained, path));
+    CHECK(1 == countLines(complained));
+    CHECK_EQ(afterwards, complained);
+
+    // And the dead sink is a sink like any other to whatever logs next
+    emit(LogManager::root(), INFO, "through a dead sink");
+}
+
 void testConcurrency() {
     std::atomic<bool> done(false);
     std::thread runner([&done]() {
@@ -1021,7 +1457,11 @@ int main() {
 
     testParseFull();
     testWhitespaceAndCase();
+    testLineEndingsAndByteOrderMark();
+    testControlCharactersInErrors();
     testErrors();
+    testLoggerNames();
+    testDuplicateFileSinkPaths();
     testMissingFile();
     testConfigureRoutes();
     testReloadReplacesConfigurationOnly();
@@ -1034,10 +1474,12 @@ int main() {
     testLoadFileReportsAndKeeps();
     testBootstrapConsoleGoes();
 
-    /* The bootstrap log file is attached to the root and stays there, so the
-     * race below - which logs a great deal - goes first */
+    /* The bootstrap log files are attached to the root and stay there, so the
+     * two cases below - which log a great deal - go first */
     testConcurrency();
+    testSwapAtomicity();
     testBootstrapFile();
+    testBootstrapFileCannotOpen();
 
     if (failures != 0) {
         std::cerr << failures << " check(s) failed\n";

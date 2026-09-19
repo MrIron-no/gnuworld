@@ -83,8 +83,22 @@ struct LogConfig {
  * at all leaves out empty and returns false, so that a configuration is never
  * half applied.  A file that is not there is such a problem, not a crash: this
  * never terminates the process and never throws.
+ *
+ * The file is read the way every editor writes it: the '\r' of a Windows line
+ * ending is not part of a value, and a byte order mark in front of the first key
+ * is not part of that key.
  */
 bool parseLogConfig(const std::string& fileName, LogConfig& out, std::vector<std::string>& errors);
+
+/**
+ * The text with every control character written as "\xNN".
+ *
+ * What an error message quotes came out of a file, and a file may hold anything:
+ * an escape sequence, a carriage return, a colour code.  Escaping it is what
+ * keeps a message about a configuration from painting a terminal, breaking a log
+ * line in two or carrying a control character into a channel.
+ */
+std::string escapeControl(const std::string& text);
 
 } // namespace gnuworld
 

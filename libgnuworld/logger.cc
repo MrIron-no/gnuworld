@@ -193,24 +193,34 @@ bool Logger::isAdditive() const {
 }
 
 /**
- * Hands back the level, the sinks and the additivity a configuration file left
- * here, so that the next one starts from what the code alone asked for.
+ * Puts a whole configuration on this logger, or takes the one it had away: the
+ * level, the additivity and the sinks of a configuration file, replaced in one
+ * go under this logger's mutex.
  *
- * The sinks are moved rather than dropped: the caller is the registry, holding
- * its own lock, and letting go of the last reference to a sink closes a file.
+ * That one acquisition is the point of the method.  A record logged on this
+ * logger while a file is being applied takes this very mutex to collect its
+ * sinks, so it sees the configuration that was or the configuration that is;
+ * clearing first and filling in afterwards would leave a moment in which the
+ * logger had no level and no sink, and a record of that moment would be lost.
+ *
+ * The sinks that were here are moved rather than dropped: the caller is the
+ * registry, holding its own lock, and letting go of the last reference to a sink
+ * closes a file.
  */
-void Logger::clearConfigState(std::vector<std::shared_ptr<LogSink>>& released) {
+void Logger::applyConfig(std::optional<Verbosity> level, std::optional<bool> newAdditive,
+                         std::vector<SinkEntry> sinks,
+                         std::vector<std::shared_ptr<LogSink>>& released) {
     const std::lock_guard<std::mutex> guard(logMutex);
 
-    configLevel = std::nullopt;
-    configAdditive = std::nullopt;
+    configLevel = level;
+    configAdditive = newAdditive;
 
     released.reserve(released.size() + configSinks.size());
 
     for (SinkEntry& entry : configSinks)
         released.push_back(std::move(entry.first));
 
-    configSinks.clear();
+    configSinks = std::move(sinks);
 }
 
 /**

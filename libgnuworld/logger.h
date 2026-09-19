@@ -649,15 +649,21 @@ class Logger {
     static Extractor findExtractor(std::type_index);
 
     /**
-     * Hands back everything a configuration file left here - the level, the
-     * sinks and the additivity - so that the next configuration starts from what
-     * the code alone asked for.
+     * Puts a configuration on this logger: its level, its additivity and its
+     * sinks, or nothing at all for a logger the configuration does not mention.
      *
-     * The sinks are moved into released rather than let go of here: the caller
-     * is the registry, which holds its own lock, and a sink that is destroyed
-     * closes a file.  The registry lets go of them once it has let go of that.
+     * All three are replaced under one acquisition of this logger's mutex, which
+     * is what makes a reload atomic per logger: a record logged meanwhile finds
+     * the configuration that was or the configuration that is, never a logger
+     * with its level and its sinks taken away and not yet given back.
+     *
+     * The sinks that were here are moved into released rather than let go of:
+     * the caller is the registry, which holds its own lock, and a sink that is
+     * destroyed closes a file.  The registry lets go of them once it has let go
+     * of that lock.
      */
-    void clearConfigState(std::vector<std::shared_ptr<LogSink>>& released);
+    void applyConfig(std::optional<Verbosity> level, std::optional<bool> newAdditive,
+                     std::vector<SinkEntry> sinks, std::vector<std::shared_ptr<LogSink>>& released);
 
     /// Whether records walk up to the parent, with this logger's mutex held
     bool isAdditiveLocked() const { return configAdditive.value_or(additive); }

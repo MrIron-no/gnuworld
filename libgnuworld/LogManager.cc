@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -81,6 +82,17 @@ std::shared_ptr<LogSink> makeFileSink(const SinkSpec& spec, string& error) {
 std::shared_ptr<LogSink> makeConsoleSink(const SinkSpec& spec, string&) {
     return std::make_shared<ConsoleSink>(spec.colour, spec.highlight);
 }
+
+/**
+ * What a configuration is to make of one logger: the level and the additivity it
+ * asks for, and the sinks it sends the logger's records to, all of it worked out
+ * before any logger is touched.  A logger no spec names gets one of these empty.
+ */
+struct LoggerChange {
+    std::optional<Verbosity> level;
+    std::optional<bool> additive;
+    std::vector<std::pair<std::shared_ptr<LogSink>, Verbosity>> sinks;
+};
 
 } // namespace
 
@@ -375,11 +387,18 @@ LogManager::SinkFactory LogManager::findSinkFactory(const string& type) {
  * any of them cannot be made, what was built is thrown away, the reasons are in
  * errors and the configuration in force is untouched.
  *
- * The swap that follows happens under the registry's lock, so that no record is
- * dispatched half way between two configurations.  Nothing is called on a sink
- * while that lock is held: the sinks of the configuration before this one are
- * carried out of it and let go of afterwards, where closing their files is no
- * concern of anyone waiting for the registry.
+ * The swap that follows happens under the registry's lock, and every logger of
+ * the process is given its new configuration - or none at all - in one go, under
+ * its own mutex: a record logged meanwhile finds that logger as it was or as it
+ * now is, and never with its level and its sinks taken away.  Across loggers
+ * there is no such promise: a record walking up the hierarchy may meet a child
+ * already on the new configuration and a parent still on the old one, which
+ * costs it nothing.
+ *
+ * Nothing is called on a sink while the registry's lock is held: the sinks of
+ * the configuration before this one are carried out of it and let go of
+ * afterwards, where closing their files is no concern of anyone waiting for the
+ * registry.
  */
 bool LogManager::configure(const LogConfig& config, std::vector<string>& errors) {
     errors.clear();
@@ -422,21 +441,23 @@ bool LogManager::configure(const LogConfig& config, std::vector<string>& errors)
 
         const std::lock_guard<std::mutex> guard(registry.lock);
 
-        /* Whatever a configuration before this one left on a logger goes, so
-         * that a line dropped from the file is a line that no longer applies.
-         * What the code asked for - its sinks, its defaults, the levels of the
-         * legacy module keys, its additivity - is not this function's to touch */
-        for (const std::pair<const string, Logger*>& entry : registry.loggers)
-            entry.second->clearConfigState(replaced);
+        /* What each logger the file names is to become, and the loggers it names
+         * that do not exist yet, worked out before a single logger is changed:
+         * nothing below creates a logger, so the one pass that follows really is
+         * over every logger there is */
+        std::map<Logger*, LoggerChange> changes;
 
         registry.configuredLoggers.clear();
 
         for (const LoggerSpec& spec : config.loggers) {
             const string name = normaliseName(spec.name);
-            Logger* const logger = getLocked(registry, name);
+            LoggerChange& change = changes[getLocked(registry, name)];
 
-            logger->setConfigLevel(spec.level);
-            logger->setConfigAdditive(spec.additive);
+            if (spec.level)
+                change.level = spec.level;
+
+            if (spec.additive)
+                change.additive = spec.additive;
 
             for (const string& id : spec.sinks) {
                 const std::map<string, std::shared_ptr<LogSink>>::const_iterator sink =
@@ -449,14 +470,31 @@ bool LogManager::configure(const LogConfig& config, std::vector<string>& errors)
 
                 const std::map<string, Verbosity>::const_iterator threshold = thresholds.find(id);
 
-                logger->addConfigSink(sink->second,
-                                      thresholds.end() == threshold ? TRACE : threshold->second);
+                change.sinks.emplace_back(
+                    sink->second, thresholds.end() == threshold ? TRACE : threshold->second);
             }
 
             /* A level line is what makes a logger a configured one; a line that
              * only speaks of its additivity says nothing about where it logs */
             if (spec.level)
                 registry.configuredLoggers.insert(name);
+        }
+
+        /* One pass over every logger of the process, each of them given its new
+         * configuration under its own mutex in one go.  A logger the file does
+         * not mention is given nothing, which is how a line dropped from the
+         * file stops applying; what the code asked for - its sinks, its
+         * defaults, the levels of the legacy module keys, its additivity - is
+         * not this function's to touch */
+        for (const std::pair<const string, Logger*>& entry : registry.loggers) {
+            const std::map<Logger*, LoggerChange>::iterator change = changes.find(entry.second);
+
+            if (changes.end() == change)
+                entry.second->applyConfig(std::nullopt, std::nullopt,
+                                          std::vector<Logger::SinkEntry>(), replaced);
+            else
+                entry.second->applyConfig(change->second.level, change->second.additive,
+                                          std::move(change->second.sinks), replaced);
         }
 
         /* With a configuration in force the root no longer needs the console it
@@ -510,6 +548,12 @@ bool LogManager::loadFile(const string& fileName) {
  * Gives the root a human-readable log file, for a process with no logging.conf
  * to say where records go.  This is a sink of the code, so a configuration read
  * later leaves it where it is; the same path twice is the same sink once.
+ *
+ * A path that will not open is said once on stderr and attached all the same.
+ * This runs while the process starts up, before anything has been configured: a
+ * log file nobody could open would otherwise swallow every record the process
+ * ever logs without a word about it, and the sink's reopen() on a SIGHUP is what
+ * picks the file up once the directory it wants is there.
  */
 void LogManager::bootstrapFile(const string& path) {
     {
@@ -522,7 +566,12 @@ void LogManager::bootstrapFile(const string& path) {
     }
 
     // Opening the file, and attaching it, with no lock of the registry held
-    root()->addSink(std::make_shared<FileSink>(path, false), TRACE);
+    const std::shared_ptr<FileSink> sink = std::make_shared<FileSink>(path, false);
+
+    if (!sink->isOpen())
+        std::cerr << "gnuworld: cannot open log file " << escapeControl(path) << std::endl;
+
+    root()->addSink(sink, TRACE);
 }
 
 } // namespace gnuworld
