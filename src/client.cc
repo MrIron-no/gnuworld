@@ -42,7 +42,6 @@
 #include "iClient.h"
 #include "iServer.h"
 #include "Network.h"
-#include "ip.h"
 #include "NetworkTarget.h"
 #include "client.h"
 #include "EConfig.h"
@@ -670,57 +669,6 @@ bool xClient::Kick(Channel* theChan, const std::vector<iClient*>& theClients, co
     // Either way the modules are told that we did it, as they always were.
     return MyUplink->kickMembers(theChan, theClients, reason,
                                  modeAsServer ? nullptr : getInstance(), getInstance());
-}
-
-bool xClient::Kick(Channel* theChan, const string& IP, const string& reason, bool modeAsServer) {
-    assert(theChan != NULL);
-
-    if (!isConnected()) {
-        return false;
-    }
-
-    if (IP.empty()) {
-        return true;
-    }
-
-    bool OnChannel = isOnChannel(theChan);
-    if (!OnChannel && !modeAsServer) {
-        // Join, giving ourselves ops
-        Join(theChan, string(), 0, true);
-    } else if (!modeAsServer) {
-        // Bot is already on the channel
-        ChannelUser* meUser = theChan->findUser(me);
-        assert(meUser != 0);
-
-        // Make sure we have ops
-        if (!meUser->getMode(ChannelUser::MODE_CHANOP)) {
-            // The bot does NOT have ops
-            return false;
-        }
-
-        // The bot has ops
-    }
-    std::vector<iClient*> toBoot;
-    for (Channel::userIterator chanUsers = theChan->userList_begin();
-         chanUsers != theChan->userList_end(); ++chanUsers) {
-        ChannelUser* tmpUser = chanUsers->second;
-        string currIP = xIP(tmpUser->getClient()->getIP()).GetNumericIP();
-        string currIP64 = xIP(tmpUser->getClient()->getIP()).GetNumericIP(true);
-        /* Idented and unidented clients need to be handled separately
-         * In case of floodpro kick, IP can be in format of ident@ip !
-         */
-        if (IP.find('@') != string::npos) {
-            currIP = tmpUser->getUserName() + "@" + currIP;
-            currIP64 = tmpUser->getUserName() + "@" + currIP64;
-        }
-        if ((!IP.compare(currIP)) || (!IP.compare(currIP64))) {
-            /* Don't kick +k things */
-            if (!tmpUser->getClient()->getMode(iClient::MODE_SERVICES)) {
-                toBoot.push_back(tmpUser->getClient());
-            }
-        }
-    }
-    return Kick(theChan, toBoot, reason, modeAsServer);
 }
 
 bool xClient::Join(const string& chanName, const string& chanModes, const time_t& joinTime,
