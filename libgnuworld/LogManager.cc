@@ -443,9 +443,13 @@ bool LogManager::configure(const LogConfig& config, std::vector<string>& errors)
         const std::shared_ptr<LogSink> sink = factory(spec, why);
 
         if (nullptr == sink) {
+            /* With the dot, and not "sink." + id alone: an id of "a" would
+             * otherwise pass off an error text about "sink.ab.token" as its own */
+            const string ownKeys = "sink." + spec.id + ".";
+
             if (why.empty())
                 errors.push_back("sink." + spec.id + ": the sink could not be made");
-            else if (0 == why.compare(0, ("sink." + spec.id).size(), "sink." + spec.id))
+            else if (0 == why.compare(0, ownKeys.size(), ownKeys))
                 /* A factory that knows which of its own settings is wrong names
                  * that key itself - "sink.page.token: ..." - and is quoted as it
                  * stands rather than behind a second "sink.page:" */
@@ -628,8 +632,10 @@ void LogManager::warnIfSecretsAreReadable(const string& fileName, const LogConfi
     if (0 != ::stat(fileName.c_str(), &about))
         return;
 
-    // Anything at all that a group or the rest of the world may do with it
-    if (0 == (about.st_mode & 077))
+    /* READ, and only read: a token is a secret because somebody else can read
+     * it, and a mode of 0610 - which a group may write and not read - is not the
+     * problem this warns about.  0044 is the group's and the world's read bit */
+    if (0 == (about.st_mode & 0044))
         return;
 
     LOG_TO(get("core.config"), WARN,

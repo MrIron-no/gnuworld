@@ -29,6 +29,7 @@
 #include <vector>
 
 #include <dirent.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "LogConfig.h"
@@ -170,6 +171,17 @@ bool anyErrorNames(const std::vector<std::string>& errors, const std::string& ke
 /// One record on this logger, at this level, through the ordinary call path
 void emit(Logger* logger, Verbosity level, const std::string& message) {
     logger->writeFunc(level, "void anon::emit()", "{}", message);
+}
+
+/// How many of this sink's records are at this level
+std::size_t countAt(const std::shared_ptr<CaptureSink>& capture, Verbosity level) {
+    std::size_t at = 0;
+
+    for (const LogRecord& record : capture->records)
+        if (record.level == level)
+            ++at;
+
+    return at;
 }
 
 /// The spec of this sink id, or nothing
@@ -1837,6 +1849,125 @@ void testASinkTypeSaysItsOwnDefaultLevel() {
 }
 
 /**
+ * A factory error that already names a key of this sink is quoted as it stands,
+ * and one that names a DIFFERENT sink whose id merely begins with this one's is
+ * not: the delimiter has to be there, or an id of "a" would swallow an error
+ * about "sink.ab.token".
+ */
+void testAFactoryErrorNamingAnotherSink() {
+    LogManager::registerSinkType(
+        "names-own-key", [](const SinkSpec& spec, std::string& error) -> std::shared_ptr<LogSink> {
+            error = "sink." + spec.id + ".token: a made-up complaint";
+
+            return nullptr;
+        });
+
+    LogManager::registerSinkType(
+        "names-another-sink", [](const SinkSpec&, std::string& error) -> std::shared_ptr<LogSink> {
+            /* "sink.ab..." while this sink's id is "a": the text begins with
+             * "sink.a" and is about something else entirely */
+            error = "sink.ab.token: a complaint about another sink";
+
+            return nullptr;
+        });
+
+    LogConfig own;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("ownkey.conf", "sink.a.type = names-own-key\n"
+                                                  "logger.cfg31.a = INFO, a\n"),
+                         own, errors));
+
+    CHECK(!LogManager::configure(own, errors));
+    CHECK(1 == errors.size());
+
+    if (!errors.empty())
+        CHECK_EQ(errors[0], std::string("sink.a.token: a made-up complaint"));
+
+    // The other one is prefixed, because it is not about "sink.a." at all
+    LogConfig other;
+
+    CHECK(parseLogConfig(writeConf("othersink.conf", "sink.a.type = names-another-sink\n"
+                                                     "logger.cfg31.a = INFO, a\n"),
+                         other, errors));
+
+    CHECK(!LogManager::configure(other, errors));
+    CHECK(1 == errors.size());
+
+    if (!errors.empty())
+        CHECK_EQ(errors[0], std::string("sink.a: sink.ab.token: a complaint about another sink"));
+}
+
+/**
+ * A FILE HOLDING A TOKEN AND READABLE BY SOMEBODY ELSE IS SAID ONCE, AT WARN.
+ *
+ * READABLE is the whole of it: 0640 warns, because a group can read the token;
+ * 0600 says nothing, which is the normal case; and 0610 says nothing either -
+ * a group that may write the file and not read it is not this problem, whatever
+ * else it is.  A file with no token in it is nobody's business either way.
+ */
+void testASecretReadableByOthers() {
+    const std::shared_ptr<CaptureSink> warnings = std::make_shared<CaptureSink>();
+
+    LogManager::get("core.config")->addSink(warnings, TRACE);
+
+    const std::string withToken(writeConf("secret-mode.conf", "sink.p.type = pushover\n"
+                                                              "sink.p.token = " +
+                                                                  secretToken +
+                                                                  "\n"
+                                                                  "sink.p.userkey = key1\n"));
+
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(withToken, config, errors));
+
+    struct ModeCase {
+        mode_t mode;
+        bool warns;
+    };
+
+    const ModeCase cases[] = {{0640, true}, {0600, false}, {0610, false}, {0604, true}};
+
+    for (const ModeCase& one : cases) {
+        CHECK(0 == ::chmod(withToken.c_str(), one.mode));
+
+        warnings->clear();
+
+        LogManager::warnIfSecretsAreReadable(withToken, config);
+
+        const std::size_t said = countAt(warnings, WARN);
+
+        if (said != (one.warns ? std::size_t(1) : std::size_t(0))) {
+            ++failures;
+            std::cerr << __FILE__ << ':' << __LINE__ << ": failed: mode 0" << std::oct << one.mode
+                      << std::dec << " said " << said << " warning(s), wanted "
+                      << (one.warns ? 1 : 0) << '\n';
+        }
+
+        // And whatever it said, it never said the token
+        for (const LogRecord& record : warnings->records)
+            CHECK(!contains(record.message, secretToken));
+    }
+
+    // A file with no token at all is nobody's business, whatever its mode
+    const std::string noToken(writeConf("no-secret-mode.conf", "sink.c.type = console\n"));
+
+    LogConfig plain;
+
+    CHECK(parseLogConfig(noToken, plain, errors));
+    CHECK(0 == ::chmod(noToken.c_str(), 0644));
+
+    warnings->clear();
+
+    LogManager::warnIfSecretsAreReadable(noToken, plain);
+
+    CHECK(0 == warnings->size());
+
+    LogManager::get("core.config")->removeSink(warnings);
+}
+
+/**
  * A file that cannot be applied is reported, once per problem, on "core.config",
  * and changes nothing at all.
  */
@@ -2193,6 +2324,8 @@ int main() {
     testRootIsConfigured();
     testSinkThreshold();
     testASinkTypeSaysItsOwnDefaultLevel();
+    testAFactoryErrorNamingAnotherSink();
+    testASecretReadableByOthers();
     testLoadFileReportsAndKeeps();
     testBootstrapConsoleGoes();
 
