@@ -714,6 +714,73 @@ def broken_webnotices_table(docker_stack):
         _psql("ALTER TABLE webnotices_moved RENAME TO webnotices")
 
 
+@pytest.fixture
+def blocked_user_commit(docker_stack):
+    """Makes every "UPDATE users" of a client whose nick begins with "sqlfail"
+    fail, and always takes the trigger away again - the database is shared by
+    the whole session.
+
+    A trigger rather than a constraint: a check constraint violation reports
+    the whole failing row, password hash and all, in the message of the
+    database, which is not what the case below is about.
+    """
+    require_module("cservice")
+    docker_stack.up()
+    _psql(
+        "CREATE OR REPLACE FUNCTION harness_block_user_commit() RETURNS trigger "
+        "LANGUAGE plpgsql AS $$ BEGIN "
+        "IF NEW.last_updated_by LIKE 'sqlfail%' THEN "
+        "RAISE EXCEPTION 'harness: this users update is blocked'; END IF; "
+        "RETURN NEW; END $$; "
+        "CREATE TRIGGER harness_block_user_commit BEFORE UPDATE ON users "
+        "FOR EACH ROW EXECUTE PROCEDURE harness_block_user_commit()"
+    )
+    try:
+        yield
+    finally:
+        _psql(
+            "DROP TRIGGER IF EXISTS harness_block_user_commit ON users; "
+            "DROP FUNCTION IF EXISTS harness_block_user_commit()"
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_statement_carrying_a_credential_is_kept_out_of_the_logs(
+    docker_stack, fake_hub_p11, tmp_path, blocked_user_commit
+):
+    """sqlUser::commit() writes the password, the TOTP key and the SCRAM record
+    of a user.  Its statement is executed with logQuery = false, so neither the
+    DEBUG record of a successful one nor the ERROR record of a failed one shows
+    it - even with log_sql = yes, which logs every other statement."""
+    # doc/cservice.addme.sql: what "Admin" has in the password column
+    password_hash = "xEDi1V791f7bddc526de7e3b0602d0b2993ce21d"
+
+    async with link_cservice_logging(
+        docker_stack, fake_hub_p11, tmp_path, cservice_overrides={"log_sql": "yes"},
+    ) as (hub, proc, conf_dir):
+        # The nick is what the trigger above looks at: this client's commits fail
+        admin = await cs.login(hub, nick="sqlfail")
+        replies = await cs.run(hub, admin, "set lang EN")
+        assert any("Language is set to" in line for line in replies), replies
+
+        await asyncio.sleep(0.5)
+
+    text = (conf_dir / "cservice.log").read_text(encoding="utf-8", errors="replace")
+    records = _read_json_lines(conf_dir / "cservice.log")
+
+    # log_sql = yes, so the statements that carry nothing secret are all there
+    logged = [r for r in records if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG"]
+    assert logged, sorted({r.get("logger") for r in records})
+
+    errors = [r for r in records if r.get("logger") == "cservice.sql" and r.get("level") == "ERROR"]
+    withheld = [e for e in errors if e.get("query") == "(not logged)"]
+    assert withheld, errors
+    assert all("blocked" in e.get("error", "") for e in withheld), withheld
+
+    # And the hash the statement carried is nowhere in the file at all
+    assert password_hash not in text
+
+
 @pytest.mark.asyncio
 async def test_forced_sql_error_in_cservice(
     docker_stack, fake_hub_p11, tmp_path, broken_webnotices_table

@@ -62,13 +62,19 @@ class pgsqlDB : public gnuworldDB {
      */
     Logger* sqlLog;
 
-    /// The statement Exec() was last given, which a failure reports
+    /**
+     * The statement Exec() was last given and that failed, which logError()
+     * reports.  A statement that worked is let go of as soon as it has: a
+     * handle lives as long as its bot, and one of these may carry a password
+     * hash or a TOTP key.
+     */
     std::string lastQuery;
 
     /**
      * Whether that statement may be shown: a caller that asked Exec() not to
      * log a statement - one that carries a secret, say - does not want to read
-     * it in the record of its failure either.
+     * it in the record of its failure either.  It is what the last Exec() was
+     * told, whether that statement worked or not.
      */
     bool lastQueryLoggable = true;
 

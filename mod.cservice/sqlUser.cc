@@ -167,7 +167,8 @@ bool sqlUser::commit(std::string last_updated_by) {
                 << "scram_record = '" << escapeSQLChars(scram_record) << "' " << queryCondition
                 << id << ends;
 
-    if (!SQLDb->Exec(queryString)) {
+    // carries a credential: kept out of the query log and out of the error record
+    if (!SQLDb->Exec(queryString, false)) {
         LOGSQL_ERROR(SQLDb);
         return false;
     }
@@ -344,7 +345,8 @@ bool sqlUser::Insert() {
                 << "date_part('epoch', CURRENT_TIMESTAMP)::int,'" << escapeSQLChars(email) << "','"
                 << escapeSQLChars(scram_record) << "')" << ends;
 
-    if (!SQLDb->Exec(queryString)) {
+    // carries a credential: kept out of the query log and out of the error record
+    if (!SQLDb->Exec(queryString, false)) {
         LOGSQL_ERROR(SQLDb);
         return false;
     }

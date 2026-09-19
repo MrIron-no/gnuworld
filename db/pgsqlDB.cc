@@ -135,13 +135,17 @@ bool pgsqlDB::Exec(const string& theQuery, bool logQuery) {
     lastResult = PQexec(theDB, theQuery.c_str());
 
     ExecStatusType status = PQresultStatus(lastResult);
-    if (PGRES_COPY_IN == status)
-        return true;
-    if (PGRES_TUPLES_OK == status)
-        return true;
-    if (PGRES_COMMAND_OK == status)
-        return true;
-    return false;
+    const bool worked =
+        PGRES_COPY_IN == status || PGRES_TUPLES_OK == status || PGRES_COMMAND_OK == status;
+
+    /* A statement that worked is not one anybody will report, and a handle of
+     * this bot lives as long as the bot does: what the statement carried - a
+     * password hash, a TOTP key - is let go of here rather than kept until the
+     * next statement happens to replace it.  A failure keeps it for logError() */
+    if (worked)
+        string().swap(lastQuery);
+
+    return worked;
 }
 
 bool pgsqlDB::Exec(const stringstream& theQuery, bool logQuery) {
@@ -152,11 +156,20 @@ bool pgsqlDB::Exec(const stringstream& theQuery, bool logQuery) {
  * What went wrong with the last statement, said once: the message of the
  * database in the sentence, and the statement itself as a field, which the JSON
  * line carries and a one-line console record leaves out.
+ *
+ * There are two statements this shows nothing of: one that carries a secret,
+ * which its caller said was not to be logged, and one that worked - the handle
+ * no longer holds it, so there is nothing to report but that.
  */
 void pgsqlDB::logError(const char* func) {
+    std::string query("(none)");
+
+    if (!lastQuery.empty())
+        query = lastQueryLoggable ? lastQuery : std::string("(not logged)");
+
     sqlLog->createMessage(ERROR, func, "SQL Error: {error}")
         .with("error", ErrorMessage())
-        .with("query", lastQueryLoggable ? lastQuery : std::string("(not logged)"))
+        .with("query", query)
         .log();
 }
 
