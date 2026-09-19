@@ -134,9 +134,12 @@ test_logger_sinks_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_logger_sinks_LDADD = libgnuworld.la $(threadLib)
 
 # libgnuworld.la and nothing else: the proof that the logger has no dependency
-# on the core any more.
+# on the core any more.  libnotifier is on the include path but not on the link
+# line: notifier.h is the whole of the base class the notifier cases exercise,
+# and it names nothing outside libgnuworld either.
 test_logger_basic_SOURCES = test/logger_basic.cc
-test_logger_basic_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_basic_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier
 test_logger_basic_LDADD = libgnuworld.la $(threadLib)
 
 # The registry, the hierarchy and the module names, on libgnuworld alone.

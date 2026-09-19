@@ -22,19 +22,23 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <utility>
 
-#include "ELog.h"
+#include "misc.h"
 #include "prometheus.h"
 #include "threadworker.h"
 #include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.notifier");
 
 namespace gnuworld {
 
 #ifdef HAVE_PROMETHEUS
 // Real implementation when Prometheus is available
 
-PrometheusClient::PrometheusClient(xClient* _bot, const std::string& ip, unsigned short port)
-    : bot{_bot}, exposer_{ip + ":" + std::to_string(port)},
+PrometheusClient::PrometheusClient(std::string _instance, const std::string& ip,
+                                   unsigned short port)
+    : instance{std::move(_instance)}, exposer_{ip + ":" + std::to_string(port)},
       registry_{std::make_shared<prometheus::Registry>()} {
     // Register the registry with the exposer to start serving metrics
     // The exposer automatically runs in its own thread
@@ -43,13 +47,12 @@ PrometheusClient::PrometheusClient(xClient* _bot, const std::string& ip, unsigne
     // Set startup timestamp - monitoring tools can calculate uptime from this
     setGauge("start_time", static_cast<double>(::time(nullptr)));
 
-    elog << "*** [PrometheusClient]: Metrics server started on " << ip << ":" << port << std::endl;
-    elog << "*** [PrometheusClient]: Metrics available at http://" << ip << ":" << port
-         << "/metrics" << std::endl;
+    LOG(INFO, "Metrics server started on {}:{}", ip, port);
+    LOG(INFO, "Metrics available at http://{}:{}/metrics", ip, port);
 }
 
 std::string PrometheusClient::sanitizeMetricName(const std::string& name) {
-    std::string sanitized = bot->getNickName() + "_" + name;
+    std::string sanitized = instance + "_" + name;
     std::transform(sanitized.begin(), sanitized.end(), sanitized.begin(), ::tolower);
 
     /* Replace invalid characters with underscores. */
@@ -81,7 +84,7 @@ void PrometheusClient::incrementCounter(const std::string& counterName) {
         // Increment the newly created counter
         counter.Increment();
 
-        elog << "PrometheusClient: Created new counter '" << sanitizedName << "'" << std::endl;
+        LOG(DEBUG, "Created new counter '{}'", sanitizedName);
     }
 #endif
 }
@@ -107,7 +110,7 @@ void PrometheusClient::incrementCounterBy(const std::string& counterName, double
         // Increment the newly created counter by value
         counter.Increment(value);
 
-        elog << "PrometheusClient: Created new counter '" << sanitizedName << "'" << std::endl;
+        LOG(DEBUG, "Created new counter '{}'", sanitizedName);
     }
 }
 
@@ -132,7 +135,7 @@ void PrometheusClient::setGauge(const std::string& gaugeName, double value) {
         // Set the newly created gauge value
         gauge.Set(value);
 
-        elog << "PrometheusClient: Created new gauge '" << sanitizedName << "'" << std::endl;
+        LOG(DEBUG, "Created new gauge '{}'", sanitizedName);
     }
 }
 
@@ -153,8 +156,9 @@ bool PrometheusClient::sendMessage(int level, const std::string) {
 #else
 
 // Stub implementation when Prometheus is not available
-PrometheusClient::PrometheusClient(xClient* _bot, const std::string&, unsigned short) : bot{_bot} {
-    elog << "PrometheusClient: Prometheus support not compiled in (stub mode)" << std::endl;
+PrometheusClient::PrometheusClient(std::string _instance, const std::string&, unsigned short)
+    : instance{std::move(_instance)} {
+    LOG(WARN, "Prometheus support not compiled in (stub mode)");
 }
 
 void PrometheusClient::incrementCounter(const std::string&) {}

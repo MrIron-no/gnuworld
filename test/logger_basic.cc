@@ -20,6 +20,7 @@
 #include "LogSink.h"
 #include "LogSinks.h"
 #include "logger.h"
+#include "notifier.h"
 
 using namespace gnuworld;
 
@@ -196,6 +197,47 @@ class ReentrantSink : public LogSink {
 class SuppressingCaptureSink : public CaptureSink {
   public:
     bool suppressOnReentry() const override { return true; }
+};
+
+/* ------------------------------------------------------------------ *
+ * The notifier base class, which libnotifier's pushover and prometheus
+ * clients are.  Only its header is used here - the test links libgnuworld
+ * alone, and notifier.h names nothing else either.
+ * ------------------------------------------------------------------ */
+
+/// Records what the default notifier::emit() makes of a record
+class RecordingNotifier : public notifier {
+  public:
+    struct Call {
+        int level;
+        std::string message;
+    };
+
+    bool sendMessage(int level, const std::string message) override {
+        calls.push_back(Call{level, message});
+        return true;
+    }
+
+    size_t getSuccessful() const override { return calls.size(); }
+
+    size_t getErrors() const override { return 0; }
+
+    std::vector<Call> calls;
+};
+
+/**
+ * A notifier that logs from inside sendMessage(), as the pushover client does
+ * when a send fails: on the very logger it is attached to, which is the worst
+ * case there is.
+ */
+class SelfLoggingNotifier : public RecordingNotifier {
+  public:
+    bool sendMessage(int level, const std::string message) override {
+        RecordingNotifier::sendMessage(level, message);
+        logger->write(ERROR, std::string("send failed"));
+
+        return true;
+    }
 };
 
 /* ------------------------------------------------------------------ *
@@ -425,6 +467,81 @@ void testReentrancy() {
 }
 
 /**
+ * What the notifier base class makes of a record: the level as the number the
+ * two-argument sendMessage() takes, and the sentence behind the function it was
+ * logged from - which a notification carries at every level but INFO, where the
+ * function says nothing a human reading a push message wants.
+ */
+void testNotifierEmit() {
+    RecordingNotifier sink;
+
+    LogRecord warning;
+    warning.level = WARN;
+    warning.logger = "cservice";
+    warning.function = "Class::fn";
+    warning.message = "text";
+
+    sink.emit(warning);
+
+    CHECK(1 == sink.calls.size());
+    if (1 == sink.calls.size()) {
+        CHECK(3 == sink.calls[0].level);
+        CHECK_EQ(sink.calls[0].message, "Class::fn> text");
+    }
+
+    LogRecord notice;
+    notice.level = INFO;
+    notice.logger = "cservice";
+    notice.function = "Class::fn";
+    notice.message = "text";
+
+    sink.emit(notice);
+
+    CHECK(2 == sink.calls.size());
+    if (2 == sink.calls.size()) {
+        CHECK(4 == sink.calls[1].level);
+        CHECK_EQ(sink.calls[1].message, "text");
+    }
+}
+
+/**
+ * A notifier that logs when it fails to deliver cannot feed itself: the record
+ * it logs from inside sendMessage() is re-entrant, and a notifier takes no
+ * re-entrant record however it is attached.  The record is not lost for that -
+ * an ordinary sink still gets it.
+ */
+void testNotifierDoesNotRecurse() {
+    logger = LogManager::get("basic.notifier");
+
+    const std::shared_ptr<CaptureSink> normal = std::make_shared<CaptureSink>();
+    const std::shared_ptr<SelfLoggingNotifier> notified = std::make_shared<SelfLoggingNotifier>();
+
+    logger->addSink(normal);
+    logger->addSink(notified);
+
+    logger->writeFunc(WARN, "Class::fn", std::string("text"));
+
+    // Once for the record that was logged, and not again for its own failure
+    CHECK(1 == notified->calls.size());
+    if (1 == notified->calls.size()) {
+        CHECK(3 == notified->calls[0].level);
+        CHECK_EQ(notified->calls[0].message, "Class::fn> text");
+    }
+
+    // The failure is logged all the same, where a sink that takes re-entrant
+    // records - the file, the console - reads it
+    CHECK(2 == normal->records.size());
+    if (2 == normal->records.size()) {
+        CHECK_EQ(normal->records[0].message, "text");
+        CHECK_EQ(normal->records[1].message, "send failed");
+        CHECK(ERROR == normal->records[1].level);
+    }
+
+    logger->removeSink(notified);
+    logger->removeSink(normal);
+}
+
+/**
  * The stream API MigrationChecker uses: one record per std::endl.
  */
 void testStreamApi() {
@@ -619,6 +736,8 @@ int main() {
     testFallbackWithoutExtractor();
     testSinkThresholds();
     testReentrancy();
+    testNotifierEmit();
+    testNotifierDoesNotRecurse();
     testStreamApi();
     testLogMacro();
     testLazyRecord();

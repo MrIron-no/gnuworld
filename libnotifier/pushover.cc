@@ -26,22 +26,23 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <stdexcept>
 
-#include "ELog.h"
-#include "client.h"
 #include "pushover.h"
 #include "threadworker.h"
 #include "logger.h"
 
+GNUWORLD_MODULE_LOGGER("core.notifier");
+
 namespace gnuworld {
 
-PushoverClient::PushoverClient(xClient* _bot, std::string token, pushoverKeysType users
+PushoverClient::PushoverClient(std::string token, pushoverKeysType users
 #ifdef USE_THREAD
                                ,
                                ThreadWorker* worker
 #endif
                                )
-    : bot(_bot), apiToken(token), userKeys(users)
+    : apiToken(token), userKeys(users)
 #ifdef USE_THREAD
       ,
       threadWorker(worker)
@@ -59,10 +60,17 @@ void PushoverClient::initialise_curl() {
 }
 #endif
 
+void PushoverClient::emit(const LogRecord& r) {
+    sendMessage(std::format("[{}] {}", r.logger.empty() ? std::string("root") : r.logger,
+                            levelName(r.level)),
+                (r.level == INFO ? std::string() : r.function + "> ") + r.message);
+}
+
 bool PushoverClient::sendMessage(int level, const std::string message) {
-    return sendMessage(
-        std::format("[{}] {}", bot->getNickName(), levelName(static_cast<Verbosity>(level))),
-        message);
+    /* A direct caller has no record to name a logger, so the title says only
+     * which process the notification comes from */
+    return sendMessage(std::format("[gnuworld] {}", levelName(static_cast<Verbosity>(level))),
+                       message);
 }
 
 bool PushoverClient::sendMessage(const std::string title, const std::string message) {
@@ -82,7 +90,10 @@ bool PushoverClient::sendMessage(const std::string title, const std::string mess
     {
         bool ok = processMessage(title, message, priority, retry, expire);
         if (!ok) {
-            elog << "[PUSHOVER-ERROR] Failed to send message: " << message << std::endl;
+            /* Logged on core.notifier, which no pushover sink is attached to:
+             * see processMessage() for why that is what keeps this from
+             * feeding itself */
+            LOG(ERROR, "Failed to send message: {}", message);
             statErrors++;
         }
         return ok;
@@ -96,7 +107,17 @@ bool PushoverClient::processMessage(const std::string title, const std::string m
     for (const auto& user : userKeys) {
         bool ok = sendToUser(user, title, message, priority, retry, expire);
         if (!ok) {
-            elog << "[PUSHOVER-ERROR] Failed to send to user: " << user << std::endl;
+            /* A failure the logger itself hears about.  Called from emit() the
+             * record is re-entrant and the logger keeps it away from every
+             * suppressOnReentry sink, this one among them; with a ThreadWorker
+             * the send happens on the worker's thread, outside any dispatch, so
+             * the record is an ordinary one and reaches whatever sinks
+             * core.notifier and its ancestors carry.  It can only come back
+             * here - and then not stop - if a pushover sink is attached to
+             * core.notifier or to an ancestor of it; cservice attaches its own
+             * to the logger "cservice", which is a sibling of "core", so the
+             * record never reaches it and no machinery is needed to stop it */
+            LOG(ERROR, "Failed to send to user: {}", user);
             statErrors++;
             allSucceeded = false;
         }
@@ -152,13 +173,13 @@ bool PushoverClient::sendToUser([[maybe_unused]] const std::string user,
             throw std::runtime_error(curl_easy_strerror(rc));
 
         statSuccessful++;
-        elog << "[PUSHOVER] Message sent to user: " << user << " with title: " << safeTitle
-             << " and message: " << safeMessage << std::endl;
+        LOG(TRACE, "Message sent to user: {} with title: {} and message: {}", user, safeTitle,
+            safeMessage);
         return true;
     } catch (const std::exception& e) {
-        elog << "[PUSHOVER-ERROR] exception: " << e.what() << std::endl;
+        LOG(ERROR, "exception: {}", e.what());
     } catch (...) {
-        elog << "[PUSHOVER-ERROR] unknown exception" << std::endl;
+        LOG(ERROR, "unknown exception");
     }
 #endif
     return false;

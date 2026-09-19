@@ -340,34 +340,35 @@ cservice::cservice(const string& args)
     loadConfigVariables();
     loadConfigData();
 
-    /* Initiate pushover. */
+    /* Initiate pushover.  These records are logged before applyLegacyLogging()
+     * has put this module's own sinks on the logger, so they go to whatever the
+     * root carries - which is what every other core record does at this point */
     if (pushoverEnable) {
-        elog << "*** [CMaster]: Enabling Pushover notifications for " << pushoverUserKeys.size()
-             << " user keys..." << endl;
+        LOG(INFO, "Enabling Pushover notifications for {} user keys...", pushoverUserKeys.size());
 
 #ifdef USE_THREAD
-        pushover =
-            std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys, &threadWorker);
+        pushover = std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys, &threadWorker);
 #else
-        pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys);
+        pushover = std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys);
 #endif
         logger->addSink(pushover, static_cast<Verbosity>(pushoverVerbosity));
         pushover->sendMessage("cmaster init", "cmaster connecting...");
     }
 
-/* Initiate prometheus. */
+/* Initiate prometheus.  The instance name every metric is prefixed with is this
+ * client's nick, as it has always been: an existing install must not see its
+ * metric names change. */
 #ifdef HAVE_PROMETHEUS
     if (prometheusEnable) {
-        elog << "*** [CMaster]: Enabling Prometheus metrics at " << prometheusIP << ":"
-             << prometheusPort << "..." << endl;
+        LOG(INFO, "Enabling Prometheus metrics at {}:{}...", prometheusIP, prometheusPort);
 
         try {
-            prometheus = std::make_shared<PrometheusClient>(this, prometheusIP, prometheusPort);
+            prometheus =
+                std::make_shared<PrometheusClient>(getNickName(), prometheusIP, prometheusPort);
             logger->addSink(prometheus);
         } catch (const std::exception& e) {
-            elog << "*** [CMaster]: Unable to start Prometheus on " << prometheusIP << ":"
-                 << prometheusPort << endl;
-            elog << "*** [CMaster]: Prometheus error message: " << e.what() << endl;
+            LOG(ERROR, "Unable to start Prometheus on {}:{}", prometheusIP, prometheusPort);
+            LOG(ERROR, "Prometheus error message: {}", e.what());
             prometheus.reset();
             ::exit(0);
         }
@@ -430,8 +431,9 @@ cservice::~cservice() {
     legacyConsoleSink.reset();
     legacyFileSink.reset();
 
-    /* The notifiers too: they hold a pointer to this client, and a record of the
-     * next instance of the module must not reach a notifier of this one */
+    /* The notifiers too.  They know nothing of this client any more, but
+     * pushover still sends through this instance's ThreadWorker, and a record of
+     * the next instance of the module must not reach a notifier of this one */
     if (pushover) {
         logger->removeSink(pushover);
         pushover.reset();
@@ -7337,7 +7339,8 @@ void cservice::rehashConfigVariables() {
 #ifdef HAVE_PROMETHEUS
     if (prometheusEnable && !prometheus) {
         try {
-            prometheus = std::make_shared<PrometheusClient>(this, prometheusIP, prometheusPort);
+            prometheus =
+                std::make_shared<PrometheusClient>(getNickName(), prometheusIP, prometheusPort);
             logger->addSink(prometheus);
         } catch (const std::exception& e) {
             LOG(ERROR, "Unable to start Prometheus on {}:{} - {}", prometheusIP, prometheusPort,
@@ -7360,10 +7363,10 @@ void cservice::rehashConfigVariables() {
         } else {
             /* Pushover is enabled in config, but not in gnuworld. Enable. */
 #ifdef USE_THREAD
-            pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys,
-                                                        &threadWorker);
+            pushover =
+                std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys, &threadWorker);
 #else
-            pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys);
+            pushover = std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys);
 #endif
             logger->addSink(pushover, static_cast<Verbosity>(pushoverVerbosity));
         }

@@ -36,7 +36,7 @@ class ThreadWorker;
 class PushoverClient : public notifier {
 
   public:
-    PushoverClient(xClient*, std::string, pushoverKeysType
+    PushoverClient(std::string, pushoverKeysType
 #ifdef USE_THREAD
                    ,
                    ThreadWorker*
@@ -55,6 +55,13 @@ class PushoverClient : public notifier {
 
     [[nodiscard]] size_t userKeys_size() const { return userKeys.size(); }
 
+    /**
+     * Delivers one log record as a notification: the logger it was logged on
+     * and its level make the title, the sentence behind the function it came
+     * from - at every level but INFO - the body.
+     */
+    void emit(const LogRecord& r) override;
+
     bool sendMessage(int level, const std::string message) override;
 
     bool sendMessage(const std::string title, const std::string message);
@@ -63,7 +70,6 @@ class PushoverClient : public notifier {
                      int retry = 60, int expire = 3600);
 
   private:
-    xClient* bot;
     std::string apiToken;
     pushoverKeysType userKeys;
     size_t statSuccessful = 0;
