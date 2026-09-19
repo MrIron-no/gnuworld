@@ -560,7 +560,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
         string chanOrNickName(st[1]);
         string action(st.assemble(2).c_str());
 
-        allClonesSay(theClient, chanOrNickName, "\001ACTION " + action + "\001", false);
+        allClonesSay(theClient, chanOrNickName, actionText(action), false);
     } // ACTALL/DOALL/DESCRIBEALL
     else if (command == "NOTICEALL") {
         if (st.size() < 3) {

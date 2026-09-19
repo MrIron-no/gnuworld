@@ -88,7 +88,7 @@ bool SAYCommand::Exec(iClient* theClient, const string& Message) {
         if (!match("SAY", st[0]))
             bot->Message(tmpChan, st.assemble(2));
         else
-            bot->Message(tmpChan, "%cACTION %s%c", 1, st.assemble(2).c_str(), 1);
+            bot->Message(tmpChan, xClient::actionText(st.assemble(2)));
     }
 
     return true;

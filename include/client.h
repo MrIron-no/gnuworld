@@ -602,6 +602,16 @@ class xClient : public TimerHandler, public NetworkTarget {
     virtual bool isOnChannel(const Channel* theChan) const;
 
     /**
+     * The text of a CTCP, "\001<CTCP>[ <message>]\001", with no stray
+     * space when there is no message: for whoever sends it some other way
+     * than DoCTCP(), as the server or as a fake client.
+     */
+    static std::string ctcpText(const std::string& CTCP, const std::string& Message);
+
+    /// The text of an action, what a client's "/me <action>" sends
+    static std::string actionText(const std::string& action);
+
+    /**
      * DoCTCP will issue a CTCP (reply) to the given iClient.
      */
     virtual bool DoCTCP(iClient* Target, const std::string& CTCP, const std::string& Message);

@@ -66,9 +66,7 @@ bool SAYCommand::Exec(iClient* theClient, const string& Message) {
     }
 
     // SAY, or DO: an action
-    const string text = !match("SAY", st[0])
-                            ? st.assemble(3)
-                            : ('\001' + string("ACTION ") + st.assemble(3) + '\001');
+    const string text = !match("SAY", st[0]) ? st.assemble(3) : xClient::actionText(st.assemble(3));
 
     if (targetChan != 0) {
         asServer ? bot->getUplink()->serverMessage(targetChan, text)

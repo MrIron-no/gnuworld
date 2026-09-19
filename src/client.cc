@@ -259,17 +259,6 @@ bool xClient::Mode(Channel* theChan, const string& modes, const string& args, bo
 
 namespace {
 
-/// "\001<CTCP>[ <message>]\001", with no stray space when there is no message.
-string ctcpText(const string& CTCP, const string& Message) {
-    string text("\001");
-    text += CTCP;
-    if (!Message.empty()) {
-        text += ' ' + Message;
-    }
-    text += '\001';
-    return text;
-}
-
 /// A channel name given with or without its '#'.
 string channelName(const string& name) {
     return (!name.empty() && '#' == name[0]) ? name : '#' + name;
@@ -282,6 +271,18 @@ string channelName(const string& name) {
  * this client, or the server if it is a stealth module with no client on the
  * network.
  */
+
+string xClient::ctcpText(const string& CTCP, const string& Message) {
+    string text("\001");
+    text += CTCP;
+    if (!Message.empty()) {
+        text += ' ' + Message;
+    }
+    text += '\001';
+    return text;
+}
+
+string xClient::actionText(const string& action) { return ctcpText("ACTION", action); }
 
 bool xClient::DoCTCP(iClient* Target, const string& CTCP, const string& Message) {
     if (!isConnected()) {
