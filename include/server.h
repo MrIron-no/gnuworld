@@ -577,8 +577,8 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool OpMode(iClient* target, const std::string& userModes);
 
     /**
-     * A notice to every user on the network, from the server or from a
-     * client of ours: NOTICE $*, which only an oper or a server may send.
+     * A notice to every user on the network, from a client of ours: NOTICE $*,
+     * which only an oper may send, so a null `from` is refused.
      */
     virtual bool GlobalNotice(const std::string& text, const iClient* from = nullptr);
 

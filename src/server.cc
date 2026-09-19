@@ -3264,6 +3264,13 @@ bool xServer::GlobalNotice(const string& text, const iClient* from) {
         return false;
     }
 
+    // ircu takes the "$" branch of ms_notice() only for an oper, and a server
+    // is never one: it would drop the notice
+    if (0 == from) {
+        LOG(WARN, "only an oper can notice $*");
+        return false;
+    }
+
     // "$*": every server, which is to say every user
     return sendText(TextType::NOTICE, from, "$*", text);
 }

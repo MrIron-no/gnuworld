@@ -498,6 +498,14 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         MyUplink->GlobalNotice(st.assemble(1), getInstance());
         return;
     }
+    if (st[0] == "wallops" && st.size() > 1) {
+        Wallops(st.assemble(1));
+        return;
+    }
+    if (st[0] == "noticechanops" && st.size() > 2) {
+        NoticeChannelOps(st[1], st.assemble(2));
+        return;
+    }
 
     if (st[0] == "moo") {
         string raw = st.assemble(1);

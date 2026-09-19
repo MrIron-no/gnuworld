@@ -94,6 +94,8 @@ class xClient : public TimerHandler, public NetworkTarget {
     virtual bool BurstGlines();
 
     /// SILENCE: stop `whom` from reaching us from this mask, and tell it so.
+    /// Both of these return false for a stealth module: the protocol has no
+    /// server form of a SILENCE.
     virtual bool Silence(const iClient* whom, const std::string& mask);
 
     /// Lift a SILENCE again.
@@ -533,7 +535,8 @@ class xClient : public TimerHandler, public NetworkTarget {
     virtual bool Topic(Channel*, const std::string&);
 
     /**
-     * Join will cause the client to join a channel.
+     * Join will cause the client to join a channel.  Both overloads return
+     * false for a stealth module: the protocol has no server form of a JOIN.
      */
     virtual bool Join(const std::string& chanName, const std::string& modes = std::string(),
                       const time_t& joinTime = 0, bool getOps = false);
@@ -555,7 +558,8 @@ class xClient : public TimerHandler, public NetworkTarget {
     virtual void OnJoin(const std::string&);
 
     /**
-     * Part will cause the client to part a channel.
+     * Part will cause the client to part a channel.  Both overloads do nothing
+     * for a stealth module: the protocol has no server form of a PART.
      */
     virtual bool Part(const std::string&, const std::string& = std::string());
 
@@ -576,7 +580,8 @@ class xClient : public TimerHandler, public NetworkTarget {
 
     /**
      * Invite a user to a channel.  Join the channel if necessary
-     * (and then part).
+     * (and then part).  Both overloads return false for a stealth module: the
+     * protocol has no server form of an INVITE.
      */
     virtual bool Invite(iClient*, const std::string&);
 
@@ -717,7 +722,9 @@ class xClient : public TimerHandler, public NetworkTarget {
     }
 
     /**
-     * Notice channel operators with given message.
+     * Notice channel operators with given message.  Every overload returns
+     * false for a stealth module: the network does not carry a WALLCHOPS that
+     * no client sent.
      */
     virtual bool NoticeChannelOps(const Channel* theChan, const std::string& Message);
 

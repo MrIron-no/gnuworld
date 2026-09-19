@@ -221,7 +221,11 @@ bool xClient::QuoteAsServer(const string& Message) {
     return false;
 }
 
-bool xClient::Wallops(const string& Message) { return Write(getCharYYXXX() + " WA :" + Message); }
+bool xClient::Wallops(const string& Message) {
+    // A server WALLOPS is legal, and a stealth module has no numeric the
+    // uplink has ever heard of: numericOf() puts the server's on the wire.
+    return isConnected() && Write(MyUplink->numericOf(getInstance()) + " WA :" + Message);
+}
 
 bool xClient::WallopsAsServer(const string& buf) {
     if (!isConnected()) {
@@ -381,6 +385,13 @@ bool xClient::Notice(const Channel* theChan, const string& Message) {
 bool xClient::NoticeChannelOps(const Channel* theChan, const string& Message) {
     assert(theChan != 0);
 
+    if (IsStealth()) {
+        // ircu delivers a WALLCHOPS to nobody unless a user sent it
+        // (ms_wallchops()), and a channel NOTICE instead would show an
+        // ops-only message to everybody
+        return false;
+    }
+
     // Nothing to say is not a failure, as it never was
     if (Message.empty() || !isConnected()) {
         return true;
@@ -459,14 +470,20 @@ void xClient::OnWhois(iClient*, iClient*) {}
 
 void xClient::OnInvite(iClient*, Channel*) {}
 
+/*
+ * A SILENCE from a server is a protocol violation (ircu, ms_silence()), so
+ * there is nothing a stealth module can send here.
+ */
+
 bool xClient::Silence(const iClient* whom, const string& mask) {
     assert(whom != 0);
-    return isConnected() && !mask.empty() &&
+    return !IsStealth() && isConnected() && !mask.empty() &&
            Write("{} U {} {}", getCharYYXXX(), whom->getCharYYXXX(), mask);
 }
 
 bool xClient::UnSilence(const string& mask) {
-    return isConnected() && !mask.empty() && Write("{} U * -{}", getCharYYXXX(), mask);
+    return !IsStealth() && isConnected() && !mask.empty() &&
+           Write("{} U * -{}", getCharYYXXX(), mask);
 }
 
 bool xClient::Kill(iClient* theClient, const string& reason) {
@@ -489,12 +506,13 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
                   MyUplink->getName(), reason);
         }
     } else {
+        // A stealth module has no numeric the uplink has ever heard of, and a
+        // server KILL is legal: numericOf() puts the server's on the wire.
+        const string from = MyUplink->numericOf(getInstance());
         if (getUplink()->getUplink()->getProtocol() < 11) {
-            Write("{} D {} :{} ({})", getCharYYXXX(), theClient->getCharYYXXX(), getNickName(),
-                  reason);
+            Write("{} D {} :{} ({})", from, theClient->getCharYYXXX(), getNickName(), reason);
         } else {
-            Write("{} D {} {} :{}", getCharYYXXX(), theClient->getCharYYXXX(), getNickName(),
-                  reason);
+            Write("{} D {} {} :{}", from, theClient->getCharYYXXX(), getNickName(), reason);
         }
     }
 

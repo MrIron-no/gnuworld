@@ -7,10 +7,10 @@ getInstance() is null and the uplink has never heard of its numeric. ircu
 silently drops a line from an unknown numeric (ircd/parse.c), so a line written
 from that numeric is not a message the network loses quietly - it is a bug.
 
-What the core must do instead: what has no server form at all (JOIN, PART,
-SILENCE) is not sent, and what has one (WALLOPS, KILL) goes out from the
-server. Nothing may crash: a stealth module's getInstance() is null, and
-Channel::findUser() asserts on a null client.
+What the core must do instead: what the network will not carry from a server
+(JOIN, PART, SILENCE, WALLCHOPS, a NOTICE to $*) is not sent, and what it will
+(WALLOPS, KILL) goes out from the server. Nothing may crash: a stealth module's
+getInstance() is null, and Channel::findUser() asserts on a null client.
 """
 
 from __future__ import annotations
@@ -97,5 +97,86 @@ async def test_a_stealth_module_does_not_part(stealth_gnutest_linked_p11):
     lines = await run(hub, asker, f"part {CHAN}")
     alive(proc)
     assert [l for l in lines if p10_token(l) == "L"] == []
+
+    no_module_numeric(hub)
+
+
+@pytest.mark.asyncio
+async def test_a_stealth_module_wallops_and_kills_as_the_server(stealth_gnutest_linked_p11):
+    """A server WALLOPS and a server KILL are both legal, so these are sent -
+    from the server's numeric, not from the one the uplink has never heard of."""
+    hub, proc = stealth_gnutest_linked_p11
+    asker = await setup(hub)
+    victim = await hub.introduce_nick("victim", username="victim")
+
+    lines = await run(hub, asker, "wallops the roof is on fire")
+    alive(proc)
+    assert [l for l in lines if p10_token(l) == "WA"] == [
+        f"{hub.peer_numeric} WA :the roof is on fire"
+    ]
+
+    lines = await run(hub, asker, "kill victim go away")
+    alive(proc)
+    assert [l for l in lines if p10_token(l) == "D"] == [
+        f"{hub.peer_numeric} D {victim} gnutest :go away"
+    ]
+
+    no_module_numeric(hub)
+
+
+@pytest.mark.asyncio
+async def test_a_stealth_module_does_not_silence(stealth_gnutest_linked_p11):
+    """ircu's ms_silence() answers a SILENCE from a server with a protocol
+    violation, so there is no server form of it: nothing is sent."""
+    hub, proc = stealth_gnutest_linked_p11
+    asker = await setup(hub)
+    await hub.introduce_nick("victim", username="victim")
+
+    lines = await run(hub, asker, "silence victim *!*@spam.example")
+    lines += await run(hub, asker, "unsilence *!*@spam.example")
+    alive(proc)
+    assert [l for l in lines if p10_token(l) == "U"] == []
+
+    no_module_numeric(hub)
+
+
+@pytest.mark.asyncio
+async def test_a_stealth_module_notices_no_channel_ops(stealth_gnutest_linked_p11):
+    """ircu's ms_wallchops() returns early on !IsUser(sptr) (ircd/m_wallchops.c),
+    so a WALLCHOPS the server sends is delivered to nobody: nothing is sent, and
+    it is not widened into a channel NOTICE that everybody would see."""
+    hub, proc = stealth_gnutest_linked_p11
+    asker = await setup(hub)
+
+    lines = await run(hub, asker, f"noticechanops {CHAN} ops only")
+    alive(proc)
+    assert [l for l in lines if p10_token(l) in ("WC", "O")] == []
+
+    no_module_numeric(hub)
+
+
+@pytest.mark.asyncio
+async def test_a_module_with_a_client_still_notices_channel_ops(gnutest_linked_p11):
+    """The control case: with a client on the network the WALLCHOPS goes out."""
+    hub, _proc = gnutest_linked_p11
+    asker = await setup(hub)
+
+    lines = await gt.run(hub, asker, f"noticechanops {CHAN} ops only")
+    assert [l for l in lines if p10_token(l) == "WC"] == [
+        f"{gt.numnick(hub)} WC {CHAN} :ops only"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_stealth_module_sends_no_global_notice(stealth_gnutest_linked_p11):
+    """NOTICE $* needs an oper source: ircu's ms_notice() takes the $ branch
+    only for IsOper(sptr), and a server is not an oper, so the notice would be
+    dropped on arrival. gnuworld refuses it instead of claiming it was sent."""
+    hub, proc = stealth_gnutest_linked_p11
+    asker = await setup(hub)
+
+    lines = await run(hub, asker, "globalnotice hello everybody")
+    alive(proc)
+    assert [l for l in lines if p10_token(l) == "O" and " $* :" in l] == []
 
     no_module_numeric(hub)
