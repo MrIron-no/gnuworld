@@ -86,6 +86,103 @@ std::size_t discardResponse(char*, std::size_t size, std::size_t count, void*) {
     return size * count;
 }
 
+/// One field of a form body: a literal name, and a value that is anything at all
+typedef std::pair<const char*, std::string> formFieldType;
+
+/**
+ * value percent-encoded, or nothing at all.
+ *
+ * curl_easy_escape() is given the length, so a value holding a NUL byte is
+ * encoded rather than cut at it, and its answer is freed with curl_free().  It
+ * returns a null pointer when it cannot allocate: there is no answer to that
+ * but to fail the delivery, which is why this says so with false rather than
+ * handing back what it was given.
+ */
+bool escapeValue(CURL* curl, const std::string& value, std::string& escaped) {
+    char* const encoded = curl_easy_escape(curl, value.c_str(), static_cast<int>(value.size()));
+
+    if (nullptr == encoded)
+        return false;
+
+    escaped = encoded;
+
+    curl_free(encoded);
+
+    return true;
+}
+
+/**
+ * The fields as an application/x-www-form-urlencoded body.
+ *
+ * EVERY value is percent-encoded, which is the whole point of this function.  A
+ * notification's title and message are a rendered log sentence, and a log
+ * sentence holds whatever a remote server or an IRC user put into it: a channel
+ * name may legally contain "&", "=", "%", "#" and "+", so a value written into
+ * the body as it stands is a value that can end its own field and begin another
+ * one - a second "user" redirecting the page, with this deployment's own token,
+ * to somebody else's account, or an "html", a "url", a "sound" nobody
+ * configured.  The NAMES are literals of this file and never come from anywhere
+ * else, so only the values need encoding.
+ *
+ * Throws when libcurl cannot encode a value: a body with one unescaped field in
+ * it is worse than a notification that was not sent.
+ */
+/**
+ * A libcurl easy handle and the header list of its one request, freed however
+ * this request is left.
+ *
+ * Building the body can now fail - a value libcurl will not encode is a
+ * delivery that does not happen - and the handle is needed before the body is
+ * built, because it is what escapes the values.  A throw between the two would
+ * otherwise leak the handle once per notification.
+ */
+class Request {
+  public:
+    Request() : handle(curl_easy_init()) {}
+
+    ~Request() {
+        if (nullptr != headers)
+            curl_slist_free_all(headers);
+
+        if (nullptr != handle)
+            curl_easy_cleanup(handle);
+    }
+
+    Request(const Request&) = delete;
+    Request& operator=(const Request&) = delete;
+
+    CURL* get() const { return handle; }
+
+    /// Adds one header to this request, and keeps the list to free it
+    void addHeader(const char* header) {
+        headers = curl_slist_append(headers, header);
+
+        curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+    }
+
+  private:
+    CURL* handle;
+    struct curl_slist* headers = nullptr;
+};
+
+std::string formBody(CURL* curl, const std::vector<formFieldType>& fields) {
+    std::ostringstream body;
+
+    for (const formFieldType& field : fields) {
+        std::string escaped;
+
+        if (!escapeValue(curl, field.second, escaped))
+            throw std::runtime_error("curl_easy_escape failed");
+
+        if (0 != body.tellp())
+            body << '&';
+
+        body << field.first << '=' << escaped;
+    }
+
+    return body.str();
+}
+
 /// The parts of a comma separated list, each without the space around it
 std::vector<std::string> splitList(const std::string& value) {
     static const std::string blanks(" \t\r\n\v\f");
@@ -330,27 +427,38 @@ bool PushoverClient::sendToUser([[maybe_unused]] std::size_t position,
         const std::string safeTitle = truncateUtf8(withoutControlCharacters(title), 250);
         const std::string safeMessage = truncateUtf8(withoutControlCharacters(message), 1024);
 
-        std::ostringstream postData;
-        postData << "token=" << apiToken << "&user=" << user << "&title=" << safeTitle
-                 << "&message=" << safeMessage << "&priority=" << priority;
+        Request request;
+
+        if (nullptr == request.get())
+            throw std::runtime_error("curl_easy_init failed");
+
+        std::vector<formFieldType> fields;
+
+        fields.push_back(formFieldType("token", apiToken));
+        fields.push_back(formFieldType("user", user));
+        fields.push_back(formFieldType("title", safeTitle));
+        fields.push_back(formFieldType("message", safeMessage));
+        fields.push_back(formFieldType("priority", std::to_string(priority)));
 
         if (priority == 2) {
             retry = std::max(10, retry);
             expire = std::min(10800, expire);
-            postData << "&retry=" << retry << "&expire=" << expire;
+
+            fields.push_back(formFieldType("retry", std::to_string(retry)));
+            fields.push_back(formFieldType("expire", std::to_string(expire)));
         }
 
-        std::string body = postData.str();
+        /* Every value of it percent-encoded, so the body holds exactly these
+         * fields whatever the sentence in it says.  No byte of it can be a NUL -
+         * escapeValue() encodes one as %00 - so the copy CURLOPT_COPYPOSTFIELDS
+         * makes of it, which is measured with strlen, is the whole body */
+        const std::string body = formBody(request.get(), fields);
 
-        CURL* curl = curl_easy_init();
-        if (nullptr == curl)
-            throw std::runtime_error("curl_easy_init failed");
+        CURL* const curl = request.get();
 
-        struct curl_slist* hdrs = nullptr;
-        hdrs = curl_slist_append(hdrs, "Content-Type: application/x-www-form-urlencoded");
+        request.addHeader("Content-Type: application/x-www-form-urlencoded");
 
         curl_easy_setopt(curl, CURLOPT_URL, apiUrl.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
         curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS, body.c_str());
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
@@ -365,9 +473,6 @@ bool PushoverClient::sendToUser([[maybe_unused]] std::size_t position,
 
         if (CURLE_OK == rc)
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-
-        curl_slist_free_all(hdrs);
-        curl_easy_cleanup(curl);
 
         if (rc != CURLE_OK)
             throw std::runtime_error(curl_easy_strerror(rc));

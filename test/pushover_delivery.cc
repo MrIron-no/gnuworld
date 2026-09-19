@@ -1,21 +1,29 @@
 /**
  * pushover_delivery.cc
  * What a pushover sink really puts on the wire, against a local HTTP endpoint
- * that records every POST it is given: one request per user key, the loop guard,
- * the rate limit, a failing endpoint, and destroying a sink with requests still
- * queued.  It links libnotifier, libgnuworld and libcurl, and is built only
- * where libcurl is (see test/Makefile.am, COND_LIBCURL).
+ * that records every POST it is given: one request per user key, not one field
+ * of the request coming from the log record, the loop guard, the rate limit, a
+ * failing endpoint, two sinks sending at once, and destroying a sink with
+ * requests still queued.  It links libnotifier, libgnuworld and libcurl, and is
+ * built only where libcurl is (see test/Makefile.am, COND_LIBCURL).
  * Runs under "make check", where test/docker/full-deps/run.sh is what gives it
  * an endpoint; without one it says so and passes.
  *
- * The endpoint's URL and the file it records the bodies in come from the
+ * The endpoint's URL and the file it records the requests in come from the
  * environment:
  *
  *   PUSHOVER_TEST_URL       http://127.0.0.1:<port>/1/messages.json
- *   PUSHOVER_TEST_CAPTURE   the file it appends one POST body per line to
+ *   PUSHOVER_TEST_CAPTURE   the file it appends one request per line to
  *
  * and two paths of that endpoint are special: /fail answers 500, /slow answers
  * a success after half a second.
+ *
+ * A line of that file holds the request twice: the raw body, and then the form
+ * fields decoded out of it, name and value alternating, tab separated and
+ * escaped (see test/docker/full-deps/endpoint.py, which writes it, and
+ * parsePost() below, which reads it).  Both are needed - what the sentence has
+ * to arrive as is the DECODED message, and that no sentence can add a field is
+ * about the RAW body.
  */
 
 #include <chrono>
@@ -29,6 +37,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <unistd.h>
@@ -95,27 +104,115 @@ std::string urlFor(const std::string& path) {
  * The endpoint's record of what was posted
  * ------------------------------------------------------------------ */
 
-std::vector<std::string> captured() {
-    std::vector<std::string> lines;
+/// One request the endpoint saw: the body as it arrived, and its form fields
+struct Post {
+    std::string raw;
+
+    /// Name and value of every field, in the order sent, repetitions and all
+    std::vector<std::pair<std::string, std::string>> fields;
+
+    /// How many fields of this name the request carried
+    std::size_t count(const std::string& name) const {
+        std::size_t seen = 0;
+
+        for (const std::pair<std::string, std::string>& field : fields)
+            if (field.first == name)
+                ++seen;
+
+        return seen;
+    }
+
+    /// The first value of this field, or "" where the request had none
+    std::string one(const std::string& name) const {
+        for (const std::pair<std::string, std::string>& field : fields)
+            if (field.first == name)
+                return field.second;
+
+        return std::string();
+    }
+};
+
+/// Undoes endpoint.py's _escape(): the four it escapes and nothing else
+std::string unescape(const std::string& text) {
+    std::string plain;
+
+    plain.reserve(text.size());
+
+    for (std::string::size_type at = 0; at < text.size(); ++at) {
+        if ('\\' != text[at] || at + 1 == text.size()) {
+            plain.push_back(text[at]);
+            continue;
+        }
+
+        switch (text[++at]) {
+        case 'n':
+            plain.push_back('\n');
+            break;
+        case 'r':
+            plain.push_back('\r');
+            break;
+        case 't':
+            plain.push_back('\t');
+            break;
+        default:
+            plain.push_back(text[at]); // "\\" and anything else, as it stands
+            break;
+        }
+    }
+
+    return plain;
+}
+
+/**
+ * One line of the capture file as a request: the raw body, then the decoded
+ * fields with name and value alternating.
+ */
+Post parsePost(const std::string& line) {
+    std::vector<std::string> pieces;
+    std::string::size_type at = 0;
+
+    for (;;) {
+        const std::string::size_type tab = line.find('\t', at);
+
+        pieces.push_back(std::string::npos == tab ? line.substr(at) : line.substr(at, tab - at));
+
+        if (std::string::npos == tab)
+            break;
+
+        at = tab + 1;
+    }
+
+    Post post;
+
+    post.raw = unescape(pieces[0]);
+
+    for (std::size_t on = 1; on + 1 < pieces.size(); on += 2)
+        post.fields.push_back(std::make_pair(unescape(pieces[on]), unescape(pieces[on + 1])));
+
+    return post;
+}
+
+std::vector<Post> captured() {
+    std::vector<Post> posts;
     std::ifstream in(capturePath.c_str());
     std::string line;
 
     while (std::getline(in, line))
         if (!line.empty())
-            lines.push_back(line);
+            posts.push_back(parsePost(line));
 
-    return lines;
+    return posts;
 }
 
 void forgetCaptured() { std::ofstream out(capturePath.c_str(), std::ios::out | std::ios::trunc); }
 
-/// Whatever was posted once at least count bodies are there, or time is up
-std::vector<std::string> capturedAtLeast(std::size_t count, int milliseconds = 5000) {
+/// Whatever was posted once at least count requests are there, or time is up
+std::vector<Post> capturedAtLeast(std::size_t count, int milliseconds = 5000) {
     for (int waited = 0; waited < milliseconds; waited += 20) {
-        const std::vector<std::string> lines = captured();
+        const std::vector<Post> posts = captured();
 
-        if (lines.size() >= count)
-            return lines;
+        if (posts.size() >= count)
+            return posts;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
@@ -124,7 +221,7 @@ std::vector<std::string> capturedAtLeast(std::size_t count, int milliseconds = 5
 }
 
 /// Whatever was posted after long enough for anything on its way to arrive
-std::vector<std::string> capturedAfterAWhile(int milliseconds = 1500) {
+std::vector<Post> capturedAfterAWhile(int milliseconds = 1500) {
     std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 
     return captured();
@@ -171,6 +268,14 @@ bool apply(const std::string& body) {
 void emit(const std::string& logger, Verbosity level, const std::string& message) {
     LogManager::get(logger)->writeFunc(level, "void anon::emit()", "{}", message);
 }
+
+/**
+ * What a notification of one of those records begins with: the function the
+ * record was logged from, as the logger keeps it - the argument list is trimmed
+ * off a function name on its way into a record - and the "> " the sink puts
+ * between that and the sentence at every level but INFO.
+ */
+const std::string functionPrefix("void anon::emit> ");
 
 /// Everything this sink saw, as the sentence of each record
 std::vector<std::string> messagesOf(const std::shared_ptr<CaptureSink>& capture) {
@@ -221,20 +326,22 @@ void testOnePostPerUserKey() {
 
     emit("deliver.a", WARN, "the disk is on fire");
 
-    const std::vector<std::string> posts = capturedAtLeast(2);
+    const std::vector<Post> posts = capturedAtLeast(2);
 
     CHECK_EQ(posts.size(), std::size_t(2));
 
     bool sawUserOne = false;
     bool sawUserTwo = false;
 
-    for (const std::string& post : posts) {
-        CHECK(contains(post, "token=" + token));
-        CHECK(contains(post, "title=[deliver.a] WARNING"));
-        CHECK(contains(post, "the disk is on fire"));
+    for (const Post& post : posts) {
+        /* The DECODED fields, which is what the service reads: the raw body is
+         * percent-encoded, so "[deliver.a] WARNING" is not in it as such */
+        CHECK_EQ(post.one("token"), token);
+        CHECK_EQ(post.one("title"), std::string("[deliver.a] WARNING"));
+        CHECK_EQ(post.one("message"), functionPrefix + "the disk is on fire");
 
-        sawUserOne = sawUserOne || contains(post, "user=user-one");
-        sawUserTwo = sawUserTwo || contains(post, "user=user-two");
+        sawUserOne = sawUserOne || "user-one" == post.one("user");
+        sawUserTwo = sawUserTwo || "user-two" == post.one("user");
     }
 
     CHECK(sawUserOne);
@@ -267,6 +374,119 @@ void testTheLoopGuard() {
     emit("deliver.a", WARN, "still paging");
 
     CHECK_EQ(capturedAtLeast(2).size(), std::size_t(2));
+}
+
+/**
+ * NOT ONE FIELD OF THE REQUEST COMES FROM THE LOG RECORD.
+ *
+ * A log sentence carries whatever a remote IRC server or an IRC user put into
+ * it, and a channel name may legally hold "&", "=", "%", "#" and "+".  A
+ * sentence about a channel called "#x&user=ATTACKERKEY&priority=2&html=1" is
+ * therefore a sentence that, written into the body as it stands, would add a
+ * second "user" to the request - a page sent with this deployment's own token to
+ * somebody else's account - a second "priority", and an "html" nobody asked for.
+ *
+ * So: exactly one "user", and it is the configured key; exactly one "priority";
+ * no "html" at all; and the decoded message equal to the sentence byte for byte,
+ * the "%", the "+" and the "=" included.
+ */
+void testNoSentenceCanAddAField() {
+    CHECK(apply("sink.page.type = pushover\n"
+                "sink.page.token = " +
+                token +
+                "\n"
+                "sink.page.userkey = user-one\n"
+                "sink.page.url = " +
+                urlFor("") +
+                "\n"
+                "sink.page.level = WARN\n"
+                "sink.page.rate = 100/min\n"
+                "logger.root = TRACE, page\n"));
+
+    forgetCaptured();
+
+    const std::string sentence(
+        "Failed to add channel: #x&user=ATTACKERKEY&priority=2&html=1 100% = done + more");
+
+    emit("deliver.e", WARN, sentence);
+
+    const std::vector<Post> posts = capturedAtLeast(1);
+
+    CHECK_EQ(posts.size(), std::size_t(1));
+
+    if (posts.empty())
+        return;
+
+    const Post& post = posts.front();
+
+    CHECK_EQ(post.count("user"), std::size_t(1));
+    CHECK_EQ(post.one("user"), std::string("user-one"));
+    CHECK_EQ(post.count("priority"), std::size_t(1));
+    CHECK_EQ(post.one("priority"), std::string("0"));
+    CHECK_EQ(post.count("html"), std::size_t(0));
+    CHECK_EQ(post.count("token"), std::size_t(1));
+    CHECK_EQ(post.count("message"), std::size_t(1));
+
+    // The whole sentence, behind the function it was logged from, unaltered
+    CHECK_EQ(post.one("message"), functionPrefix + sentence);
+
+    // And nothing of it reached the wire as a field separator or a field name
+    CHECK(!contains(post.raw, "&user=ATTACKERKEY"));
+    CHECK(!contains(post.raw, "&html=1"));
+    CHECK(!contains(post.raw, "&priority=2"));
+
+    /* The word itself is of course still in there, inside the one "message"
+     * field where it belongs: what it may not be is a field of its own */
+    CHECK(contains(post.raw, "ATTACKERKEY"));
+}
+
+/**
+ * A record rendered over two lines arrives as two lines: the newline is the one
+ * control character a notification keeps, and it travels as %0A rather than
+ * being dropped or ending the body.
+ */
+void testATwoLineMessage() {
+    forgetCaptured();
+
+    emit("deliver.e", WARN, "the first line\nthe second line");
+
+    const std::vector<Post> posts = capturedAtLeast(1);
+
+    CHECK_EQ(posts.size(), std::size_t(1));
+
+    if (posts.empty())
+        return;
+
+    CHECK_EQ(posts.front().one("message"), functionPrefix + "the first line\nthe second line");
+
+    // Encoded, and so neither a raw newline in the body nor a lost one
+    CHECK(contains(posts.front().raw, "%0A"));
+    CHECK(!contains(posts.front().raw, "\n"));
+}
+
+/**
+ * The title is escaped like every other field.  A logger name is code-defined
+ * and holds no "&" in this tree, which is exactly why it is worth asserting:
+ * the escaping is of every field of the request and not of the message alone.
+ */
+void testTheTitleIsEscapedToo() {
+    forgetCaptured();
+
+    emit("deliver&x=1.f", WARN, "a title made of a logger name");
+
+    const std::vector<Post> posts = capturedAtLeast(1);
+
+    CHECK_EQ(posts.size(), std::size_t(1));
+
+    if (posts.empty())
+        return;
+
+    const Post& post = posts.front();
+
+    CHECK_EQ(post.one("title"), std::string("[deliver&x=1.f] WARNING"));
+    CHECK_EQ(post.count("x"), std::size_t(0));
+    CHECK_EQ(post.count("title"), std::size_t(1));
+    CHECK(!contains(post.raw, "&x=1"));
 }
 
 /// A rate of two a minute posts two of ten records, and no more
@@ -418,6 +638,9 @@ int main() {
 
     testOnePostPerUserKey();
     testTheLoopGuard();
+    testNoSentenceCanAddAField();
+    testATwoLineMessage();
+    testTheTitleIsEscapedToo();
     testTheRateLimit();
     testAFailingEndpoint();
     testDestroyingASinkWithWorkQueued();
@@ -434,8 +657,8 @@ int main() {
     // And the endpoint did see it, or nothing above proved anything at all
     bool tokenWasSent = false;
 
-    for (const std::string& post : captured())
-        tokenWasSent = tokenWasSent || contains(post, token);
+    for (const Post& post : captured())
+        tokenWasSent = tokenWasSent || token == post.one("token");
 
     ::unlink(configPath.c_str());
 
