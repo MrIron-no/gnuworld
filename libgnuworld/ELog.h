@@ -46,7 +46,7 @@ namespace gnuworld {
  *
  * New code does not use this class.  It logs through LOG and LOG_MSG, which
  * name the logger of the module they stand in and carry a level, a function and
- * typed fields; see doc/README.logger.
+ * typed fields; see doc/README.logger.md.
  */
 class ELog {
 
