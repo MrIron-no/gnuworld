@@ -1,7 +1,46 @@
 
-The newest versions (v7.3.x) of postgresql do not come with c++ support by 
-default.  These libraries have been moved to a separate project.  However, 
-that project is not yet mature enough to compile no most systems.  
-Therefore, we recommend you use the latest version of pgsql v7.2.x 
+2026-09-19: One hierarchical logger, in libgnuworld
+
+GNUWorld's three loggers - the old elog stream, mod.cservice's own
+structured Logger, and log4cplus for mod.dronescan - are down to one:
+libgnuworld/logger.h, configured by an optional logging.conf (see
+bin/logging.example.conf and doc/README.logger).  elog keeps working as a
+deprecated compatibility shim; log4cplus and mod.dronescan are untouched.
+
+A few things an existing install should know about before upgrading:
+
+- debug.log is now appended across restarts instead of being truncated,
+  and its lines use the new column layout documented in doc/README.logger.
+- C++20 <format> is now a hard requirement at configure time (GCC >= 13, or
+  Clang >= 17 with libc++); configure aborts without it.
+- The IRC and console output of a log record now names the logger (the
+  module) rather than the bot's nick; the nick is still available, as the
+  JSON field "bot".
+- A module other than cservice no longer creates an empty "<conf
+  stem>.log" file just by starting; it logs nowhere until logging.conf, or
+  its own code, gives it a sink.
+- A log file this process creates is now mode 0640 rather than whatever the
+  process's umask alone produced; an existing file keeps its mode.
+- cservice's log_verbosity, chan_verbosity, console_verbosity, log_sql and
+  console_sql are now deprecated fallbacks, honoured only for as long as
+  logging.conf has no "logger.cservice" line; in that fallback mode, SQL
+  query lines are DEBUG records and need log_verbosity/console_verbosity
+  at 5 or above, where log_sql/console_sql alone used to be enough.
+- LOGSQL_ERROR is now an alias of SQL_ERROR, usable in any module with a
+  dbHandle, not only in one with a Logger of its own.
+- cservice's command log no longer puts a command's arguments in the
+  sentence a console or an IRC notice shows; they are in the JSON field
+  command_line only.
+- A number of elog lines that used to be printed unconditionally are now
+  DEBUG or TRACE records, and so are quieter by default; raise the level of
+  "legacy" in logging.conf to see them again.
+
+See doc/README.logger for the full reference, the module author's guide,
+and migration notes from elog and from log4cplus.
+
+The newest versions (v7.3.x) of postgresql do not come with c++ support by
+default.  These libraries have been moved to a separate project.  However,
+that project is not yet mature enough to compile no most systems.
+Therefore, we recommend you use the latest version of pgsql v7.2.x
 (currently 7.2.4).
 

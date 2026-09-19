@@ -57,9 +57,10 @@ class ELog {
     /**
      * The stream setStream() was given, which nothing is written to: what a
      * stream used to mean, "these lines are seen on the terminal as well", is
-     * the console sink of the logging system now.  It is remembered because
-     * core asks whether it was set to decide whether a message of its own needs
-     * a fallback to std::cerr.
+     * the console sink of the logging system now, which setStream() turns on
+     * or off to match.  Core decides its own std::cerr fallback by asking
+     * ConsoleSink::enabled() directly; this member is kept only so that
+     * getStream() still answers what was last passed in.
      */
     std::ostream* outStream;
 

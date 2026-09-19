@@ -61,6 +61,35 @@ async def test_check(ccontrol_linked):
     await hub.send_xquery(routing="iauth:1", message="CHECK ...")
 ```
 
+## Logging
+
+`test_logging.py` tests the hierarchical logger of `libgnuworld/logger.h`
+end to end: the built-in default with no `logging.conf`, that a JSON sink's
+lines all parse, an `irc` sink's highlighted notice, SIGHUP reopening a
+renamed file and reloading a changed (or broken) `logging.conf`, per-module
+`<module>.sql` on a forced SQL failure, and cservice's deprecated
+`log_verbosity`/`chan_verbosity`/`console_verbosity`/`log_sql`/`console_sql`
+fallback versus a configured `logger.cservice`. It is written from
+`specs/2026-09-18-logger-core.md`, not from the implementation.
+
+A test drops its own `logging.conf` into the conf dir before start by
+passing `logging_conf=...` to `link_bare`, `link_cservice_logging` or
+`link_ccontrol_logging` (`conftest.py`): the string is written to
+`<conf_dir>/logging.conf` and a `logging_conf = <path>` key is appended to
+`GNUWorld.conf`, so it is found the same way whether gnuworld runs locally
+or, its conf dir bind-mounted read-only, in Docker. Cases that need the
+local build's own command-line behaviour (no `-D`, an explicit `-d`/`-f`,
+sending SIGHUP) run local-only and skip under `GNUWORLD_HARNESS=docker`.
+
+Two fixtures mutate the shared Postgres database to force a failure and
+always undo it, because the database is shared for the whole session:
+`broken_webnotices_table` renames `webnotices` away so cservice's start-up
+`DELETE FROM` it fails, and `blocked_user_commit` adds a trigger that
+rejects an `UPDATE users` for a test nick. Both restore the schema (rename
+the table back; drop the trigger and its function) in a `finally`, so a
+failure inside the test does not leave the database changed for whatever
+runs after it.
+
 ## Layout
 
 | Path | Role |
