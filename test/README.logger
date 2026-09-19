@@ -4,6 +4,10 @@ no modules), which is itself part of what is being tested: the logger
 knows nothing of IRC. Run under "make check"; each uses a local CHECK()
 macro and returns the number of failures.
 
+test_pushover_delivery is the one exception to "libgnuworld alone": it links
+libnotifier and libcurl as well, and it is built only where libcurl is (see
+test/docker/full-deps/run.sh, which is the build that has one).
+
 test_logger_render
 -------------------
 The record types of LogRecord.h and the single-pass template renderer of
@@ -61,6 +65,43 @@ whole file left unapplied; a missing file fails without exiting; configure()
 builds every sink before it changes anything and keeps a code-attached
 sink across a reload; and bin/logging.example.conf itself parses with zero
 errors, its five sinks and its active cservice section included.
+
+It also covers the settings of a kind of sink the parser does not know: that
+they are collected into SinkSpec::options with the keys lower-cased and the
+values trimmed, that the same settings on a file, console or irc sink are
+still parse errors, that a repeated one is a duplicate, that "rate" is an irc
+setting and nothing else's, and - in several broken files, with a
+recognisable token in each - that NO error message ever quotes an option's
+value.
+
+test_logger_ratelimit
+-----------------------
+LogRateLimit.h, the token bucket a channel sink and a pager hold: that a
+bucket starts full, that the refill is continuous rather than by windows
+(checked with an injected clock, so the test neither sleeps nor flakes), that
+capacity is the ceiling however long it stands idle, that a clock going
+backwards changes nothing, that takeSuppressed() counts refusals and resets,
+that parse() takes "10/min", "1/hour", "5 / sec" and "3/MIN" and refuses
+"0/min", "-1/min", "10", "10/day", "x/min" and a count too large to hold, and
+that four threads hammering admit() at one instant get exactly the capacity
+between them.
+
+test_pushover_delivery
+------------------------
+What a pushover sink of logging.conf really puts on the wire, against a local
+HTTP endpoint (test/docker/full-deps/endpoint.py) that records every POST
+body: one request per user key carrying the token, the title "[<logger>]
+WARNING" and the sentence; a record of core.notifier NOT posted (the loop
+guard); "rate = 2/min" posting two of ten records; a failing endpoint (/fail,
+500) producing exactly one core.notifier ERROR and no crash; destroying a
+sink with fifty requests queued behind a slow one (/slow) costing no time and
+sending nothing afterwards; and no log record of the whole run carrying the
+token or a user key. The sink is always built the real way, by
+parseLogConfig() and LogManager::configure() from a file this test writes.
+
+Without PUSHOVER_TEST_URL and PUSHOVER_TEST_CAPTURE in the environment it
+says so and passes, so "make check" needs no endpoint and no network;
+test/docker/full-deps/run.sh is what sets both.
 
 test_elog_shim
 ----------------

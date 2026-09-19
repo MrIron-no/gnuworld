@@ -75,10 +75,27 @@ only), and with a `cservice.conf` that still carries the five logging keys
 cservice no longer reads (one `WARN`, and nothing else changed). It is
 written from `specs/2026-09-18-logger-core.md`, not from the implementation.
 
+Two more cases are about what a sink sends rather than what it says: a
+`cservice.conf` that still carries the four `pushover_*` keys (one `WARN`,
+and neither the token nor the user key in any record or console line), and an
+`irc` sink with `sink.<id>.rate = 2/min` (twenty records on one logger, all
+twenty in the file sink beside it, at most two notices on the channel). The
+flood for that one is twenty PRIVMSGs from a source numeric that does not
+exist — one `WARN` on `core.proto` each — and deliberately not a SIGHUP:
+reloading `logging.conf` builds a new sink, whose bucket starts full again.
+The notice that says how many records were suppressed needs the bucket to
+refill, half a minute away at that rate, so no harness test waits for it;
+`test_logger_ratelimit` covers the counting behind it.
+
+Note that the fake hub reads its socket only when it is asked to: count
+notices after an `await hub.drain_messages(...)`, or `hub.received` will be
+missing whatever arrived while nothing was waiting.
+
 `link_cservice_logging` takes `cservice_extra=`, lines appended to
 `cservice.conf` verbatim, for keys that are not in
 `bin/cservice.example.conf` at all — `override_conf_keys` needs every key to
-be there already, and the five removed logging keys are no longer there.
+be there already, and the nine removed keys (five logging, four pushover) are
+no longer there.
 
 A test drops its own `logging.conf` into the conf dir before start by
 passing `logging_conf=...` to `link_bare`, `link_cservice_logging` or

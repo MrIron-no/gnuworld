@@ -1,9 +1,10 @@
 # GNUWorld Logger System
 
 One hierarchical logger for the whole tree: a process-wide registry of named
-loggers under an unnamed root, sinks (file, console, IRC channel, Pushover,
-Prometheus) attached to any of them, and one `logging.conf` that says which
-records go where. `libgnuworld/logger.h` is the only structured logger in
+loggers under an unnamed root, sinks (file, console, IRC channel, a Pushover
+pager) attached to any of them, and one `logging.conf` that says which
+records go where — cservice's Prometheus exporter is a sink as well, but one
+that module attaches in code rather than one this file names. `libgnuworld/logger.h` is the only structured logger in
 gnuworld; the legacy `elog` stream is a compatibility shim on top of it (see
 [Migration from elog](#migration-from-elog)), and log4cplus, used only by
 `mod.dronescan` today, is untouched and may be replaced at a module
@@ -22,6 +23,12 @@ MrIron
   API this file used to document is gone, and so are cservice's own five
   logging keys: it is configured in `logging.conf` like everything else (see
   [cservice](#cservice) and [Upgrade notes](#upgrade-notes)).
+- Pushover is a sink type of `logging.conf` rather than something cservice
+  attaches in code, so any logger — the root included — can page. With that
+  it has a rate limit, a loop guard and a token in a file to keep private;
+  the `irc` sink gained an opt-in rate limit of the same kind, and
+  cservice's four `pushover_*` keys are gone (see [Upgrade
+  notes](#upgrade-notes) and [Security Notes](#security-notes)).
 
 ## Table of Contents
 
@@ -39,6 +46,7 @@ MrIron
 - [Security Notes](#security-notes)
 - [Migration from elog](#migration-from-elog)
 - [Migration from log4cplus](#migration-from-log4cplus)
+- [Testing with every optional dependency](#testing-with-every-optional-dependency)
 - [Limitations](#limitations)
 - [Troubleshooting](#troubleshooting)
 
@@ -174,23 +182,57 @@ comment on its own line. Copy `bin/logging.example.conf` to `logging.conf`
 to start from a working file.
 
 ```
-sink.<id>.type      = file | console | irc
+sink.<id>.type      = file | console | irc | pushover
 sink.<id>.path      = <file>                                  # file only, required
 sink.<id>.format    = json | text                             # file only; default json
-sink.<id>.level     = OFF|FATAL|ERROR|WARN|INFO|DEBUG|TRACE    # default TRACE
+sink.<id>.level     = OFF|FATAL|ERROR|WARN|INFO|DEBUG|TRACE    # default TRACE (pushover: ERROR)
 sink.<id>.colour    = auto | yes | no                          # console only, default auto
 sink.<id>.channel   = #chan                                    # irc only, required
 sink.<id>.highlight = yes | no                                 # console and irc, default yes
+sink.<id>.rate      = <N>/min | <N>/hour | <N>/sec             # irc: default none; pushover: 10/min
+sink.<id>.token     = <application token>                      # pushover only, required
+sink.<id>.userkey   = <key>[, <key> ...]                       # pushover only, required
+sink.<id>.url       = <endpoint>                               # pushover only, default the service
 
 logger.<dotted.name>     = LEVEL[, sinkid[, sinkid ...]]        # "root" names the root logger
 additivity.<dotted.name> = yes | no                             # default yes
 ```
 
-`pushover` and `prometheus` sinks are not spelled out here at all: a module
-attaches its own in code (see [Migration from elog](#migration-from-elog)'s
-notifier note, and `bin/cservice.example.conf`'s `pushover_*` /
-`prometheus_*` keys). `irc` is registered by core, which is the only layer
-that knows what an IRC channel is.
+`irc` is registered by core, which is the only layer that knows what an IRC
+channel is; `pushover` by the notifier. `prometheus` is **not** a kind of
+sink this file names: cservice attaches its metrics exporter in code, and it
+is a metrics exporter rather than a log destination (see
+`bin/cservice.example.conf`'s `prometheus_*` keys).
+
+**A `pushover` sink** is a pager: one Pushover notification per record per
+user key, `token` and `userkey` required, `rate` defaulting to `10/min`, and
+`level` defaulting to **`ERROR`** rather than to `TRACE` — a pager is opt-in
+for anything chattier than that. `url` exists so a test can point one at a
+local endpoint (`http://` is allowed for that reason). A build without
+libcurl has no pushover sink at all: a file that names one is rejected as a
+whole, with
+`sink.<id>.type: pushover support is not compiled in (libcurl was not found at build time)`.
+See the [Security Notes](#security-notes) for the token, and
+`bin/logging.example.conf`'s commented-out section for a worked example.
+
+**`sink.<id>.rate` on an `irc` sink** is optional and has no default: without
+it a channel sink sends everything it is given, as it always has. With it, at
+most N **records** a period are sent — however many notices each of them is —
+and the rest are dropped and counted; the next record that does go out is
+preceded by one notice of the shape
+`[core] [W] <N> log records were not sent to this channel (rate limit 5/min)`.
+A configuration reload rebuilds the sink, which starts its bucket full again.
+
+**Type-specific settings.** `type`, `level` and `highlight` are common to
+every kind of sink and read by the parser. Everything else belongs to a kind:
+for the built-in ones (`file`, `console`, `irc`) an unknown setting is a parse
+error, as it always was; for any other type the settings the parser does not
+know are collected and handed to that type's **factory**, which validates them
+and whose complaint (`sink.page.token: a pushover sink needs an application
+token`) rejects the whole file. The type line may come after the settings it
+gives meaning to, so this is decided once the whole file has been read. An
+error about such a setting names its **key** and never its value: a value may
+be a token.
 
 **Console defaults**: `colour = auto` means colour only when the process's
 stdout really is a terminal (`isatty`) and the environment variable
@@ -206,7 +248,8 @@ written `root`, however given.
 **Whole-file error handling**: any problem in the file — an unknown key
 prefix, an unknown sink type or level, a sink id a logger line does not
 know, a missing required key (`path` for a file, `channel` for an irc
-sink), two file sinks sharing a path, or a logger named twice — rejects the
+sink, `token` and `userkey` for a pushover one), two file sinks sharing a
+path, or a logger named twice — rejects the
 **whole file**: nothing in it is applied, so a configuration is never half
 in force. Every problem found is reported, each naming the key it is about,
 up to 20 of them (the rest are counted, not listed). A file that does not
@@ -228,7 +271,8 @@ starts and logs wherever it still can) are covered under
 
 ## cservice
 
-cservice is configured here and nowhere else. It has three loggers —
+cservice is configured here and nowhere else — its paging included, since a
+pushover sink is an ordinary sink of this file. It has three loggers —
 `cservice` (the module itself), `cservice.commands` (one record per user
 command) and `cservice.sql` (its statements) — and `bin/logging.example.conf`
 ships an **active** section for them, which is what cservice used to do with
@@ -303,6 +347,51 @@ change:
 - a statement is logged only when it fails, whatever `log_sql` said —
   `logger.cservice.sql = DEBUG` is what asks for the rest.
 
+### The four pushover keys are gone too
+
+An install that paged through cservice has four more keys in its
+`cservice.conf`: `pushover_enable`, `pushover_token`, `pushover_userkey` and
+`pushover_verbosity`. **They are gone as well**, and for the same reason: a
+pager is a sink of `logging.conf`, so it can be attached to any logger rather
+than to cservice's alone — which is what made the records most worth a page
+(a `FATAL` on `core` or `core.net`, another module's failure) the ones that
+never reached Pushover. The file keeps working with the keys in it; cservice
+says so once when it starts, at `WARN`, naming the keys and never their
+values:
+
+```
+<conf>: pushover_enable, pushover_token, pushover_userkey and
+pushover_verbosity are no longer used; configure a pushover sink in
+logging.conf (see bin/logging.example.conf)
+```
+
+What to put into `logging.conf` instead — the four keys, line for line:
+
+```
+sink.page.type    = pushover
+sink.page.token   = <what pushover_token was>
+sink.page.userkey = <what pushover_userkey was, comma separated if several>
+sink.page.level   = WARN                # what pushover_verbosity = 3 meant
+sink.page.rate    = 10/min              # new, and the default
+
+# pushover_enable = yes was cservice and nothing else:
+logger.cservice = DEBUG, cservice, debugchan, console, page
+
+# ... but the records worth a page are everywhere, so prefer the root:
+logger.root = INFO, debuglog, console, main, page
+```
+
+and then `chmod 600 logging.conf`, because it now holds the token (see
+[Security Notes](#security-notes) item 5). `pushover_enable = no` needs
+nothing at all: no sink, no line. Two details of the old behaviour change
+with it — the notification `cmaster init / cmaster connecting...` cservice
+used to send by hand is an ordinary INFO record on `cservice` now, and there
+is a rate limit where there was none.
+
+`prometheus_enable` and the other `prometheus_*` keys are **not** affected:
+Prometheus is a metrics exporter cservice also calls directly, and it stays
+where it is.
+
 ## Logger Names
 
 ```
@@ -314,7 +403,9 @@ core.proto      the protocol layer: one record per message is TRACE
 core.state      network state: clients, servers, channels
 core.config     configuration files, this one included
 core.modules    loading, attaching and unloading modules
-core.notifier   Pushover and Prometheus clients themselves
+core.notifier   the Pushover and Prometheus clients themselves.  A pushover
+                sink NEVER takes a record of this logger or of anything below
+                it: that is the loop guard (see Security Notes item 5)
 ```
 
 and one logger per module, named after its library file
@@ -733,10 +824,36 @@ LogManager::registerSinkType("mytype",
 ```
 
 `file` and `console` are pre-registered; `irc` is registered by core
-(`src/server.cc`), the only layer that knows what a channel is; a notifier
-would register its own kind the same way, though today Pushover and
-Prometheus are attached directly by code (`logger->addSink(pushover, ...)`)
-rather than through `logging.conf`.
+(`src/server.cc`), the only layer that knows what a channel is; `pushover` by
+the notifier (`PushoverClient::registerSinkType()`, called from
+`xServer::setupLogging` beside the `irc` one). Prometheus is not a sink of
+this file: cservice attaches its exporter in code.
+
+**Settings of your own.** A type name the parser does not know is one whose
+settings the parser does not know either: everything but `type`, `level` and
+`highlight` arrives in `spec.options`, a `map<string, string>` with the keys
+lower-cased and the values trimmed. A factory reads the ones it has and
+**refuses the ones it has not**, naming the key:
+
+```cpp
+for (const auto& option : spec.options) {
+    if ("token" == option.first)
+        token = option.second;
+    else {
+        error = "sink." + spec.id + "." + option.first + ": unknown setting for a mytype sink";
+        return nullptr;   // the whole configuration is refused
+    }
+}
+```
+
+Two conventions matter here. An error that already begins with
+`sink.<id>` is quoted as it stands, so a factory can name a key of its own
+(`sink.page.token: ...`) instead of a key behind a second prefix. And an
+error **never quotes an option's value**: an option may be a credential, and
+this text goes into a log file. `spec.levelGiven` says whether the file gave
+a level at all, which is how a kind of sink whose sensible default is not
+`TRACE` — a pager — tells "the file asked for TRACE" from "the file said
+nothing".
 
 ## Threading and Re-entrancy
 
@@ -785,12 +902,29 @@ rather than through `logging.conf`.
    [cservice section](#cservice) stops at `INFO`, and why
    `logger.cservice.sql = DEBUG` is shipped commented out.
 4. **An `irc` sink is driven by whatever the uplink sends**, one notice per
-   anomaly, with no rate limit of its own. Put it on a module's own logger
-   at `WARN` or above, never on `core.state`, `core.proto`, `core.net`, or
-   the root.
-5. **Pushover is a third party**: only the rendered sentence ever leaves
-   this host — no raw fields — but keep its verbosity at `WARN` or above
-   regardless.
+   anomaly, and has no rate limit unless `sink.<id>.rate` asks for one. Put
+   it on a module's own logger at `WARN` or above rather than on
+   `core.state`, `core.proto`, `core.net` or the root — or give it a rate.
+5. **Pushover is a third party, and its token lives in `logging.conf`.**
+   - Only the rendered sentence and the title (`[core.net] FATAL`) leave
+     this host: no fields, no context, no query.
+   - **`chmod 600 logging.conf`.** The file holds an application token, and
+     GNUWorld says so once at `WARN` on `core.config` when it does not:
+     `<file> holds a token and is readable by others (mode 0644); chmod 600
+     it`. That is a warning and nothing more — a configuration file is data.
+   - The token and the user keys reach nothing but the request body. No log
+     record and no error message about the file ever contains either: a
+     record about a user names its **position** in the list (`user #1`).
+   - The default level of a pushover sink is **`ERROR`**, not `TRACE`, and
+     its default rate is `10/min`. Both are worth keeping: a pager that goes
+     off per protocol message is a pager nobody reads.
+   - A pushover sink is safe on the **root**, which is where the records
+     worth a page are (a `FATAL` of `core` or `core.net`, any module's
+     failures): a record of `core.notifier` — where the sink logs its own
+     delivery failures, from its worker thread, where the re-entrancy guard
+     does not apply — is dropped by the sink itself, so it cannot page about
+     failing to page. Those failures are logged at most once a minute per
+     sink, each record saying how many went unsaid behind it.
 6. **`logger.legacy = DEBUG` sends every unconverted module's `elog`
    chatter** to every sink the root has — ccontrol's own password `UPDATE`
    debug line among it. On a production install keep `legacy` at `INFO`,
@@ -983,6 +1117,59 @@ logger's file sinks never rotate themselves. Replace daily rolling with
 logrotate and a SIGHUP, the same as every other sink in the tree — see
 [Log rotation is external](#log-rotation-is-external) for a sample stanza.
 
+## Testing with every optional dependency
+
+Two of this system's sinks are only compiled where an optional library is:
+the `pushover` one needs libcurl, and cservice's Prometheus exporter needs
+prometheus-cpp. A machine without them builds and tests everything else
+without a word, which is exactly how that code goes stale.
+
+`test/docker/full-deps/run.sh`, run from the repository root, is the build
+that has them:
+
+```
+$ test/docker/full-deps/run.sh
+=== Building the image gnuworld-full-deps
+=== Streaming the working tree into a container
+=== configure --enable-modules=... --with-test
+checking for libcurl... yes
+checking for prometheus-cpp-core prometheus-cpp-pull... yes
+=== make -j6
+warnings in the whole build: 0
+=== make check
+# TOTAL: 13
+# PASS:  13
+=== test_pushover_delivery, on its own
+pushover_delivery: all checks passed
+=== A second configuration: --with-log4cplus
+the log4cplus configuration built, 0 warnings in all
+```
+
+What it does: builds a Debian image with every optional dependency
+(`test/docker/full-deps/Dockerfile` — prometheus-cpp is built from source
+there, because Debian ships no C++ Prometheus client at all), then streams
+the **working tree's tracked files** into a container through a tar on stdin,
+so uncommitted edits are included and no build product of the host is.
+Inside: `autogen.sh`, the full `configure`, an assertion that libcurl and
+prometheus-cpp really were found, `make -j$(nproc)` with **no warning from
+`libnotifier/` or `mod.cservice/`**, `make check`, and the delivery test.
+Then the whole thing again with `--with-log4cplus`. Its exit status is all of
+that; nothing is mounted and nothing it writes reaches the host. A new file
+has to be `git add`ed to be streamed in.
+
+`test_pushover_delivery` (`test/pushover_delivery.cc`) is the one test that
+really puts a notification on a wire: a python3 endpoint records every POST
+body and answers Pushover's own success JSON, `/fail` answers 500, `/slow`
+answers half a second late. It asserts one POST per user key with the token,
+the title and the sentence in it; that a record of `core.notifier` is not
+posted; that `rate = 2/min` posts two of ten records; that a failing endpoint
+produces one `core.notifier` ERROR and no crash; that destroying a sink with
+fifty requests queued costs no time at all; and that no log record of the
+whole run carries the token or a user key. It is built only where libcurl is
+(`COND_LIBCURL`), and without `PUSHOVER_TEST_URL` in the environment it says
+so and passes, so `make check` on an ordinary machine needs no endpoint and
+no network.
+
 ## Limitations
 
 - **Two instances of the same module library share one logger** (loading
@@ -995,9 +1182,18 @@ logrotate and a SIGHUP, the same as every other sink in the tree — see
   (see above).
 - No pattern layouts (a text line's shape is fixed), no async logging
   worker, no syslog or network sink.
-- The IRC sink has no rate limit of its own: a chatty logger routed there
-  is exactly as chatty on the channel (see
-  [Security Notes](#security-notes) item 4).
+- The rate limit of an `irc` sink is **opt-in** (`sink.<id>.rate`): without
+  it a chatty logger routed to a channel is exactly as chatty on the
+  channel. A `pushover` sink always has one, `10/min` unless the file says
+  otherwise.
+- A rate limit is per sink and lives only as long as the sink: a
+  configuration reload builds new sinks, and their buckets start full.
+- The IRC sink's "N log records were not sent" notice and the pushover
+  sink's `[gnuworld] suppressed` message both need the bucket to refill
+  before they can be seen, so no automated test waits for one: the counting
+  behind them is covered by `test_logger_ratelimit`
+  (`LogRateLimit::takeSuppressed`), and what the two sinks do with that
+  count is not itself asserted anywhere.
 
 ## Troubleshooting
 
