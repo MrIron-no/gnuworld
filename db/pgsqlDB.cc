@@ -117,10 +117,10 @@ pgsqlDB::~pgsqlDB() {
 }
 
 bool pgsqlDB::Exec(const string& theQuery, bool logQuery) {
-    /* Remembered whether it is logged or not: a caller that asked for no log of
-     * its queries did not ask for its errors to be silent.  But what such a
-     * failure shows of the statement is decided by the same switch */
-    lastQuery = theQuery;
+    /* A caller that asked for no log of its queries did not ask for its errors
+     * to be silent, so a failure is still reported - but not with the statement,
+     * and a statement that may not be shown is not kept at all */
+    lastQuery = logQuery ? theQuery : string();
     lastQueryLoggable = logQuery;
 
     if (logQuery)
@@ -162,10 +162,13 @@ bool pgsqlDB::Exec(const stringstream& theQuery, bool logQuery) {
  * no longer holds it, so there is nothing to report but that.
  */
 void pgsqlDB::logError(const char* func) {
+    // A statement that may not be shown was never kept, so ask the switch first
     std::string query("(none)");
 
-    if (!lastQuery.empty())
-        query = lastQueryLoggable ? lastQuery : std::string("(not logged)");
+    if (!lastQueryLoggable)
+        query = "(not logged)";
+    else if (!lastQuery.empty())
+        query = lastQuery;
 
     sqlLog->createMessage(ERROR, func, "SQL Error: {error}")
         .with("error", ErrorMessage())

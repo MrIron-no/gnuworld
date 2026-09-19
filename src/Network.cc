@@ -82,7 +82,7 @@ bool xNetwork::addClient(iClient* newClient) {
 
     if (!numericMap.insert(numericMapType::value_type(newClient->getIntYYXXX(), newClient))
              .second) {
-        LOG(WARN, "Insert into numericMap failed for numeric {}", newClient->getIntYYXXX());
+        LOG(ERROR, "Insert into numericMap failed for numeric {}", newClient->getIntYYXXX());
         return false;
     }
 
@@ -122,7 +122,7 @@ bool xNetwork::addClient(xClient* newClient) {
     newClient->setIntXXX(intXXX);
 
     if (!localClients.insert(make_pair(newClient->getIntYYXXX(), newClient)).second) {
-        LOG(WARN, "Unable to insert new client into localClients: {}", describeClient(newClient));
+        LOG(ERROR, "Unable to insert new client into localClients: {}", describeClient(newClient));
         newClient->setIntXXX(0);
         return false;
     }
@@ -142,7 +142,7 @@ bool xNetwork::addServer(iServer* newServer) {
     //	<< endl ;
 
     if (!serverMap.insert(serverMapType::value_type(newServer->getIntYY(), newServer)).second) {
-        LOG_MSG(WARN, "Insert into serverMap failed for server: {server}")
+        LOG_MSG(ERROR, "Insert into serverMap failed for server: {server}")
             .with("server", newServer)
             .log();
         return false;
@@ -574,7 +574,7 @@ void xNetwork::addNick(iClient* theClient) {
     // This is a protected method, theClient is guaranteed to
     // be non-NULL.
     if (!nickMap.insert(nickMapType::value_type(theClient->getNickName(), theClient)).second) {
-        LOG(WARN, "Failed to add nick: {}", theClient->getNickName());
+        LOG(ERROR, "Failed to add nick: {}", theClient->getNickName());
     }
 }
 
@@ -955,7 +955,7 @@ void xNetwork::setServer(xServer* _theServer) {
 
     // Reserve the server's numeric
     if (!reservedNumericMap.insert(make_pair(theServer->getIntYY(), set<unsigned int>())).second) {
-        LOG(WARN, "Failed to add core server numeric to reservedNumericMap");
+        LOG(ERROR, "Failed to add core server numeric to reservedNumericMap");
     }
 }
 
@@ -1002,7 +1002,8 @@ bool xNetwork::addFakeClient(iClient* fakeClient, xClient* ownerClient) {
              .second) {
         const string ownerName = (0 == ownerClient) ? string("NULL") : ownerClient->getNickName();
 
-        LOG_MSG(WARN, "Failed to insert into fakeClientMap: {client}, with controlling xClient: {}",
+        LOG_MSG(ERROR,
+                "Failed to insert into fakeClientMap: {client}, with controlling xClient: {}",
                 ownerName)
             .with("client", fakeClient)
             .log();
@@ -1010,7 +1011,7 @@ bool xNetwork::addFakeClient(iClient* fakeClient, xClient* ownerClient) {
     }
 
     if (!numericMap.insert(make_pair(fakeClient->getIntYYXXX(), fakeClient)).second) {
-        LOG_MSG(WARN, "Failed to add client to the numericMap: {client}")
+        LOG_MSG(ERROR, "Failed to add client to the numericMap: {client}")
             .with("client", fakeClient)
             .log();
 
@@ -1103,7 +1104,7 @@ bool xNetwork::addFakeServer(iServer* fakeServer, xClient* owningClient) {
     if (!fakeServerMap
              .insert(make_pair(fakeServer->getIntYY(), make_pair(fakeServer, owningClient)))
              .second) {
-        LOG_MSG(WARN, "Failed to insert new server into fakeServerMap: {server}")
+        LOG_MSG(ERROR, "Failed to insert new server into fakeServerMap: {server}")
             .with("server", fakeServer)
             .log();
 
@@ -1115,7 +1116,7 @@ bool xNetwork::addFakeServer(iServer* fakeServer, xClient* owningClient) {
     }
 
     if (!serverMap.insert(make_pair(fakeServer->getIntYY(), fakeServer)).second) {
-        LOG_MSG(WARN, "Failed to add new server to serverMap: {server}")
+        LOG_MSG(ERROR, "Failed to add new server to serverMap: {server}")
             .with("server", fakeServer)
             .log();
 
