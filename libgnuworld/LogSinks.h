@@ -25,7 +25,6 @@
 
 #include <atomic>
 #include <cstddef>
-#include <fstream>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -60,6 +59,13 @@ class LogSinks {
  * The lines are the JSON objects of formatJson() or the columns of
  * formatText(), never coloured: nothing reads a log file through a terminal.
  *
+ * A log file holds addresses, accounts and the command lines of users, so a
+ * file this sink creates is readable by its own user and its own group and by
+ * nobody else - 0640, less whatever the umask takes away.  A file that is
+ * already there keeps the mode it has: it is the operator's file, not ours.
+ * The directory it sits in is the operator's business as well, and has to be
+ * writable by this user alone.
+ *
  * A file that cannot be opened is not an error the logging system reports to
  * anyone: emit() then does nothing at all and isOpen() is false.
  */
@@ -70,6 +76,8 @@ class FileSink : public LogSink {
      * asks the text format for the full date rather than the time of day.
      */
     FileSink(std::string path, bool json, bool fullDateText = true);
+
+    ~FileSink() override;
 
     void emit(const LogRecord&) override;
 
@@ -83,12 +91,25 @@ class FileSink : public LogSink {
     const std::string& path() const { return filePath; }
 
   private:
+    /// Opens filePath for appending, with the lock held
+    void openLocked();
+
+    /// Closes the file if it is open, with the lock held
+    void closeLocked();
+
     std::string filePath;
     bool json;
     bool fullDateText;
 
     mutable std::mutex lock;
-    std::ofstream file;
+
+    /**
+     * The file, or -1 while there is none.  It is a descriptor of its own
+     * rather than a stream because a stream cannot say what mode to create a
+     * file with, and because O_APPEND makes each write land whole even when
+     * another process is appending to the same file.
+     */
+    int file;
 };
 
 /**

@@ -22,6 +22,8 @@
 #include <vector>
 
 #include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "LogRecord.h"
@@ -141,6 +143,27 @@ std::size_t countOf(std::string_view haystack, std::string_view needle) {
 
     return count;
 }
+
+/// The permission bits of a file, or 07777 for a file that is not there, which
+/// is a value no check below expects
+mode_t fileMode(const std::string& path) {
+    struct stat info{};
+
+    if (0 != ::stat(path.c_str(), &info))
+        return 07777;
+
+    return info.st_mode & 07777;
+}
+
+/// The process umask while this lives, back to what it was when it dies
+class UmaskWhile {
+  public:
+    explicit UmaskWhile(mode_t mask) : saved(::umask(mask)) {}
+    ~UmaskWhile() { ::umask(saved); }
+
+  private:
+    mode_t saved;
+};
 
 /// 'd' matches one digit, every other character matches itself
 bool shapeMatches(std::string_view text, std::string_view shape) {
@@ -294,6 +317,74 @@ void testFileSinkUnopenable() {
     }
     CHECK(!threw);
     CHECK(!sink.isOpen());
+}
+
+/**
+ * A log file holds addresses, accounts, and the command lines of users: the
+ * sink creates it readable by its own user and its own group and by nobody
+ * else, whatever the umask of the process would have allowed.  A file that is
+ * already there is the operator's, and keeps the mode the operator gave it.
+ */
+void testFileSinkCreatesPrivateFile() {
+    {
+        const UmaskWhile mask(0);
+        const std::string path = scratchPath("mode-open.log");
+
+        FileSink sink(path, true);
+        CHECK(sink.isOpen());
+        sink.emit(makeRecord(INFO, "core", "for us alone"));
+
+        CHECK(fileMode(path) == 0640);
+    }
+
+    // The umask still takes away what it takes away
+    {
+        const UmaskWhile mask(077);
+        const std::string path = scratchPath("mode-tight.log");
+
+        FileSink sink(path, true);
+        CHECK(sink.isOpen());
+        sink.emit(makeRecord(INFO, "core", "for me alone"));
+
+        CHECK(fileMode(path) == 0600);
+    }
+
+    {
+        const UmaskWhile mask(0);
+        const std::string path = scratchPath("mode-existing.log");
+
+        {
+            std::ofstream prior(path, std::ios::out | std::ios::trunc);
+            prior << "prior content\n";
+        }
+        CHECK(0 == ::chmod(path.c_str(), 0644));
+
+        FileSink sink(path, true);
+        CHECK(sink.isOpen());
+        sink.emit(makeRecord(INFO, "core", "appended to somebody else's file"));
+
+        CHECK(fileMode(path) == 0644);
+
+        const std::vector<std::string> lines = splitFileLines(readFile(path));
+        CHECK(lines.size() == 2);
+    }
+
+    // And the same mode after a rotation, which opens the path again
+    {
+        const UmaskWhile mask(0);
+        const std::string path = scratchPath("mode-rotated.log");
+        const std::string moved = scratchPath("mode-rotated.log.1");
+
+        FileSink sink(path, true);
+        sink.emit(makeRecord(INFO, "core", "before rotation"));
+
+        CHECK(0 == ::rename(path.c_str(), moved.c_str()));
+        sink.reopen();
+        sink.emit(makeRecord(INFO, "core", "after rotation"));
+
+        CHECK(sink.isOpen());
+        CHECK(fileMode(path) == 0640);
+    }
 }
 
 void testFileSinkTwoThreads() {
@@ -470,6 +561,7 @@ int main() {
     testFileSinkReopen();
     testFileSinkText();
     testFileSinkUnopenable();
+    testFileSinkCreatesPrivateFile();
     testFileSinkTwoThreads();
     testConsoleSinkDisabled();
     testConsoleSinkColour();

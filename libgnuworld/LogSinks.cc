@@ -22,13 +22,14 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
-#include <fstream>
-#include <ios>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <utility>
 
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "LogFormat.h"
@@ -70,34 +71,79 @@ std::size_t LogSinks::nameWidth() { return nameWidthValue.load(); }
  * ------------------------------------------------------------------ */
 
 FileSink::FileSink(std::string path, bool json, bool fullDateText)
-    : filePath(std::move(path)), json(json), fullDateText(fullDateText),
-      file(filePath, std::ios::out | std::ios::app) {}
-
-void FileSink::emit(const LogRecord& record) {
+    : filePath(std::move(path)), json(json), fullDateText(fullDateText), file(-1) {
     const std::lock_guard<std::mutex> guard(lock);
 
-    if (!file.is_open())
+    openLocked();
+}
+
+FileSink::~FileSink() {
+    const std::lock_guard<std::mutex> guard(lock);
+
+    closeLocked();
+}
+
+/**
+ * The mode a log file this sink creates is given: its own user and its own
+ * group, and nobody else.  A file that already exists keeps its own mode, as
+ * ::open() leaves the mode of a file it did not create alone.
+ */
+void FileSink::openLocked() {
+    file = ::open(filePath.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0640);
+}
+
+void FileSink::closeLocked() {
+    if (-1 == file)
         return;
 
-    file << (json
-                 ? formatJson(record)
-                 : formatText(record, TextStyle{fullDateText, false, false, LogSinks::nameWidth()}))
-         << '\n';
-    file.flush();
+    ::close(file);
+    file = -1;
+}
+
+void FileSink::emit(const LogRecord& record) {
+    // The whole line at once, so that O_APPEND lands it in one piece
+    std::string line =
+        json ? formatJson(record)
+             : formatText(record, TextStyle{fullDateText, false, false, LogSinks::nameWidth()});
+
+    line += '\n';
+
+    const std::lock_guard<std::mutex> guard(lock);
+
+    if (-1 == file)
+        return;
+
+    /* A write of a pipe or a file on a full disk may stop short, and a signal
+     * may interrupt one before a byte of it is written.  Anything else is a
+     * file this sink can do nothing more with, and says nothing about */
+    std::string::size_type written = 0;
+
+    while (written < line.size()) {
+        const ssize_t count = ::write(file, line.data() + written, line.size() - written);
+
+        if (count > 0) {
+            written += static_cast<std::string::size_type>(count);
+            continue;
+        }
+
+        if (-1 == count && EINTR == errno)
+            continue;
+
+        return;
+    }
 }
 
 void FileSink::reopen() {
     const std::lock_guard<std::mutex> guard(lock);
 
-    file.close();
-    file.clear(); // open() does not clear what a failed close left behind
-    file.open(filePath, std::ios::out | std::ios::app);
+    closeLocked();
+    openLocked();
 }
 
 bool FileSink::isOpen() const {
     const std::lock_guard<std::mutex> guard(lock);
 
-    return file.is_open();
+    return -1 != file;
 }
 
 /* ------------------------------------------------------------------ *
