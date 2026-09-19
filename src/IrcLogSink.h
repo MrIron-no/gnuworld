@@ -26,8 +26,10 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 
+#include "LogRateLimit.h"
 #include "LogRecord.h"
 #include "LogSink.h"
 
@@ -48,6 +50,10 @@ class xServer;
  * suppressOnReentry() is true as well: sending a notice logs on its own
  * account (the write path, the protocol layer), and a sink that took those
  * records would feed itself.
+ *
+ * A sink may have a rate limit, which it has not got unless the configuration
+ * asked for one: beyond it a record is dropped and counted, and the next record
+ * that does go out is preceded by one notice saying how many did not.
  *
  * No mutex of this class is ever held while a notice is sent.  The queue is
  * swapped out under the lock and delivered after it is released, and the
@@ -74,8 +80,15 @@ class IrcLogSink : public LogSink, public std::enable_shared_from_this<IrcLogSin
      * Mirrors to channel on server, which may be null and may be unconnected:
      * the sink drops records for as long as there is nowhere to put them.
      * highlight puts the substituted values of a message in bold.
+     *
+     * rate is a limit of the shape "5/min" (LogRateLimit::parse), and empty -
+     * the default - is no limit at all, which is what this sink has always had.
+     * Beyond the limit a RECORD is dropped, however many lines it would have
+     * been, and counted; the next record that does go out is preceded by one
+     * notice saying how many did not.
      */
-    IrcLogSink(xServer* server, std::string channel, bool highlight);
+    IrcLogSink(xServer* server, std::string channel, bool highlight,
+               const std::string& rate = std::string());
 
     /// Leaves the process-wide list; whatever was still queued is forgotten
     ~IrcLogSink() override;
@@ -138,6 +151,17 @@ class IrcLogSink : public LogSink, public std::enable_shared_from_this<IrcLogSin
     bool highlight;
     std::deque<LogRecord> queue;
     std::size_t droppedCount;
+
+    /**
+     * How many records a minute this channel is worth, and what the limit
+     * refused.  Nothing at all when the file gave no rate, which is what every
+     * configuration written before there was one says, and means no limit.
+     *
+     * The limit is taken off in deliver(), where a record really does go to a
+     * channel: a record dropped because nothing is connected is not one this
+     * limit has to account for.
+     */
+    std::optional<LogRateLimit> limit;
 
     /// How many of those a flush has already said were dropped
     std::size_t reportedCount = 0;

@@ -21,10 +21,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -71,8 +73,17 @@ static std::vector<IrcLogSink*>& registry() {
     return *sinks;
 }
 
-IrcLogSink::IrcLogSink(xServer* server, std::string channel, bool highlight)
+IrcLogSink::IrcLogSink(xServer* server, std::string channel, bool highlight,
+                       const std::string& rate)
     : server(server), channel(std::move(channel)), highlight(highlight), droppedCount(0) {
+    std::size_t count = 0;
+    std::chrono::seconds per(0);
+
+    /* A rate the configuration parser already accepted; anything else - a rate
+     * from code, say - is no limit rather than a wrong one */
+    if (!rate.empty() && LogRateLimit::parse(rate, count, per))
+        limit.emplace(count, per);
+
     const std::lock_guard<std::mutex> guard(registryLock());
 
     registry().push_back(this);
@@ -206,6 +217,33 @@ void IrcLogSink::deliver(const LogRecord& record) {
 
     if (nullptr == theChan)
         return;
+
+    /* The rate limit, taken off here and nowhere else: what is counted is a
+     * RECORD, however many notices it is about to become, and only a record
+     * that really would have gone to the channel */
+    if (limit) {
+        if (!limit->admit())
+            return;
+
+        const std::size_t suppressed = limit->takeSuppressed();
+
+        /* What the limit refused, said once in front of the record that got
+         * through, and looking like every other line of this channel: one
+         * synthetic WARN record on "core", through the same formatter */
+        if (0 != suppressed) {
+            LogRecord notice;
+
+            notice.time = std::chrono::system_clock::now();
+            notice.level = WARN;
+            notice.logger = "core";
+            notice.message = std::to_string(suppressed) +
+                             " log records were not sent to this channel (rate limit " +
+                             limit->describe() + ")";
+
+            theServer->serverNotice(
+                theChan, formatIrcLine(notice, notice.message, notice.spans, theHighlight));
+        }
+    }
 
     for (const std::pair<std::string, std::vector<LogSpan>>& line : splitLines(record)) {
         // A std::string, never a format: a '%' or a '{}' of a log message is
