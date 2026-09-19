@@ -1305,6 +1305,11 @@ void xServer::PartChannel(xClient* theClient, Channel* theChan, const string& re
     assert(theClient != 0);
     assert(theChan != 0);
 
+    if (theClient->IsStealth()) {
+        // It never joined: no client on the network, and no server form of a PART
+        return;
+    }
+
     stringstream s;
     s << theClient->getCharYYXXX() << " L " << theChan->getName() << " :" << reason;
 
@@ -1389,6 +1394,14 @@ void xServer::OnXReply(iServer* theServer, const string& Routing, const string& 
 
 bool xServer::JoinChannel(xClient* theClient, const string& chanName, const string& chanModes,
                           const time_t& joinTime, bool getOps) {
+    if (theClient->IsStealth()) {
+        // A stealth module has no client on the network to join with, and the
+        // protocol has no server form of a JOIN or a CREATE: what it wants a
+        // channel for it does as the server instead.
+        LOG(WARN, "A stealth module ({}) cannot join {}", theClient->getNickName(), chanName);
+        return false;
+    }
+
     // Determine the timestamp to use for the join
     time_t postJoinTime = joinTime;
     channelEventType whichEvent = EVT_JOIN;

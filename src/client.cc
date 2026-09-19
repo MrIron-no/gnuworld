@@ -746,9 +746,8 @@ bool xClient::isOnChannel(const string& chanName) const {
 bool xClient::isOnChannel(const Channel* theChan) const {
     assert(theChan != NULL);
 
-    ChannelUser* meUser = theChan->findUser(me);
-
-    return (meUser != NULL);
+    // A stealth module has no client on the network, so it is on no channel
+    return (me != nullptr) && (theChan->findUser(me) != NULL);
 }
 
 void xClient::OnJoin(Channel* theChan) {

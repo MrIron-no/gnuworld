@@ -528,13 +528,15 @@ async def link_debug(
     *,
     gnutest: bool = False,
     burstchannel: str | None = None,
+    gnutest_stealth: bool = False,
 ):
     """Run a Dockerized gnuworld with stealth mod.debug linked to ``hub``.
 
     ``burst`` is what the hub sends as its net burst (see fake_hub.load_capture).
     ``gnutest`` also loads mod.gnutest, which calls the core API from chat
     commands (see gnutest_client.py); ``burstchannel`` makes it claim a channel
-    with xServer::BurstChannel() during gnuworld's own burst.
+    with xServer::BurstChannel() during gnuworld's own burst, and
+    ``gnutest_stealth`` runs it with no client on the network (see test_stealth).
     gnuworld runs from the build tree unless GNUWORLD_HARNESS=docker, in which
     case the docker_stack fixture has to be active. Yields (hub, proc).
     """
@@ -545,7 +547,8 @@ async def link_debug(
     GnuworldProc.write_debug_config(conf_dir / "debug.conf")
     modules = [f"module = libdebug.la {GnuworldProc.conf_root(conf_dir)}/debug.conf"]
     if gnutest:
-        GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf", burstchannel=burstchannel)
+        GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf", burstchannel=burstchannel,
+                                          stealth=gnutest_stealth)
         modules.append(f"module = libgnutest.la {GnuworldProc.conf_root(conf_dir)}/gnutest.conf")
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",
@@ -577,6 +580,13 @@ async def debug_linked_p11(docker_stack, fake_hub_p11, tmp_path):
 async def gnutest_linked_p11(docker_stack, fake_hub_p11, tmp_path):
     """Dockerized gnuworld with mod.debug and mod.gnutest, linked to a P11 hub."""
     async with link_debug(fake_hub_p11, tmp_path, gnutest=True) as linked:
+        yield linked
+
+
+@pytest_asyncio.fixture
+async def stealth_gnutest_linked_p11(docker_stack, fake_hub_p11, tmp_path):
+    """Dockerized gnuworld with stealth mod.debug and stealth mod.gnutest, P11 hub."""
+    async with link_debug(fake_hub_p11, tmp_path, gnutest=True, gnutest_stealth=True) as linked:
         yield linked
 
 

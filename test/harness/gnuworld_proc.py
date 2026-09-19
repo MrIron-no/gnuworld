@@ -325,12 +325,17 @@ class GnuworldProc:
         *,
         operchan: str = "#gnutest-opers",
         burstchannel: str | None = None,
+        stealth: bool = False,
     ) -> Path:
         """``burstchannel`` is "<#channel> <timestamp> [<modes> [<args>]]": gnutest
-        then calls xServer::BurstChannel() with it during gnuworld's own burst."""
+        then calls xServer::BurstChannel() with it during gnuworld's own burst.
+        ``stealth`` runs it with no client on the network, addressed as
+        ``gnutest@<server>``."""
         text = GNUTEST_CONF_TEMPLATE.read_text(encoding="utf-8").replace("@OPERCHAN@", operchan)
         if burstchannel:
             text += f"burstchannel = {burstchannel}\n"
+        if stealth:
+            text += "stealth = yes\n"
         path.write_text(text, encoding="utf-8")
         return path
 
