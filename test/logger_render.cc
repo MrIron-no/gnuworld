@@ -198,7 +198,6 @@ void testLevels() {
     CHECK(std::string(levelName(INFO)) == "INFO");
     CHECK(std::string(levelName(DEBUG)) == "DEBUG");
     CHECK(std::string(levelName(TRACE)) == "TRACE");
-    CHECK(std::string(levelName(SQL)) == "SQL");
     CHECK(std::string(levelName(OFF)) == "OFF");
 
     CHECK(std::string(levelColumn(FATAL)) == "FATAL");

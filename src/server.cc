@@ -895,11 +895,6 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
 
     Client->MyUplink = this;
 
-    // The uplink is what a channel log sink needs, and this is the first
-    // moment the client has one.  Not in OnAttach(): a module may override it
-    // without calling the base class.
-    Client->attachIrcLogSink(this);
-
     // Let the client know it has been added to
     // the server and its tables.
     Client->OnAttach();

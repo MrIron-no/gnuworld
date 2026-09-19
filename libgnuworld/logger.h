@@ -87,13 +87,6 @@
 #define LOG_TO(loggerPtr, x, ...) (loggerPtr)->writeFunc(x, __PRETTY_FUNCTION__, __VA_ARGS__)
 
 /**
- * SQL error logging macro for database-related errors.
- * Automatically formats SQL error messages from database objects.
- */
-#define LOGSQL_ERROR(x)                                                                            \
-    moduleLogger()->writeFunc(ERROR, __PRETTY_FUNCTION__, "SQL Error: {}", x->ErrorMessage())
-
-/**
  * Structured logging macro with template support and field extraction.
  * Allows mixing format arguments with named placeholders and structured fields.
  * Usage: LOG_MSG(INFO, "User {} joined {channel}", username).with("channel", chanPtr).log();
@@ -261,6 +254,11 @@ class Logger {
     /**
      * Fills in the logger's name, its context and the time, and hands the
      * record to every sink whose threshold it passes.
+     *
+     * A record the effective level of this logger does not admit goes nowhere,
+     * and nothing is ever logged at OFF: the guards at the call sites spare the
+     * formatting of such a record, this one is what makes the level the
+     * logger's own answer rather than the caller's.
      */
     void log(LogRecord&& r);
 
@@ -544,81 +542,6 @@ class Logger {
      */
     static void removeExtractors(const void* owner);
 
-    /**
-     * Sets the IRC channel name for debug output.
-     * Messages will be sent to this channel based on chanVerbosity setting.
-     */
-    void setChannel(const std::string& channelName);
-
-    /**
-     * Returns the currently configured debug channel name.
-     */
-    std::string getChannel() const;
-
-    /**
-     * Sets the verbosity level for IRC channel output.
-     * Only messages at or below this level will be sent to the debug channel.
-     */
-    void setChanVerbosity(unsigned short level);
-
-    /**
-     * Sets the verbosity level for log file output.
-     * Only messages at or below this level will be written to the log file.
-     */
-    void setLogVerbosity(unsigned short level);
-
-    /**
-     * Sets the verbosity level for console output.
-     * Only log messages at or below this level will be displayed on the console.
-     */
-    void setConsoleVerbosity(unsigned short level);
-
-    /**
-     * Enables or disables SQL query logging.
-     * When enabled, SQL queries will be logged to the file.
-     */
-    void setLogSQL(bool enable);
-
-    /**
-     * Enables or disables SQL query logging to the console.
-     * When enabled, SQL-related log messages will be displayed on the console.
-     */
-    void setConsoleSQL(bool enable);
-
-    /**
-     * Names the sink the legacy log-file settings act on, and gives it the
-     * threshold those settings have asked for so far.
-     */
-    void setLegacyFileSink(std::shared_ptr<LogSink>);
-
-    /**
-     * Names the sink the legacy console settings act on, the same way.
-     */
-    void setLegacyConsoleSink(std::shared_ptr<LogSink>);
-
-    /**
-     * Names the sink the legacy channel settings act on, the same way.
-     */
-    void setLegacyIrcSink(std::shared_ptr<LogSink>);
-
-    /**
-     * How the compatibility setter above reaches the sink that mirrors to a
-     * chat room, without this file having to know what such a sink is.
-     */
-    void setLegacyChanSetter(std::function<void(const std::string&)>);
-
-    /**
-     * Forgets everything the legacy per-module keys left here: the three slots,
-     * the channel setter, the channel name, the verbosities, the SQL keys and
-     * the level they asked for, all of them as they are on a logger nobody has
-     * said anything to yet.  Takes no sink out of the lists: the module that
-     * attached them removes its own.
-     *
-     * A module calls this as it goes, because the logger of its name is the
-     * registry's and a module that is loaded again finds that very logger.
-     */
-    void resetLegacyState();
-
   private:
     /**
      * A logger writing under this name, below this parent.  It starts with no
@@ -665,35 +588,21 @@ class Logger {
     static void setExtractor(std::type_index, const void* owner, Extractor);
 
     /**
-     * What one record of the walk up the hierarchy is delivered to: the sink,
-     * the threshold of the attachment that allows the most, and which of the
-     * legacy slots of the logger the record was logged on it is, if any.
+     * What one record of the walk up the hierarchy is delivered to: the sink and
+     * the threshold of the attachment that allows the most.
      */
-    enum class LegacySlot { None, File, Console };
-
     struct Target {
         std::shared_ptr<LogSink> sink;
         Verbosity threshold;
-        LegacySlot slot;
     };
 
     /**
-     * Adds this logger's sinks to the list of a dispatch that is on its way up,
-     * with the legacy slots tagged when the record was logged on this very
-     * logger.  A sink already in the list stays where it is and keeps the most
-     * permissive of its thresholds: it hears the record once.  The logger's
-     * mutex is held by the caller.
+     * Adds this logger's sinks to the list of a dispatch that is on its way up.
+     * A sink already in the list stays where it is and keeps the most permissive
+     * of its thresholds: it hears the record once.  The logger's mutex is held
+     * by the caller.
      */
-    void appendTargetsLocked(std::vector<Target>& targets, bool tagLegacySlots) const;
-
-    /**
-     * Works out the level the legacy per-module keys ask for: the most of what
-     * the slots that are installed want, and nothing at all when none is.  This
-     * is what a module logged at before its logger had a hierarchy to inherit a
-     * level from, where a record was written if it passed any of the three
-     * verbosities.  The logger's mutex is held by the caller.
-     */
-    void recomputeLegacyLevelLocked();
+    void appendTargetsLocked(std::vector<Target>& targets) const;
 
     /// Adds every sink of this logger to the list, for LogManager::reopenAll()
     void appendSinks(std::vector<std::shared_ptr<LogSink>>&) const;
@@ -725,24 +634,6 @@ class Logger {
     std::vector<SinkEntry> configSinks;
     std::vector<SinkEntry> codeSinks;
     std::vector<LogField> context;
-
-    /**
-     * The three sinks the legacy per-module logging keys configure, and the
-     * settings they carry.  The thresholds are kept here as well as on the
-     * sinks, because a module reads its configuration before it has an uplink
-     * and so before the channel sink exists: installing a slot applies
-     * whatever was asked for in the meantime.
-     */
-    std::shared_ptr<LogSink> legacyFileSink;
-    std::shared_ptr<LogSink> legacyConsoleSink;
-    std::shared_ptr<LogSink> legacyIrcSink;
-    std::function<void(const std::string&)> legacyChanSetter;
-    std::string legacyChanName;
-    Verbosity legacyLogVerbosity = TRACE;
-    Verbosity legacyConsoleVerbosity = TRACE;
-    Verbosity legacyChanVerbosity = INFO;
-    bool logSQL = false;
-    bool consoleSQL = false;
 
     mutable std::mutex logMutex;
 }; // class Logger

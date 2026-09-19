@@ -59,6 +59,16 @@ void emit(Logger* logger, Verbosity level, const std::string& message) {
     logger->writeFunc(level, "void anon::emit()", "{}", message);
 }
 
+/// A record to hand straight to Logger::log(), asking the logger nothing first
+LogRecord recordOf(Verbosity level, const std::string& message) {
+    LogRecord record{};
+
+    record.level = level;
+    record.message = message;
+
+    return record;
+}
+
 /* ------------------------------------------------------------------ *
  * The registry: names, ancestors and identity
  * ------------------------------------------------------------------ */
@@ -181,155 +191,90 @@ void testCodeDefault() {
 }
 
 /**
- * The legacy per-module verbosities are a level of the logger as well as a
- * threshold of a sink: what the three keys ask for together is what the logger
- * logs, which is what they asked for before a logger had a hierarchy to inherit
- * a level from.  A slot that is not installed has no say, and what it was asked
- * for in the meantime is applied when it arrives.
+ * The level is the logger's own business and not only the call site's: a record
+ * handed straight to log(), which nothing asked shouldLog() about, is dropped
+ * unless the effective level admits it.  A record of level OFF is never emitted
+ * at all, whatever the logger logs at.
  */
-/**
- * The logger this one replaces built a record if any notifier wanted it.  So
- * while a module logs the legacy way, a sink it attached itself -- pushover,
- * say -- raises the level to what it asks for, and stops doing so when it goes.
- */
-void testLegacyLevelHearsTheModulesOwnSinks() {
-    Logger* const logger = LogManager::get("legacy.notifier");
+void testLogFiltersByEffectiveLevel() {
+    Logger* const logger = LogManager::get("filter");
 
-    const std::shared_ptr<CaptureSink> file = std::make_shared<CaptureSink>();
-    const std::shared_ptr<CaptureSink> notifier = std::make_shared<CaptureSink>();
+    const std::shared_ptr<CaptureSink> sink = std::make_shared<CaptureSink>();
+    logger->addSink(sink, TRACE);
 
-    // Without a legacy slot a sink of the module's own changes no level
-    logger->addSink(notifier, DEBUG);
-    CHECK(INFO == logger->effectiveLevel());
+    logger->setLevel(INFO);
+    logger->log(recordOf(DEBUG, "too verbose"));
 
-    logger->addSink(file, TRACE);
-    logger->setLegacyFileSink(file);
-    logger->setLogVerbosity(4);
+    CHECK(0 == sink->size());
 
-    // The file asks for INFO, the notifier for DEBUG: DEBUG it is
-    CHECK(DEBUG == logger->effectiveLevel());
+    logger->setLevel(DEBUG);
+    logger->log(recordOf(DEBUG, "wanted"));
 
-    emit(logger, DEBUG, "for the notifier");
-    CHECK(1 == notifier->size());
-    CHECK(0 == file->size());
+    CHECK(1 == sink->size());
+    if (1 == sink->size())
+        CHECK_EQ(sink->records[0].message, "wanted");
 
-    logger->setSinkThreshold(notifier, WARN);
-    CHECK(INFO == logger->effectiveLevel());
+    // Nothing is logged at OFF, not even on a logger whose level is OFF
+    logger->setLevel(OFF);
+    logger->log(recordOf(OFF, "nothing"));
+    logger->setLevel(TRACE);
+    logger->log(recordOf(OFF, "still nothing"));
 
-    logger->setSinkThreshold(notifier, TRACE);
-    CHECK(TRACE == logger->effectiveLevel());
+    CHECK(1 == sink->size());
 
-    logger->removeSink(notifier);
-    CHECK(INFO == logger->effectiveLevel());
-
-    logger->removeSink(file);
-    logger->resetLegacyState();
-    CHECK(INFO == logger->effectiveLevel());
+    logger->setConfigLevel(std::nullopt);
+    logger->removeSink(sink);
 }
 
-void testLegacyVerbosityLevel() {
-    Logger* const logger = LogManager::get("legacy.mod");
+/**
+ * The logger a dbHandle logs its statements to: a child asked for with a code
+ * default of its own is quieter than the module it belongs to, its records reach
+ * the module's sinks by additivity, and the legacy keys of a module may make it
+ * speak of every statement again -- until the configuration file says otherwise.
+ */
+void testSqlChildLevel() {
+    Logger* const module = LogManager::get("dbmod");
+    Logger* const sql = module->child("sql", ERROR);
 
-    // With no slot installed the logger has nothing of its own to say: the
-    // level is the root's, and a debug record is not built at all
-    CHECK(INFO == logger->effectiveLevel());
-    CHECK(!logger->shouldLog(DEBUG));
+    module->setLevel(DEBUG);
 
-    const std::shared_ptr<CaptureSink> file = std::make_shared<CaptureSink>();
-    const std::shared_ptr<CaptureSink> console = std::make_shared<CaptureSink>();
-    const std::shared_ptr<CaptureSink> irc = std::make_shared<CaptureSink>();
+    const std::shared_ptr<CaptureSink> onModule = std::make_shared<CaptureSink>();
+    module->addSink(onModule, TRACE);
 
-    // The file slot arrives with the default log verbosity, which is TRACE
-    logger->addSink(file, TRACE);
-    logger->setLegacyFileSink(file);
+    // The code default of the child, not the level of its parent
+    CHECK(ERROR == sql->effectiveLevel());
+    CHECK(sql->isAdditive());
 
-    CHECK(TRACE == logger->effectiveLevel());
+    sql->log(recordOf(DEBUG, "select 1"));
+    CHECK(0 == onModule->size());
 
-    emit(logger, DEBUG, "kept");
-    CHECK(1 == file->size());
+    // What went wrong is heard, on the sinks of the module the child hangs under
+    sql->log(recordOf(ERROR, "SQL Error: no such table"));
 
-    // What the only slot installed asks for is what the logger logs
-    logger->setLogVerbosity(4);
+    CHECK(1 == onModule->size());
+    if (1 == onModule->size()) {
+        CHECK_EQ(onModule->records[0].logger, "dbmod.sql");
+        CHECK_EQ(onModule->records[0].message, "SQL Error: no such table");
+    }
 
-    CHECK(INFO == logger->effectiveLevel());
+    // log_sql = yes of a module's own configuration file
+    sql->setLegacyLevel(DEBUG);
+    CHECK(DEBUG == sql->effectiveLevel());
 
-    emit(logger, DEBUG, "dropped");
-    CHECK(1 == file->size());
+    sql->log(recordOf(DEBUG, "select 2"));
+    CHECK(2 == onModule->size());
 
-    // A verbosity out of the range there is asks for the most there is
-    logger->setLogVerbosity(99);
-    CHECK(TRACE == logger->effectiveLevel());
-    logger->setLogVerbosity(4);
-    CHECK(INFO == logger->effectiveLevel());
+    // And a logger.<module>.sql line beats what that file asked for
+    sql->setConfigLevel(ERROR);
+    CHECK(ERROR == sql->effectiveLevel());
 
-    /* The most of what the installed slots ask for: the console wants debug
-     * records, the file still only informational ones, and the threshold of the
-     * file sink is what keeps this one from it */
-    logger->addSink(console, TRACE);
-    logger->setLegacyConsoleSink(console);
-    logger->setConsoleVerbosity(5);
+    sql->log(recordOf(DEBUG, "select 3"));
+    CHECK(2 == onModule->size());
 
-    CHECK(DEBUG == logger->effectiveLevel());
-
-    emit(logger, DEBUG, "the console only");
-    CHECK(1 == file->size());
-    CHECK(1 == console->size());
-
-    // A channel verbosity with no channel sink is remembered, not applied: the
-    // slot that arrives later is what makes it a level
-    logger->setChanVerbosity(6);
-    CHECK(DEBUG == logger->effectiveLevel());
-
-    logger->addSink(irc, INFO);
-    logger->setLegacyIrcSink(irc);
-    CHECK(TRACE == logger->effectiveLevel());
-
-    // The configuration file beats every one of them, and says nothing again
-    logger->setConfigLevel(WARN);
-    CHECK(WARN == logger->effectiveLevel());
-    logger->setConfigLevel(std::nullopt);
-    CHECK(TRACE == logger->effectiveLevel());
-
-    // The channel is asked for less, so the console is the loudest left, and
-    // taking the console sink away leaves the file and the channel
-    logger->setChanVerbosity(4);
-    CHECK(DEBUG == logger->effectiveLevel());
-
-    logger->removeSink(console);
-    CHECK(INFO == logger->effectiveLevel());
-
-    /* An unloaded module leaves nothing of itself on the logger, which is the
-     * registry's and which the next instance of the module finds */
-    logger->setChannel("#log");
-    logger->setLogSQL(true);
-    logger->setConsoleSQL(true);
-
-    CHECK_EQ(logger->getChannel(), "#log");
-
-    logger->removeSink(file);
-    logger->removeSink(irc);
-    logger->resetLegacyState();
-
-    CHECK(INFO == logger->effectiveLevel());
-    CHECK_EQ(logger->getChannel(), "");
-
-    // A file slot installed again starts from the default verbosity, and the
-    // SQL keys are off as they are at the outset
-    const std::shared_ptr<CaptureSink> second = std::make_shared<CaptureSink>();
-
-    logger->addSink(second, TRACE);
-    logger->setLegacyFileSink(second);
-
-    CHECK(TRACE == logger->effectiveLevel());
-
-    logger->write(SQL, std::string("select 1"));
-    CHECK(0 == second->size());
-
-    emit(logger, TRACE, "verbose again");
-    CHECK(1 == second->size());
-
-    logger->removeSink(second);
-    logger->resetLegacyState();
+    sql->setConfigLevel(std::nullopt);
+    sql->setLegacyLevel(std::nullopt);
+    module->setConfigLevel(std::nullopt);
+    module->removeSink(onModule);
 }
 
 /**
@@ -623,8 +568,8 @@ int main() {
     testTree();
     testInheritance();
     testCodeDefault();
-    testLegacyVerbosityLevel();
-    testLegacyLevelHearsTheModulesOwnSinks();
+    testLogFiltersByEffectiveLevel();
+    testSqlChildLevel();
     testInheritEffectiveLevel();
     testAdditiveDispatch();
     testThresholdsAlongThePath();

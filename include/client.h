@@ -986,24 +986,12 @@ class xClient : public TimerHandler, public NetworkTarget {
      * The logger of this module, which is the one the registry keeps under the
      * module's name: it is not owned here and it outlives this client, so that a
      * module which is unloaded and loaded again writes to the same logger.
+     *
+     * It has no sink of its own: where the records of a module go is what
+     * logging.conf says, and the sinks of the root are where they go when it
+     * says nothing.  A module that wants more attaches it itself.
      */
     Logger* logger = nullptr;
-
-    /**
-     * The sinks this client attached to its own logger: a JSON log file, the
-     * console, and - once the client has an uplink - the debug channel.  They
-     * are held here so that the destructor can take them off again.
-     */
-    std::shared_ptr<LogSink> fileLogSink;
-    std::shared_ptr<LogSink> consoleLogSink;
-    std::shared_ptr<LogSink> ircLogSink;
-
-    /**
-     * Attaches the sink that mirrors this client's log to its debug channel.
-     * Called by xServer::AttachClient() as soon as the uplink is known, which
-     * is what such a sink needs; calling it again does nothing.
-     */
-    void attachIrcLogSink(xServer* server);
 
     /**
      * Teaches the logging system how to show one of this module's own object

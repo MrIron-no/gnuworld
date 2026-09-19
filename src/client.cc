@@ -48,9 +48,7 @@
 #include "EConfig.h"
 #include "StringTokenizer.h"
 #include "ELog.h"
-#include "IrcLogSink.h"
 #include "LogManager.h"
-#include "LogSinks.h"
 #ifdef HAVE_PGSQL
 #include "MigrationChecker.h"
 #endif
@@ -99,33 +97,9 @@ xClient::xClient(const string& fileName) : configFileName(fileName) {
 
     logger = LogManager::get(loggerName);
 
-    /* The records of a module go to the sinks below and nowhere else: until
-     * logging.conf is read, the root is not to receive them as well */
-    logger->setAdditive(false);
-
-    /* The log file is the config file name up to its first '.', plus ".log" */
-    string logFilePath;
-    const string::size_type dotPos = getConfigFileName().find('.');
-    if (dotPos != string::npos)
-        logFilePath = getConfigFileName().substr(0, dotPos) + ".log";
-    else
-        logFilePath = getConfigFileName() + ".log";
-
-    std::shared_ptr<FileSink> fileSink = std::make_shared<FileSink>(logFilePath, true);
-    if (!fileSink->isOpen())
-        elog << "Warning: Could not open logfile " << logFilePath << endl;
-
-    fileLogSink = fileSink;
-    logger->addSink(fileSink, TRACE);
-    logger->setLegacyFileSink(fileSink);
-
-    std::shared_ptr<ConsoleSink> consoleSink =
-        std::make_shared<ConsoleSink>(ConsoleSink::Colour::Auto, true);
-
-    consoleLogSink = consoleSink;
-    logger->addSink(consoleSink, TRACE);
-    logger->setLegacyConsoleSink(consoleSink);
-
+    /* No sink is attached here: the module's records walk up to whatever
+     * logging.conf gave the root, and a module with reason to write somewhere of
+     * its own attaches that sink itself */
     logger->setContext("bot", nickName);
 }
 
@@ -134,53 +108,9 @@ xClient::~xClient() {
     // with the module itself
     Logger::removeExtractors(this);
 
-    // The logger itself stays: it is the registry's and a module that is loaded
-    // again finds it.  What this instance put on it goes, so that the next one
-    // attaches its own file, console and channel sink to a logger with none
-    if (logger) {
-        if (ircLogSink)
-            logger->removeSink(ircLogSink);
-        if (consoleLogSink)
-            logger->removeSink(consoleLogSink);
-        if (fileLogSink)
-            logger->removeSink(fileLogSink);
-
-        /* And what the module's own configuration keys left on it goes with the
-         * sinks they configured: the channel, the verbosities and the level they
-         * asked for are this instance's, not the next one's */
-        logger->resetLegacyState();
-
-        // With no sinks of its own left, the logger is additive again: whatever
-        // still logs to it is better heard on the root than nowhere
-        logger->setAdditive(true);
-
-        logger = nullptr;
-    }
-}
-
-/**
- * Attaches the sink that mirrors this client's log to its debug channel.  The
- * channel is whatever the module's configuration has asked for so far, and the
- * compatibility setters change it afterwards through the setter installed here.
- */
-void xClient::attachIrcLogSink(xServer* server) {
-    // A module that is attached a second time keeps the sink it has
-    if (ircLogSink)
-        return;
-
-    std::shared_ptr<IrcLogSink> sink =
-        std::make_shared<IrcLogSink>(server, logger->getChannel(), true);
-
-    ircLogSink = sink;
-
-    // INFO is the default the legacy chanVerbosity key had
-    logger->addSink(sink, INFO);
-    logger->setLegacyIrcSink(sink);
-    logger->setLegacyChanSetter(
-        [weak = std::weak_ptr<IrcLogSink>(sink)](const string& channelName) {
-            if (const std::shared_ptr<IrcLogSink> live = weak.lock())
-                live->setChannel(channelName);
-        });
+    // The logger itself stays: it is the registry's, and a module that is loaded
+    // again finds that very logger
+    logger = nullptr;
 }
 
 void xClient::BurstChannels() {}

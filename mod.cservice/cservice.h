@@ -29,12 +29,17 @@
 #include <map>
 #include <array>
 #include <functional>
+#include <memory>
 #include <optional>
 
 #include <ctime>
 
 #include "misc.h"
 #include "logger.h"
+#include "LogManager.h"
+#include "LogSink.h"
+#include "LogSinks.h"
+#include "IrcLogSink.h"
 #include "client.h"
 #include "iClient.h"
 #include "iServer.h"
@@ -984,6 +989,40 @@ class cservice : public xClient {
      */
     void sendAccountFlags(sqlUser*) const;
     void sendAccountFlags(sqlUser*, iClient*) const;
+
+  private:
+    /**
+     * Puts this module's own logging keys on its logger, or takes them off again.
+     *
+     * log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql
+     * are what cservice was configured with before logging.conf existed, and are
+     * honoured for as long as that file says nothing about logger.cservice: this
+     * attaches the log file, the console and the debug channel the old keys ask
+     * for, keeps the module's records to them, and stops doing all of it as soon
+     * as the file does speak of this logger.
+     *
+     * Called once the notifier sinks of this instance are attached - their
+     * thresholds have a say in the level, as they had in the logger this one
+     * replaces - and again when the module is attached to a server, which is the
+     * first moment a channel sink is possible, and on every rehash.
+     */
+    void applyLegacyLogging();
+
+    /**
+     * The sinks the keys above asked for, held so that a rehash can change their
+     * thresholds and so that they go when this instance does.  The logger is the
+     * registry's and outlives the module; these are this module's own.
+     */
+    std::shared_ptr<LogSink> legacyFileSink;
+    std::shared_ptr<LogSink> legacyConsoleSink;
+    std::shared_ptr<IrcLogSink> legacyIrcSink;
+
+    /**
+     * Whether the last applyLegacyLogging() found logging.conf in charge of this
+     * module's logger, so that the line saying which keys are heard is logged
+     * when that answer changes and not on every rehash.
+     */
+    std::optional<bool> legacyLoggingAnnounced;
 };
 
 } // namespace gnuworld

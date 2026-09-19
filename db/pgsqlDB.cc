@@ -33,6 +33,7 @@
 #include "gnuworldDB.h"
 #include "pgsqlDB.h"
 #include "client.h"
+#include "LogManager.h"
 #include "logger.h"
 
 namespace gnuworld {
@@ -42,9 +43,30 @@ using std::ends;
 using std::string;
 using std::stringstream;
 
+namespace {
+
+/**
+ * The logger the statements of a handle of this bot go to: the "sql" child of
+ * the module's own logger, quiet about everything but what failed.
+ *
+ * A handle without a bot - or one whose bot has no logger yet - is nobody's
+ * module in particular and says so under "db.sql".
+ */
+Logger* sqlLoggerOf(xClient* bot) {
+    if (nullptr != bot && nullptr != bot->getLogger())
+        return bot->getLogger()->child("sql", ERROR);
+
+    LogManager::setCodeDefault("db.sql", ERROR);
+
+    return LogManager::get("db.sql");
+}
+
+} // namespace
+
 pgsqlDB::pgsqlDB(xClient* _bot, const string& dbHost, const unsigned short int dbPort,
                  const string& dbName, const string& userName, const string& password)
-    : gnuworldDB(dbHost, dbPort, dbName, userName, password), bot(_bot), theDB(0), lastResult(0) {
+    : gnuworldDB(dbHost, dbPort, dbName, userName, password), bot(_bot), theDB(0), lastResult(0),
+      sqlLog(sqlLoggerOf(_bot)) {
     stringstream s;
     s << "host=" << dbHost << " dbname=" << dbName << " port=" << dbPort;
 
@@ -68,7 +90,7 @@ pgsqlDB::pgsqlDB(xClient* _bot, const string& dbHost, const unsigned short int d
     }
 }
 
-pgsqlDB::pgsqlDB(xClient* _bot, const string& connectInfo) : bot(_bot) {
+pgsqlDB::pgsqlDB(xClient* _bot, const string& connectInfo) : bot(_bot), sqlLog(sqlLoggerOf(_bot)) {
     // TODO
     // Allow exception to be thrown
     lastResult = 0;
@@ -94,10 +116,14 @@ pgsqlDB::~pgsqlDB() {
     }
 }
 
-bool pgsqlDB::Exec(const string& theQuery, bool log) {
-    /* Log query. */
-    if (log)
-        bot->getLogger()->write(SQL, theQuery);
+bool pgsqlDB::Exec(const string& theQuery, bool logQuery) {
+    /* Remembered whether it is logged or not: what a failure reports is the
+     * statement that failed, and a caller that asked for no log of its queries
+     * did not ask for its errors to be silent */
+    lastQuery = theQuery;
+
+    if (logQuery)
+        LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
 
     // It is necessary to manually deallocate the last result
     // to prevent memory leaks.
@@ -117,8 +143,20 @@ bool pgsqlDB::Exec(const string& theQuery, bool log) {
     return false;
 }
 
-bool pgsqlDB::Exec(const stringstream& theQuery, bool retData) {
-    return Exec(theQuery.str(), retData);
+bool pgsqlDB::Exec(const stringstream& theQuery, bool logQuery) {
+    return Exec(theQuery.str(), logQuery);
+}
+
+/**
+ * What went wrong with the last statement, said once: the message of the
+ * database in the sentence, and the statement itself as a field, which the JSON
+ * line carries and a one-line console record leaves out.
+ */
+void pgsqlDB::logError(const char* func) {
+    sqlLog->createMessage(ERROR, func, "SQL Error: {error}")
+        .with("error", ErrorMessage())
+        .with("query", lastQuery)
+        .log();
 }
 
 bool pgsqlDB::StartCopyIn(const string& writeMe) { return Exec(writeMe); }

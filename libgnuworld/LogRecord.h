@@ -37,9 +37,8 @@ namespace gnuworld {
 /**
  * Verbosity levels for the logging system.
  * Higher numbers are more verbose: a record of level v passes a threshold t
- * when v <= t.
- * SQL is a leftover category for database query logging and goes away with
- * the <module>.sql logger.
+ * when v <= t.  A database statement is not a level of its own but a DEBUG
+ * record of the logger "<module>.sql".
  */
 enum Verbosity {
     OFF = 0,   // Nothing at all
@@ -48,8 +47,7 @@ enum Verbosity {
     WARN = 3,  // A protocol or state anomaly that is survived
     INFO = 4,  // Lifecycle messages
     DEBUG = 5, // Debug information for development
-    TRACE = 6, // Most verbose - per message, per line, per loop iteration
-    SQL = 99   // Special category for SQL query logging
+    TRACE = 6  // Most verbose - per message, per line, per loop iteration
 };
 
 /**
@@ -136,8 +134,6 @@ inline const char* levelName(Verbosity level) {
         return "DEBUG";
     case TRACE:
         return "TRACE";
-    case SQL:
-        return "SQL";
     case OFF:
         return "OFF";
     }
@@ -162,8 +158,6 @@ inline const char* levelColumn(Verbosity level) {
         return "DEBUG";
     case TRACE:
         return "TRACE";
-    case SQL:
-        return "SQL  ";
     default:
         return "     ";
     }
@@ -193,7 +187,7 @@ inline const char* levelTag(Verbosity level) {
 
 /**
  * Parses a level name from a configuration file, case-insensitively.
- * Both WARN and WARNING are accepted; SQL is not a configurable level.
+ * Both WARN and WARNING are accepted.
  * Returns false and leaves the level untouched when the name is not one.
  */
 inline bool parseLevel(const std::string& name, Verbosity& level) {

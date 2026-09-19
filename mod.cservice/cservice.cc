@@ -99,6 +99,10 @@ bool cservice::UnRegisterCommand(const string& commName) {
 }
 
 void cservice::OnAttach() {
+    /* There is an uplink now, which is what a sink writing to the debug channel
+     * needs: the legacy chan_verbosity key can only be honoured from here */
+    applyLegacyLogging();
+
     for (commandMapType::iterator ptr = commandMap.begin(); ptr != commandMap.end(); ++ptr) {
         ptr->second->setServer(MyUplink);
     }
@@ -370,6 +374,10 @@ cservice::cservice(const string& args)
     }
 #endif
 
+    /* And now that every sink of this module exists, what its own logging keys
+     * ask for - the notifiers above have a say in the level they set */
+    applyLegacyLogging();
+
     /* Load our translation tables. */
     loadTranslationTable();
 
@@ -409,6 +417,23 @@ cservice::cservice(const string& args)
 }
 
 cservice::~cservice() {
+    /* The logger is the registry's and is shared with the next instance of this
+     * module: what this one's configuration keys left on it goes with it */
+    if (legacyIrcSink)
+        logger->removeSink(legacyIrcSink);
+    if (legacyConsoleSink)
+        logger->removeSink(legacyConsoleSink);
+    if (legacyFileSink)
+        logger->removeSink(legacyFileSink);
+
+    legacyIrcSink.reset();
+    legacyConsoleSink.reset();
+    legacyFileSink.reset();
+
+    logger->setLegacyLevel(std::nullopt);
+    logger->child("sql")->setLegacyLevel(std::nullopt);
+    logger->setAdditive(true);
+
     delete cserviceConfig;
     cserviceConfig = 0;
     delete SQLDb;
@@ -7158,14 +7183,130 @@ void cservice::loadConfigVariables(bool rehash) {
     if (daySeconds < 1)
         daySeconds = 1;
     UsersExpireDBDays *= daySeconds;
+}
 
-    /* Initiate logger. */
-    logger->setChannel(debugChan);
-    logger->setLogVerbosity(logVerbosity);
-    logger->setChanVerbosity(chanVerbosity);
-    logger->setConsoleVerbosity(consoleVerbosity);
-    logger->setLogSQL(logSQL);
-    logger->setConsoleSQL(consoleSQL);
+namespace {
+
+/**
+ * One legacy verbosity as a level: the value is a number out of a configuration
+ * file, so anything past the most verbose level there is asks for that one.
+ */
+Verbosity legacyLevelOf(unsigned int verbosity) {
+    return verbosity > static_cast<unsigned int>(TRACE) ? TRACE : static_cast<Verbosity>(verbosity);
+}
+
+} // namespace
+
+/**
+ * Honours this module's own logging keys, for as long as nothing better says
+ * where its records go.
+ *
+ * With a logger.cservice line in logging.conf there is nothing to do but undo:
+ * the sinks these keys attached are taken off, the level they asked for is
+ * dropped, and the module's records walk up to the root like everybody else's.
+ *
+ * Without one, the keys are the whole of this module's logging, as they were
+ * before logging.conf existed: a JSON log file beside the configuration file,
+ * the console and the debug channel, each with the verbosity that was asked for,
+ * and no walk up to the root at all - the records went to these three and
+ * nowhere else.  The level of the logger is the most any output wants, notifiers
+ * included, because that is when the old logger built a record.
+ *
+ * Every threshold is written again on each call: a rehash may have changed any
+ * of them, and the channel sink is only possible once there is an uplink.
+ */
+void cservice::applyLegacyLogging() {
+    const bool configured = LogManager::isConfigured("cservice");
+
+    if (configured) {
+        if (legacyIrcSink) {
+            logger->removeSink(legacyIrcSink);
+            legacyIrcSink.reset();
+        }
+        if (legacyConsoleSink) {
+            logger->removeSink(legacyConsoleSink);
+            legacyConsoleSink.reset();
+        }
+        if (legacyFileSink) {
+            logger->removeSink(legacyFileSink);
+            legacyFileSink.reset();
+        }
+
+        logger->setLegacyLevel(std::nullopt);
+        logger->setAdditive(true);
+        logger->child("sql")->setLegacyLevel(std::nullopt);
+
+        if (legacyLoggingAnnounced != configured)
+            LOG(INFO, "log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql "
+                      "are ignored because logging.conf configures logger.cservice");
+
+        legacyLoggingAnnounced = configured;
+
+        return;
+    }
+
+    /* The log file is the configuration file name up to its first '.', plus
+     * ".log", which is where this module has always written */
+    if (!legacyFileSink) {
+        const string::size_type dot = getConfigFileName().find('.');
+        const string path =
+            (string::npos == dot ? getConfigFileName() : getConfigFileName().substr(0, dot)) +
+            ".log";
+
+        legacyFileSink = std::make_shared<FileSink>(path, true);
+        logger->addSink(legacyFileSink);
+    }
+
+    if (!legacyConsoleSink) {
+        legacyConsoleSink = std::make_shared<ConsoleSink>(ConsoleSink::Colour::Auto, true);
+        logger->addSink(legacyConsoleSink);
+    }
+
+    // Only once the module is attached: a channel sink needs somewhere to write
+    if (!legacyIrcSink && nullptr != MyUplink) {
+        legacyIrcSink = std::make_shared<IrcLogSink>(MyUplink, debugChan, true);
+        logger->addSink(legacyIrcSink);
+    }
+
+    logger->setSinkThreshold(legacyFileSink, legacyLevelOf(logVerbosity));
+    logger->setSinkThreshold(legacyConsoleSink, legacyLevelOf(consoleVerbosity));
+
+    if (legacyIrcSink) {
+        logger->setSinkThreshold(legacyIrcSink, legacyLevelOf(chanVerbosity));
+        legacyIrcSink->setChannel(debugChan);
+    }
+
+    /* What any of the outputs wants is what the logger builds a record for: the
+     * three keys, and the notifiers, which are attached without a key of their
+     * own - prometheus takes everything it is given */
+    Verbosity wanted = legacyLevelOf(logVerbosity);
+
+    if (legacyLevelOf(consoleVerbosity) > wanted)
+        wanted = legacyLevelOf(consoleVerbosity);
+
+    if (legacyIrcSink && legacyLevelOf(chanVerbosity) > wanted)
+        wanted = legacyLevelOf(chanVerbosity);
+
+    if (pushover && legacyLevelOf(pushoverVerbosity) > wanted)
+        wanted = legacyLevelOf(pushoverVerbosity);
+
+    if (prometheus)
+        wanted = TRACE;
+
+    logger->setAdditive(false);
+    logger->setLegacyLevel(wanted);
+
+    /* A statement is a DEBUG record of cservice.sql, which logs errors only
+     * unless one of the two SQL keys asks for the statements as well */
+    logger->child("sql")->setLegacyLevel((logSQL || consoleSQL) ? DEBUG : ERROR);
+
+    if (legacyLoggingAnnounced != configured)
+        LOG(INFO,
+            "cservice logging keys in {} are deprecated; configure logger.cservice in "
+            "logging.conf",
+            getConfigFileName());
+
+    legacyLoggingAnnounced = configured;
 }
 
 void cservice::rehashConfigVariables() {
@@ -7219,6 +7360,10 @@ void cservice::rehashConfigVariables() {
             pushover.reset();
         }
     }
+
+    /* The logging keys again, last: logging.conf may have been read anew as
+     * well, and the notifiers above are what the level has to reckon with */
+    applyLegacyLogging();
 }
 
 cservice::AuthResult cservice::authenticateUser(AuthStruct& auth) {
