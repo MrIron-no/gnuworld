@@ -192,6 +192,10 @@ cservice::cservice(const string& args)
     /* Register custom logger objects. */
     registerLogHandlers();
 
+    /* The command log has a logger of its own, looked up once here: the logger
+     * of this module is already the registry's by now */
+    commandsLogger = logger->child("commands");
+
     /*
      *  Register command handlers.
      */
@@ -424,8 +428,12 @@ cservice::~cservice() {
         logger->removeSink(legacyIrcSink);
     if (legacyConsoleSink)
         logger->removeSink(legacyConsoleSink);
-    if (legacyFileSink)
+    if (legacyFileSink) {
         logger->removeSink(legacyFileSink);
+
+        if (nullptr != commandsLogger)
+            commandsLogger->removeSink(legacyFileSink);
+    }
 
     legacyIrcSink.reset();
     legacyConsoleSink.reset();
@@ -449,6 +457,12 @@ cservice::~cservice() {
     logger->setLegacyLevel(std::nullopt);
     logger->child("sql")->setLegacyLevel(std::nullopt);
     logger->setAdditive(true);
+
+    if (nullptr != commandsLogger) {
+        commandsLogger->setLegacyLevel(std::nullopt);
+        commandsLogger->setAdditive(true);
+        commandsLogger = nullptr;
+    }
 
     delete cserviceConfig;
     cserviceConfig = 0;
@@ -942,7 +956,12 @@ void cservice::OnPrivateMessage(iClient* theClient, const string& Message, bool 
                     st.size() > 0)
                     commandLine += " " + st.assemble(1);
 
-                Logger::MessageTemplate record = LOG_MSG(INFO, "{command_line}");
+                /* The sentence names the command and the nick and nothing else:
+                 * a reader of a log file has the whole line in command_line,
+                 * and a reader of a notice or of a console has no business with
+                 * the e-mail address of a HELLO or the host of a SCANHOST */
+                Logger::MessageTemplate record =
+                    LOG_MSG_TO(commandsLogger, INFO, "{command} by {client}");
 
                 record.with("command", Command).with("command_line", commandLine);
                 /*record.with( "secure", secure ) ;*/
@@ -7247,12 +7266,19 @@ void cservice::applyLegacyLogging() {
         }
         if (legacyFileSink) {
             logger->removeSink(legacyFileSink);
+            commandsLogger->removeSink(legacyFileSink);
             legacyFileSink.reset();
         }
 
         logger->setLegacyLevel(std::nullopt);
         logger->setAdditive(true);
         logger->child("sql")->setLegacyLevel(std::nullopt);
+
+        /* With nothing of this module's own left on it, the command log is an
+         * ordinary sub-logger of "cservice": it goes where the file says, and
+         * its sentence names the command and the nick, which is safe to show */
+        commandsLogger->setLegacyLevel(std::nullopt);
+        commandsLogger->setAdditive(true);
 
         if (legacyLoggingAnnounced != configured)
             LOG(INFO, "log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql "
@@ -7273,6 +7299,12 @@ void cservice::applyLegacyLogging() {
 
         legacyFileSink = std::make_shared<FileSink>(path, true);
         logger->addSink(legacyFileSink);
+
+        /* The command log went to this file and to nowhere else, so the sink
+         * follows the file here and the attachment follows every sink: the
+         * logger is the registry's, and this is the one place a sink of it is
+         * made, so nothing attaches it twice */
+        commandsLogger->addSink(legacyFileSink, TRACE);
     }
 
     if (!legacyConsoleSink) {
@@ -7317,6 +7349,13 @@ void cservice::applyLegacyLogging() {
     /* A statement is a DEBUG record of cservice.sql, which logs errors only
      * unless one of the two SQL keys asks for the statements as well */
     logger->child("sql")->setLegacyLevel((logSQL || consoleSQL) ? DEBUG : ERROR);
+
+    /* And the command log, which is the log file's alone: not additive, so a
+     * record of it never walks up to the console or to the debug channel this
+     * module's own logger carries */
+    commandsLogger->setSinkThreshold(legacyFileSink, TRACE);
+    commandsLogger->setAdditive(false);
+    commandsLogger->setLegacyLevel(INFO);
 
     if (legacyLoggingAnnounced != configured)
         LOG(INFO,

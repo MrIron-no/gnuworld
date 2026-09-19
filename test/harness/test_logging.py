@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+import cservice_client as cs
 from conftest import (
     LocalGnuworldProc,
     _prepare_conf_dir,
@@ -38,6 +39,13 @@ from p10 import p10_token, strip_msg_tags
 TEXT_LINE = re.compile(
     r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}  "
     r"(FATAL|ERROR|WARN |INFO |DEBUG|TRACE)  \S+\s+.+"
+)
+
+# The same on the console, which shows the time of day and not the date.  It
+# tells a log record from the raw protocol dump of -L, whose lines are what
+# went over the wire and are nothing the logging system decided to show.
+CONSOLE_LINE = re.compile(
+    r"^\d{2}:\d{2}:\d{2}\.\d{3}  (FATAL|ERROR|WARN |INFO |DEBUG|TRACE)  \S+\s+.+"
 )
 
 
@@ -584,6 +592,61 @@ async def test_cservice_fallback_mode_with_log_sql_yes_logs_queries(docker_stack
         if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG" and "query" in r
     ]
     assert queries, records
+
+
+# --------------------------------------------------------------------------
+# 10b. The command log is a logger of its own, and its sentence carries no
+#      arguments: neither the debug channel nor the console may see the
+#      e-mail address of a HELLO or the pattern of a SCANEMAIL.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cservice_command_log_keeps_its_arguments_out_of_the_channel(
+    docker_stack, fake_hub_p11, tmp_path
+):
+    hub = fake_hub_p11
+    channel = "#coder-com"  # cservice.example.conf's debug_channel
+    ts = 1_700_000_003
+    argument = "nobody-42@scan.example.invalid"
+    burst = [f"{hub.server_numnick} B {channel} {ts} +tn"]
+
+    async with link_cservice_logging(
+        docker_stack, hub, tmp_path, burst=burst,
+    ) as (hub, proc, conf_dir):
+        # The channel sink of the deprecated fallback mode is live: a record of
+        # "cservice" itself does reach the debug channel at chan_verbosity = 4
+        await _wait_for_notice(hub, channel, timeout=30.0, contains="Channel join complete")
+
+        admin = await cs.login(hub)
+        replies = await cs.run(hub, admin, f"scanemail {argument}")
+        assert any("Found 0 matches" in line for line in replies), replies
+
+        await asyncio.sleep(0.5)
+
+        texts = [_notice_text(line, channel) for line in hub.received]
+        console = list(proc.stdout_lines)
+
+    records = _read_json_lines(conf_dir / "cservice.log")
+
+    commands = [r for r in records if r.get("logger") == "cservice.commands"]
+    assert commands, sorted({r.get("logger") for r in records})
+
+    scans = [r for r in commands if r.get("command") == "SCANEMAIL"]
+    assert len(scans) == 1, scans
+    record = scans[0]
+
+    # The whole line is a field of the JSON record, and the sentence is not it
+    assert record.get("command_line") == f"SCANEMAIL {argument}"
+    assert argument not in record.get("message", "")
+    assert record.get("message") == "SCANEMAIL by adminone", record
+
+    # And nothing carried it to the debug channel or to a console log record.
+    # The raw protocol dump of -L is not one: the message the user sent is on
+    # the wire whatever the logging system then makes of it.
+    assert not [t for t in texts if t is not None and argument in t]
+    assert any(CONSOLE_LINE.match(line) for line in console), "no log record on the console at all"
+    assert not [line for line in console if CONSOLE_LINE.match(line) and argument in line]
 
 
 # --------------------------------------------------------------------------

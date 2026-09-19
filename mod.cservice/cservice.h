@@ -1018,6 +1018,23 @@ class cservice : public xClient {
     std::shared_ptr<IrcLogSink> legacyIrcSink;
 
     /**
+     * The logger of the command log, "cservice.commands", looked up once and
+     * held: one record per command a user sends X.
+     *
+     * It is a logger of its own because the old command log went to this
+     * module's log file and to nowhere else - not to the console and above all
+     * not to the debug channel, which has readers the arguments of a HELLO or
+     * a SCANHOST are none of the business of.  In fallback mode
+     * applyLegacyLogging() reproduces that exactly; under a logging.conf it is
+     * an ordinary sub-logger of "cservice", which an operator routes or
+     * silences with a line of his own.
+     *
+     * It belongs to the registry and outlives this client, like the module's
+     * own logger.
+     */
+    Logger* commandsLogger = nullptr;
+
+    /**
      * Whether the last applyLegacyLogging() found logging.conf in charge of this
      * module's logger, so that the line saying which keys are heard is logged
      * when that answer changes and not on every rehash.
