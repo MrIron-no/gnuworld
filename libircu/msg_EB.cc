@@ -86,12 +86,6 @@ bool msg_EB::Execute(const xParameters& params) {
         // completed (as seen by the network)
         theServer->PostEvent(EVT_BURST_CMPLT, static_cast<void*>(theServer->getUplink()));
 
-        if (theServer->isVerbose()) {
-            clog << "*** Completed net burst" << endl;
-        }
-
-        LOG(INFO, "*** Completed net burst");
-
         if (theServer->getSendEB()) {
             // Send our EB
             theServer->Write("{} EB\n", theServer->getCharYY());
