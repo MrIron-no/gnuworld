@@ -344,20 +344,11 @@ cservice::cservice(const string& args)
      * logging keys this module used to have; they are read no more */
     warnOfRemovedLoggingKeys();
 
-    /* Initiate pushover.  Where the records of this module go is logging.conf's
-     * business, but a notifier is not a sink that file can name: this module
-     * attaches its own, as it always has. */
-    if (pushoverEnable) {
-        LOG(INFO, "Enabling Pushover notifications for {} user keys...", pushoverUserKeys.size());
-
-#ifdef USE_THREAD
-        pushover = std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys, &threadWorker);
-#else
-        pushover = std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys);
-#endif
-        logger->addSink(pushover, static_cast<Verbosity>(pushoverVerbosity));
-        pushover->sendMessage("cmaster init", "cmaster connecting...");
-    }
+    /* What this module used to send as a Pushover notification of its own is an
+     * ordinary record: a pager is a sink of logging.conf now, and whether one is
+     * attached to this logger - or to the root, or to nothing at all - is that
+     * file's business and not this module's */
+    LOG(INFO, "cmaster connecting...");
 
 /* Initiate prometheus.  The instance name every metric is prefixed with is this
  * client's nick, as it has always been: an existing install must not see its
@@ -419,15 +410,9 @@ cservice::cservice(const string& args)
 
 cservice::~cservice() {
     /* The logger is the registry's and is shared with the next instance of this
-     * module: what this one attached to it goes with it.  The notifiers know
-     * nothing of this client any more, but pushover still sends through this
-     * instance's ThreadWorker, and a record of the next instance of the module
-     * must not reach a notifier of this one */
-    if (pushover) {
-        logger->removeSink(pushover);
-        pushover.reset();
-    }
-
+     * module: what this one attached to it goes with it.  Prometheus knows
+     * nothing of this client any more, but it is this instance's exporter, and a
+     * record of the next instance of the module must not reach it */
 #ifdef HAVE_PROMETHEUS
     if (prometheus) {
         logger->removeSink(prometheus);
@@ -7142,26 +7127,6 @@ void cservice::loadConfigVariables(bool rehash) {
     for (auto& entry : configBindings)
         entry.load(rehash);
 
-    /* Load pushover settings if enabled. */
-    if (pushoverEnable) {
-        pushoverUserKeys.clear();
-        if (rehash) {
-            pushoverToken =
-                cserviceConfig->TryRequire<std::string>("pushover_token", pushoverToken);
-            pushoverVerbosity =
-                cserviceConfig->TryRequire<unsigned int>("pushover_verbosity", pushoverVerbosity);
-        } else {
-            pushoverToken = cserviceConfig->Require<std::string>("pushover_token");
-            pushoverVerbosity = cserviceConfig->Require<unsigned int>("pushover_verbosity");
-        }
-
-        auto confPtr = cserviceConfig->Find("pushover_userkey");
-        while (confPtr != cserviceConfig->end() && confPtr->first == "pushover_userkey") {
-            pushoverUserKeys.push_back(confPtr->second);
-            ++confPtr;
-        }
-    }
-
 /* Load prometheus settings if enabled. */
 #ifdef HAVE_PROMETHEUS
     if (prometheusEnable) {
@@ -7197,10 +7162,12 @@ void cservice::loadConfigVariables(bool rehash) {
 
 /**
  * Says once, when this module starts, that a conf file still carrying the five
- * logging keys cservice used to have is carrying them for nothing.
+ * logging keys cservice used to have is carrying them for nothing, and once more
+ * for the four pushover keys it used to page with.
  *
  * Find, not Require: the keys are not read any more, so a conf file without them
- * is what is expected and no reason to say anything at all.
+ * is what is expected and no reason to say anything at all.  Neither warning
+ * says what a key's value was: pushover_token's was a token.
  */
 void cservice::warnOfRemovedLoggingKeys() {
     static const char* const removedKeys[] = {"log_verbosity", "chan_verbosity",
@@ -7213,6 +7180,22 @@ void cservice::warnOfRemovedLoggingKeys() {
         LOG(WARN,
             "{}: log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql are no "
             "longer used; configure logger.cservice in logging.conf (see "
+            "bin/logging.example.conf)",
+            getConfigFileName());
+
+        break;
+    }
+
+    static const char* const removedPushoverKeys[] = {"pushover_enable", "pushover_token",
+                                                      "pushover_userkey", "pushover_verbosity"};
+
+    for (const char* const key : removedPushoverKeys) {
+        if (cserviceConfig->end() == cserviceConfig->Find(key))
+            continue;
+
+        LOG(WARN,
+            "{}: pushover_enable, pushover_token, pushover_userkey and pushover_verbosity are no "
+            "longer used; configure a pushover sink in logging.conf (see "
             "bin/logging.example.conf)",
             getConfigFileName());
 
@@ -7248,30 +7231,9 @@ void cservice::rehashConfigVariables() {
     }
 #endif
 
-    /* Pushover is enabled in config. */
-    if (pushoverEnable) {
-        /* We have a running instance of pushover. Rehash settings. */
-        if (pushover) {
-            pushover->setUserKeys(pushoverUserKeys);
-            pushover->setToken(pushoverToken);
-            logger->setSinkThreshold(pushover, static_cast<Verbosity>(pushoverVerbosity));
-        } else {
-            /* Pushover is enabled in config, but not in gnuworld. Enable. */
-#ifdef USE_THREAD
-            pushover =
-                std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys, &threadWorker);
-#else
-            pushover = std::make_shared<PushoverClient>(pushoverToken, pushoverUserKeys);
-#endif
-            logger->addSink(pushover, static_cast<Verbosity>(pushoverVerbosity));
-        }
-    } else {
-        /* Pushover is disabled in config, but still enabled in gnuworld. Disable. */
-        if (pushover) {
-            logger->removeSink(pushover);
-            pushover.reset();
-        }
-    }
+    /* A pushover sink is logging.conf's, and a rehash of this file has nothing
+     * to say about one: the SIGHUP that rehashes this reads logging.conf again
+     * too, which is what changes a pager's token, its users or its level */
 }
 
 cservice::AuthResult cservice::authenticateUser(AuthStruct& auth) {

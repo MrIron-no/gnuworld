@@ -53,7 +53,6 @@
 #include "sqlPendingChannel.h"
 #include "csGline.h"
 #include "dbHandle.h"
-#include "pushover.h"
 #include "prometheus.h"
 
 #ifdef USE_THREAD
@@ -256,9 +255,6 @@ class cservice : public xClient {
     // Cache of TLS fingerprints.
     fpMapType fingerprintMap;
 
-    /* Pushover object. */
-    std::shared_ptr<PushoverClient> pushover;
-
     /* Prometheus object. */
     std::shared_ptr<PrometheusClient> prometheus;
 
@@ -272,24 +268,6 @@ class cservice : public xClient {
      * Will be 0 if prometheusEnable is false.
      */
     unsigned short prometheusPort = 9091;
-
-    /**
-     * Non-required configurable variable for pushover API token.
-     * Will be empty if pushoverEnable is false.
-     */
-    std::string pushoverToken;
-
-    /**
-     * Non-required configurable list of pushover userkeys.
-     * Will be empty if pushoverEnable is false.
-     */
-    pushoverKeysType pushoverUserKeys;
-
-    /**
-     * Non-required configurable verbose level for pushover.
-     * WARN is default value.
-     */
-    unsigned short pushoverVerbosity = 3;
 
     /* Tracker for re-connection attempts to SQL database. */
     unsigned int connectRetries = 0;
@@ -999,6 +977,11 @@ class cservice : public xClient {
      * logger.cservice in logging.conf like every other logger's.  An existing
      * conf file keeps working with them in it, which is why this is a warning
      * and not an error.
+     *
+     * The same goes for the four pushover keys: paging is a sink of
+     * logging.conf now, "sink.<id>.type = pushover", attachable to any logger
+     * and not to cservice's alone.  Neither warning ever prints a key's VALUE -
+     * one of them was a token.
      */
     void warnOfRemovedLoggingKeys();
 

@@ -86,5 +86,4 @@
     CONFIG_VAR(unsigned int, saslTimeout, "sasl_timeout")                                          \
     CONFIG_VAR(unsigned int, maxFingerprints, "max_fingerprints")                                  \
     CONFIG_VAR(bool, commandLog, "log_commands")                                                   \
-    CONFIG_VAR(bool, pushoverEnable, "pushover_enable")                                            \
     CONFIG_VAR(bool, prometheusEnable, "prometheus_enable")
