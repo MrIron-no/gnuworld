@@ -196,6 +196,54 @@ void testCodeDefault() {
  * unless the effective level admits it.  A record of level OFF is never emitted
  * at all, whatever the logger logs at.
  */
+/**
+ * What a logger says of its records - the bot of a module, say - is said of its
+ * descendants' records too, whatever the additivity, and the nearer logger wins.
+ */
+void testContextIsInherited() {
+    Logger* const module = LogManager::get("ctxmod");
+    Logger* const sql = module->child("sql");
+    Logger* const deep = sql->child("slow");
+
+    const std::shared_ptr<CaptureSink> sink = std::make_shared<CaptureSink>();
+
+    deep->addSink(sink, TRACE);
+    deep->setAdditive(false);
+    deep->setConfigLevel(TRACE);
+
+    module->setContext("bot", std::string("X"));
+    module->setContext("site", std::string("a"));
+    sql->setContext("site", std::string("b"));
+
+    emit(deep, INFO, "inherited");
+
+    CHECK(1 == sink->size());
+
+    if (1 == sink->size()) {
+        const LogRecord& record = sink->records[0];
+
+        CHECK("ctxmod.sql.slow" == record.logger);
+        CHECK(2 == record.context.size());
+
+        std::string bot;
+        std::string site;
+
+        for (const LogField& field : record.context) {
+            if ("bot" == field.key)
+                bot = logValueToString(field.value);
+            if ("site" == field.key)
+                site = logValueToString(field.value);
+        }
+
+        CHECK("X" == bot);
+        CHECK("b" == site);
+    }
+
+    deep->removeSink(sink);
+    deep->setAdditive(true);
+    deep->setConfigLevel(std::nullopt);
+}
+
 void testLogFiltersByEffectiveLevel() {
     Logger* const logger = LogManager::get("filter");
 
@@ -568,6 +616,7 @@ int main() {
     testTree();
     testInheritance();
     testCodeDefault();
+    testContextIsInherited();
     testLogFiltersByEffectiveLevel();
     testSqlChildLevel();
     testInheritEffectiveLevel();

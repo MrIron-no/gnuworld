@@ -371,6 +371,28 @@ void Logger::log(LogRecord&& record) {
         step = step->parent;
     }
 
+    /* What an ancestor says of its records holds for its descendants' too: the
+     * bot a module's logger names is the bot of "module.sql" as well.  This walk
+     * does not stop where the sinks' walk does - additivity is about where a
+     * record goes, not about what it is - and a key the logger nearer to the
+     * record has set is not overwritten */
+    for (const Logger* step = parent; nullptr != step; step = step->parent) {
+        const std::lock_guard<std::mutex> guard(step->logMutex);
+
+        for (const LogField& inherited : step->context) {
+            bool known = false;
+
+            for (const LogField& field : record.context)
+                if (field.key == inherited.key) {
+                    known = true;
+                    break;
+                }
+
+            if (!known)
+                record.context.push_back(inherited);
+        }
+    }
+
     if (std::chrono::system_clock::time_point() == record.time)
         record.time = std::chrono::system_clock::now();
 
