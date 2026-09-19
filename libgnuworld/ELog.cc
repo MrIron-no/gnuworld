@@ -106,6 +106,45 @@ Logger* legacyLogger() {
     return theLogger;
 }
 
+/**
+ * Whether a stream manipulator is std::endl.
+ *
+ * Told by what it does, not by where it lives.  libstdc++ exports one std::endl
+ * and every shared object takes its address; libc++ (FreeBSD, macOS) keeps
+ * std::endl out of its ABI, so libgnuworld and each module have one of their
+ * own, and a module's `elog << ... << endl` compared by address against
+ * libgnuworld's was never the end of a line: nothing of it was ever logged.
+ *
+ * The address is still looked at first, and what a manipulator turned out to be
+ * is remembered per thread, so a line costs a comparison or two.  Asking means
+ * running the manipulator on a stream of its own: std::endl writes exactly one
+ * newline there, and std::flush, std::ends and whatever a caller wrote do not.
+ */
+bool endsTheLine(std::ostream& (*manipulator)(std::ostream&)) {
+    typedef std::ostream& (*manipulatorType)(std::ostream&);
+
+    if (manipulator == static_cast<manipulatorType>(std::endl))
+        return true;
+
+    static thread_local manipulatorType knownEnd = nullptr;
+    static thread_local manipulatorType knownOther = nullptr;
+
+    if (manipulator == knownEnd)
+        return true;
+
+    if (nullptr == manipulator || manipulator == knownOther)
+        return false;
+
+    std::ostringstream probe;
+    manipulator(probe);
+
+    const bool isEnd = ("\n" == probe.str());
+
+    (isEnd ? knownEnd : knownOther) = manipulator;
+
+    return isEnd;
+}
+
 } // anonymous namespace
 
 ELog::ELog() : outStream(0), fileOpened(false) {}

@@ -120,45 +120,6 @@ namespace gnuworld {
 class LogManager;
 
 /**
- * Whether a stream manipulator is std::endl.
- *
- * Told by what it does, not by where it lives.  libstdc++ exports one std::endl
- * and every shared object takes its address; libc++ (FreeBSD, macOS) keeps
- * std::endl out of its ABI, so libgnuworld and each module have one of their
- * own, and a module's `elog << ... << endl` compared by address against
- * libgnuworld's was never the end of a line: nothing of it was ever logged.
- *
- * The address is still looked at first, and what a manipulator turned out to be
- * is remembered per thread, so a line costs a comparison or two.  Asking means
- * running the manipulator on a stream of its own: std::endl writes exactly one
- * newline there, and std::flush, std::ends and whatever a caller wrote do not.
- */
-inline bool endsTheLine(std::ostream& (*manipulator)(std::ostream&)) {
-    typedef std::ostream& (*manipulatorType)(std::ostream&);
-
-    if (manipulator == static_cast<manipulatorType>(std::endl))
-        return true;
-
-    static thread_local manipulatorType knownEnd = nullptr;
-    static thread_local manipulatorType knownOther = nullptr;
-
-    if (manipulator == knownEnd)
-        return true;
-
-    if (nullptr == manipulator || manipulator == knownOther)
-        return false;
-
-    std::ostringstream probe;
-    manipulator(probe);
-
-    const bool isEnd = ("\n" == probe.str());
-
-    (isEnd ? knownEnd : knownOther) = manipulator;
-
-    return isEnd;
-}
-
-/**
  * Main logging system for GNUWorld services.
  * A logger has a name, a level and a list of sinks with a threshold each; a log
  * statement becomes one LogRecord, which the logger hands to every sink that
@@ -475,66 +436,6 @@ class Logger {
                                   FormatArgs&&... args) {
         return MessageTemplate(this, level, func, templateStr, std::forward<FormatArgs>(args)...);
     }
-
-  private:
-    /**
-     * Stream-based logging interface for << operator usage.
-     * Accumulates messages in a buffer and flushes on std::endl.
-     * Provides a familiar iostream-style interface for logging.
-     */
-    class LoggerStream {
-      public:
-        /**
-         * Constructor for LoggerStream.
-         * Associates the stream with a logger instance and verbosity level.
-         */
-        LoggerStream(Logger& logger, Verbosity v) : logger(logger), verbosity(v) {}
-
-        /**
-         * Template operator<< for accumulating log message content.
-         * Stores all streamed values in an internal buffer.
-         */
-        template <typename T> LoggerStream& operator<<(const T& value) {
-            messageBuffer << value;
-            return *this;
-        }
-
-        /**
-         * Special operator<< for stream manipulators like std::endl.
-         * Flushes the accumulated message when std::endl is encountered.
-         */
-        LoggerStream& operator<<(std::ostream& (*fp)(std::ostream&)) {
-            if (endsTheLine(fp)) {
-                flush();
-            } else {
-                fp(messageBuffer);
-            }
-            return *this;
-        }
-
-      private:
-        Logger& logger;
-        Verbosity verbosity;
-        std::ostringstream messageBuffer;
-
-        /**
-         * Flushes the accumulated message buffer to the logger.
-         * Clears the buffer after sending the message.
-         */
-        void flush() {
-            std::string message = messageBuffer.str();
-            logger.write(verbosity, message);
-            messageBuffer.str("");
-            messageBuffer.clear();
-        }
-    };
-
-  public:
-    /**
-     * Creates a LoggerStream for iostream-style logging.
-     * Allows usage like: logger->write(INFO) << "Message" << std::endl;
-     */
-    LoggerStream write(Verbosity v) { return LoggerStream(*this, v); }
 
     /**
      * Logs one message that is already a sentence, with no function and no

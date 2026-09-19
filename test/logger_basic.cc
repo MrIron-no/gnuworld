@@ -542,21 +542,6 @@ void testNotifierDoesNotRecurse() {
 }
 
 /**
- * The stream API MigrationChecker uses: one record per std::endl.
- */
-void testStreamApi() {
-    const std::shared_ptr<CaptureSink> sink = freshLogger("basic.stream");
-
-    logger->write(INFO) << "a" << 1 << std::endl;
-
-    CHECK(1 == sink->records.size());
-    if (1 == sink->records.size()) {
-        CHECK_EQ(sink->records[0].message, "a1");
-        CHECK(INFO == sink->records[0].level);
-    }
-}
-
-/**
  * The LOG macro: positional arguments with their format specs, and a span for
  * each of them.
  */
@@ -738,7 +723,6 @@ int main() {
     testReentrancy();
     testNotifierEmit();
     testNotifierDoesNotRecurse();
-    testStreamApi();
     testLogMacro();
     testLazyRecord();
     testContextReplacement();

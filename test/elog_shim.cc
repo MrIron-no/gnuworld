@@ -303,17 +303,6 @@ void testAnEndlOfAnotherSharedObject() {
 
     CHECK(3 == logged());
     CHECK_EQ(messageOf(2), "a*b");
-
-    // The same through a module logger's stream interface
-    const std::shared_ptr<CaptureSink> streamed = std::make_shared<CaptureSink>();
-    Logger* const logger = LogManager::get("elogshimtest");
-    logger->addSink(streamed, TRACE);
-
-    logger->write(INFO) << "streamed by a module" << anotherObjectsEndl;
-
-    CHECK(1 == streamed->size());
-    if (1 == streamed->size())
-        CHECK_EQ(streamed->records[0].message, "streamed by a module");
 }
 
 /* ------------------------------------------------------------------ *

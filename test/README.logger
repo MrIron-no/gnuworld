@@ -43,8 +43,7 @@ Logger itself: LOG_MSG with two extractors registered through
 Logger::registerExtractor, a null object rendering "(null)",
 removeExtractors() falling back to a raw pointer, sink thresholds, the
 re-entrancy rule (a record logged from inside a sink's emit() reaching a
-plain sink but not a suppressOnReentry one), the LoggerStream "write(level)
-<< ... << endl" API MigrationChecker depends on, and a local notifier
+plain sink but not a suppressOnReentry one), and a local notifier
 subclass checking the "Class::method> text" / "text" (INFO) shape emit()
 gives it.
 
