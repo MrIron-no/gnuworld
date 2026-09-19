@@ -86,6 +86,27 @@ std::size_t discardResponse(char*, std::size_t size, std::size_t count, void*) {
     return size * count;
 }
 
+/**
+ * curl_global_init(), once for the whole process.
+ *
+ * A function-local static is initialised exactly once, and every other thread
+ * that reaches it waits for that to finish: the C++ standard says so, an
+ * unsynchronised bool says nothing.  Each pushover sink has a worker thread of
+ * its own, so two sinks are two threads, and curl_global_init() is documented as
+ * not thread-safe.
+ *
+ * Called from the PushoverClient constructor, which runs on whatever thread
+ * builds the sink - the main thread, at configure time - so libcurl is
+ * initialised before that sink has a worker at all.
+ *
+ * AND THERE IS NO curl_global_cleanup() ANYWHERE.  A sink may still be sending
+ * while static destruction runs, and pulling libcurl out from under a request in
+ * flight is worse than leaving what it allocated to the exiting process.
+ */
+void initialiseCurlOnce() {
+    [[maybe_unused]] static const CURLcode initialised = curl_global_init(CURL_GLOBAL_DEFAULT);
+}
+
 /// One field of a form body: a literal name, and a value that is anything at all
 typedef std::pair<const char*, std::string> formFieldType;
 
@@ -248,7 +269,15 @@ PushoverClient::PushoverClient(std::string token, pushoverKeysType users, std::s
                                std::chrono::seconds ratePer)
     : apiToken(std::move(token)), userKeys(std::move(users)),
       apiUrl(url.empty() ? std::string(defaultUrl()) : std::move(url)), threshold(threshold),
-      rateLimit(rateCount, ratePer), failureReports(1, std::chrono::seconds(60)) {}
+      rateLimit(rateCount, ratePer), failureReports(1, std::chrono::seconds(60)) {
+#ifdef HAVE_LIBCURL
+    /* Here, and not in the request: this runs on the thread that builds the sink,
+     * which is the main thread at configure time, so libcurl is initialised
+     * before this sink has a worker and before any other sink's worker can be in
+     * the middle of using it */
+    initialiseCurlOnce();
+#endif
+}
 
 PushoverClient::~PushoverClient() {
 #ifdef USE_THREAD
@@ -260,16 +289,6 @@ PushoverClient::~PushoverClient() {
     stopping.store(true);
 #endif
 }
-
-#ifdef HAVE_LIBCURL
-void PushoverClient::initialise_curl() {
-    static bool initialized = false;
-    if (!initialized) {
-        curl_global_init(CURL_GLOBAL_DEFAULT);
-        initialized = true;
-    }
-}
-#endif
 
 /**
  * Whether a record of this logger is one this sink must not touch.
@@ -418,8 +437,6 @@ bool PushoverClient::sendToUser([[maybe_unused]] std::size_t position,
                                 [[maybe_unused]] int expire) {
 #ifdef HAVE_LIBCURL
     try {
-        initialise_curl();
-
         /* Cleaned, then cut on a character boundary, and only then escaped: the
          * limits are Pushover's documented ones (a title of up to 250
          * characters, a message of up to 1024) counted in BYTES, which is the

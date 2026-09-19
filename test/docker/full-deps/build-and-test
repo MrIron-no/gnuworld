@@ -144,11 +144,27 @@ if [ $check_status -ne 0 ]; then
     fail 'make check'
 fi
 
-say 'test_pushover_delivery, on its own'
-./test_pushover_delivery
-delivery_status=$?
+# Twenty runs and not one: a pushover sink has a worker thread of its own, so two
+# of them race into libcurl, and a race that is fixed and a race that happened not
+# to show up look the same in a single run.  Only a failing run says anything, so
+# twenty of them are twenty lines at most.
+readonly DELIVERY_RUNS=20
 
-[ $delivery_status -eq 0 ] || fail 'test_pushover_delivery'
+say "test_pushover_delivery, $DELIVERY_RUNS times"
+
+delivery_failures=0
+
+for run in $(seq 1 $DELIVERY_RUNS); do
+    if ! ./test_pushover_delivery > "/tmp/delivery-$run.log" 2>&1; then
+        printf 'run %s of %s failed:\n' "$run" "$DELIVERY_RUNS"
+        cat "/tmp/delivery-$run.log"
+        delivery_failures=$((delivery_failures + 1))
+    fi
+done
+
+printf '%s of %s runs passed\n' "$((DELIVERY_RUNS - delivery_failures))" "$DELIVERY_RUNS"
+
+[ $delivery_failures -eq 0 ] || fail "test_pushover_delivery, $delivery_failures of $DELIVERY_RUNS runs"
 
 printf 'the capture file holds %s bodies at the end (the test empties it between cases)\n' \
     "$(wc -l < "$CAPTURE")"

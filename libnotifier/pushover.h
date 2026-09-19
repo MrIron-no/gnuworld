@@ -113,6 +113,12 @@ std::string withoutControlCharacters(const std::string& input);
  * is still alive.  ~PushoverClient() asks the queued jobs to do nothing at all
  * before that, so a dead endpoint cannot make a destructor take a minute.
  *
+ * LIBCURL ONCE.  curl_global_init() is called from this constructor - so on the
+ * thread that builds the sink, before that sink has a worker - and exactly once
+ * for the process: two sinks are two worker threads, and that function is
+ * documented as not thread-safe.  Nothing ever calls curl_global_cleanup(), a
+ * sink may still be sending when static destruction runs.
+ *
  * NO SECRET IS EVER LOGGED.  The token and the user keys reach nothing but the
  * request body: a record or an error about a user names its position in the
  * list ("user #1"), and about the token nothing at all.
@@ -175,10 +181,6 @@ class PushoverClient : public notifier {
   private:
     /// Whether this logger is core.notifier, or anything below it
     static bool isNotifierLogger(const std::string& logger);
-
-#ifdef HAVE_LIBCURL
-    void initialise_curl();
-#endif
 
     /// Queues the message on the worker, or sends it where there is no worker
     bool queueMessage(const std::string& title, const std::string& message, int priority, int retry,

@@ -556,6 +556,80 @@ void testAFailingEndpoint() {
 }
 
 /**
+ * TWO PUSHOVER SINKS, BOTH SENDING AT ONCE.
+ *
+ * Each pushover sink has a worker thread of its own, so two of them are two
+ * threads in libcurl: curl_global_init() is documented as not thread-safe, and
+ * it is called once for the process, from the constructor, on the thread that
+ * builds the sinks - which is this one, inside apply() - so that no worker can
+ * reach libcurl before it has been initialised.
+ *
+ * What this asserts is the outcome: every page of both sinks arrives, and each
+ * with its own user key.  A race in the initialisation is not deterministic, so
+ * test/docker/full-deps/build-and-test runs this program twenty times.
+ */
+void testTwoSinksAtOnce() {
+    CHECK(apply("sink.pa.type = pushover\n"
+                "sink.pa.token = " +
+                token +
+                "\n"
+                "sink.pa.userkey = user-one\n"
+                "sink.pa.url = " +
+                urlFor("") +
+                "\n"
+                "sink.pa.level = WARN\n"
+                "sink.pa.rate = 100/min\n"
+                "sink.pb.type = pushover\n"
+                "sink.pb.token = " +
+                token +
+                "\n"
+                "sink.pb.userkey = user-two\n"
+                "sink.pb.url = " +
+                urlFor("") +
+                "\n"
+                "sink.pb.level = WARN\n"
+                "sink.pb.rate = 100/min\n"
+                "logger.conc.a = TRACE, pa\n"
+                "logger.conc.b = TRACE, pb\n"));
+
+    forgetCaptured();
+
+    const int each = 10;
+
+    std::thread first([each]() {
+        for (int at = 0; at < each; ++at)
+            emit("conc.a", WARN, "from the first sink " + std::to_string(at));
+    });
+
+    std::thread second([each]() {
+        for (int at = 0; at < each; ++at)
+            emit("conc.b", WARN, "from the second sink " + std::to_string(at));
+    });
+
+    first.join();
+    second.join();
+
+    const std::vector<Post> posts = capturedAtLeast(2 * each, 10000);
+
+    CHECK_EQ(posts.size(), std::size_t(2 * each));
+
+    // One user key per sink, so which sink sent which is in the request
+    std::size_t fromFirst = 0;
+    std::size_t fromSecond = 0;
+
+    for (const Post& post : posts) {
+        if ("user-one" == post.one("user"))
+            ++fromFirst;
+
+        if ("user-two" == post.one("user"))
+            ++fromSecond;
+    }
+
+    CHECK_EQ(fromFirst, std::size_t(each));
+    CHECK_EQ(fromSecond, std::size_t(each));
+}
+
+/**
  * Destroying a sink with requests still queued: the sink owns its worker, so
  * nothing of it can run afterwards - and what is queued is discarded rather than
  * sent, so this costs the one request that is already on its way and no more.
@@ -643,6 +717,7 @@ int main() {
     testTheTitleIsEscapedToo();
     testTheRateLimit();
     testAFailingEndpoint();
+    testTwoSinksAtOnce();
     testDestroyingASinkWithWorkQueued();
 
     // Not one record of this process may carry the token or a user key
