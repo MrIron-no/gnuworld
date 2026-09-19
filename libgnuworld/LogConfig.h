@@ -63,9 +63,9 @@ struct SinkSpec {
     std::string rate;
 
     /**
-     * Whether the file gave this sink a level of its own.  A kind of sink whose
-     * own default is not TRACE - a pager, which nobody wants every record of -
-     * needs to tell "the file asked for TRACE" from "the file said nothing".
+     * Whether the file gave this sink a level of its own.  Where it did not,
+     * LogManager::configure() attaches the sink at its LogSink::defaultThreshold():
+     * TRACE for most kinds, ERROR for a pager, which nobody wants every record of.
      */
     bool levelGiven = false;
 

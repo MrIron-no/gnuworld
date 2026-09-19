@@ -95,9 +95,13 @@ std::size_t discardResponse(char*, std::size_t size, std::size_t count, void*) {
  * its own, so two sinks are two threads, and curl_global_init() is documented as
  * not thread-safe.
  *
- * Called from the PushoverClient constructor, which runs on whatever thread
- * builds the sink - the main thread, at configure time - so libcurl is
- * initialised before that sink has a worker at all.
+ * Called first from registerSinkType(), which xServer::setupLogging() runs from
+ * the xServer constructor: no module is loaded yet, so the main thread is the
+ * only thread of the process, which is what libcurl asks for - it may set up a
+ * TLS library that is not thread-safe either.  A pushover sink that appears for
+ * the first time in a reload, with module threads long running, therefore finds
+ * libcurl ready.  The call in the PushoverClient constructor is for a program
+ * that builds a sink without registering the type: a test.
  *
  * AND THERE IS NO curl_global_cleanup() ANYWHERE.  A sink may still be sending
  * while static destruction runs, and pulling libcurl out from under a request in
@@ -270,10 +274,9 @@ PushoverClient::PushoverClient(std::string token, pushoverKeysType users, std::s
       apiUrl(url.empty() ? std::string(defaultUrl()) : std::move(url)),
       rateLimit(rateCount, ratePer), failureReports(1, std::chrono::seconds(60)) {
 #ifdef HAVE_LIBCURL
-    /* Here, and not in the request: this runs on the thread that builds the sink,
-     * which is the main thread at configure time, so libcurl is initialised
-     * before this sink has a worker and before any other sink's worker can be in
-     * the middle of using it */
+    /* Already done by registerSinkType() in the daemon; this is for whoever
+     * builds a sink without it.  Here, and not in the request: before this sink
+     * has a worker */
     initialiseCurlOnce();
 #endif
 }
@@ -583,6 +586,11 @@ std::shared_ptr<LogSink> PushoverClient::makeSink([[maybe_unused]] const SinkSpe
 }
 
 void PushoverClient::registerSinkType() {
+#ifdef HAVE_LIBCURL
+    // The first call is made while the main thread is the only one there is
+    initialiseCurlOnce();
+#endif
+
     LogManager::registerSinkType(typeName(), &PushoverClient::makeSink);
 }
 
