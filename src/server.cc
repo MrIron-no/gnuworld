@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include <new>
+#include <exception>
 #include <memory>
 #include <string>
 #include <optional>
@@ -1853,105 +1854,144 @@ string xServer::loggingConfFileName() const {
 }
 
 void xServer::setupLogging(bool reload) {
-    /* The console is written to only when the process was asked to be verbose,
-     * which is the condition the old logger wrote to it under.  A logging.conf
-     * with a console sink in it still says nothing on a daemon's terminal */
-    ConsoleSink::setEnabled(verbose);
+    /* logging.conf is data, and data can neither stop this process nor take its
+     * logging away.  Whatever reading one may cost - the allocation a monstrous
+     * name or a monstrous list asks for - is caught here: on a reload the
+     * configuration in force stays in force and the reason is logged, and at
+     * start-up the process carries on with whatever it can still be given.
+     * Nothing here exits, and nothing here throws on */
+    string failure;
 
-    /* The kind of sink only core can make, because only core knows what a
-     * channel is.  A reload registers the same thing again, which replaces it */
-    LogManager::registerSinkType(
-        "irc", [this](const SinkSpec& spec, string&) -> std::shared_ptr<LogSink> {
-            return std::make_shared<IrcLogSink>(this, spec.channel, spec.highlight);
-        });
+    try {
+        /* The console is written to only when the process was asked to be verbose,
+         * which is the condition the old logger wrote to it under.  A logging.conf
+         * with a console sink in it still says nothing on a daemon's terminal */
+        ConsoleSink::setEnabled(verbose);
 
-    const string fileName = loggingConfFileName();
+        /* The kind of sink only core can make, because only core knows what a
+         * channel is.  A reload registers the same thing again, which replaces it */
+        LogManager::registerSinkType(
+            "irc", [this](const SinkSpec& spec, string&) -> std::shared_ptr<LogSink> {
+                return std::make_shared<IrcLogSink>(this, spec.channel, spec.highlight);
+            });
 
-    bool haveFile = false;
+        const string fileName = loggingConfFileName();
 
-    {
-        std::ifstream probe(fileName.c_str());
+        bool haveFile = false;
 
-        haveFile = probe.is_open();
-    }
+        {
+            std::ifstream probe(fileName.c_str());
 
-    /* Everything that was wrong with the file, said once at the end: reporting a
-     * problem is itself logging, and said here it would go wherever the process
-     * happened to be logging before - at start-up, nowhere at all */
-    std::vector<string> problems;
+            haveFile = probe.is_open();
+        }
 
-    LogConfig config;
+        /* Everything that was wrong with the file, said once at the end: reporting a
+         * problem is itself logging, and said here it would go wherever the process
+         * happened to be logging before - at start-up, nowhere at all */
+        std::vector<string> problems;
 
-    // Whether the configuration that ends up in force is the one in that file
-    bool fromFile = false;
+        LogConfig config;
 
-    if (haveFile) {
-        std::vector<string> errors;
+        // Whether the configuration that ends up in force is the one in that file
+        bool fromFile = false;
 
-        if (parseLogConfig(fileName, config, errors))
-            fromFile = true;
-        else
-            problems = errors;
-    }
+        if (haveFile) {
+            std::vector<string> errors;
 
-    /* A file that is not a configuration changes nothing at all on a reload:
-     * what is in force stays in force, and the process goes on logging where it
-     * was logging.  At start-up there is nothing to keep, and the built-in
-     * default is what a process with no usable file has */
-    if (haveFile && !fromFile && reload) {
-        reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+            if (parseLogConfig(fileName, config, errors))
+                fromFile = true;
+            else
+                problems = errors;
+        }
 
-        return;
-    }
-
-    if (!fromFile)
-        config = builtInLogConfig();
-
-    adjustForCommandLine(config, doDebug, elogFileGiven, elogFileName);
-
-    std::vector<string> errors;
-    bool applied = LogManager::configure(config, errors);
-
-    if (!applied) {
-        problems.insert(problems.end(), errors.begin(), errors.end());
-
-        // As above: on a reload the configuration in force is the one to keep
-        if (reload) {
+        /* A file that is not a configuration changes nothing at all on a reload:
+         * what is in force stays in force, and the process goes on logging where it
+         * was logging.  At start-up there is nothing to keep, and the built-in
+         * default is what a process with no usable file has */
+        if (haveFile && !fromFile && reload) {
             reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
 
             return;
         }
 
-        /* At start-up a file that cannot be applied - a sink whose file will
-         * not open, a kind of sink this build has not got - is no reason to log
-         * nowhere at all: the built-in default is tried instead */
-        if (fromFile) {
-            fromFile = false;
+        if (!fromFile)
             config = builtInLogConfig();
-            adjustForCommandLine(config, doDebug, elogFileGiven, elogFileName);
 
-            errors.clear();
-            applied = LogManager::configure(config, errors);
+        adjustForCommandLine(config, doDebug, elogFileGiven, elogFileName);
+
+        std::vector<string> errors;
+        bool applied = LogManager::configure(config, errors);
+
+        if (!applied) {
             problems.insert(problems.end(), errors.begin(), errors.end());
+
+            // As above: on a reload the configuration in force is the one to keep
+            if (reload) {
+                reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+                return;
+            }
+
+            /* At start-up a file that cannot be applied - a sink whose file will
+             * not open, a kind of sink this build has not got - is no reason to log
+             * nowhere at all: the built-in default is tried instead */
+            if (fromFile) {
+                fromFile = false;
+                config = builtInLogConfig();
+                adjustForCommandLine(config, doDebug, elogFileGiven, elogFileName);
+
+                errors.clear();
+                applied = LogManager::configure(config, errors);
+                problems.insert(problems.end(), errors.begin(), errors.end());
+            }
+
+            /* And when even that will not do - an unwritable debug log - the
+             * process starts all the same and logs wherever it still can.  Nothing
+             * here exits: writing a log file is not what this process is for */
+            if (!applied)
+                clog << "*** Unable to open log file: " << debugLogPath(config) << endl;
         }
 
-        /* And when even that will not do - an unwritable debug log - the
-         * process starts all the same and logs wherever it still can.  Nothing
-         * here exits: writing a log file is not what this process is for */
-        if (!applied)
-            clog << "*** Unable to open log file: " << debugLogPath(config) << endl;
+        /* Said last of all, so that every one of these goes where the configuration
+         * just applied says it goes rather than wherever the one before it did */
+        reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+        if (!reload && !haveFile)
+            LOG(INFO, "No logging.conf found; using built-in defaults (see "
+                      "bin/logging.example.conf)");
+
+        if (reload && fromFile)
+            LOG(INFO, "Reloaded {}", fileName);
+
+        return;
+    } catch (const std::exception& e) {
+        failure = e.what();
+    } catch (...) {
+        failure = "an unknown error";
     }
 
-    /* Said last of all, so that every one of these goes where the configuration
-     * just applied says it goes rather than wherever the one before it did */
-    reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+    if (reload) {
+        LOG_TO(LogManager::get("core.config"), ERROR, "logging.conf: {}", failure);
 
-    if (!reload && !haveFile)
-        LOG(INFO, "No logging.conf found; using built-in defaults (see "
-                  "bin/logging.example.conf)");
+        return;
+    }
 
-    if (reload && fromFile)
-        LOG(INFO, "Reloaded {}", fileName);
+    /* At start-up there is nothing in force to keep, so the built-in default is
+     * tried; when even that will not go on, the console the root was given while
+     * the process started up is where this process logs */
+    clog << "*** logging.conf: " << failure << endl;
+
+    try {
+        LogConfig config = builtInLogConfig();
+
+        adjustForCommandLine(config, doDebug, elogFileGiven, elogFileName);
+
+        std::vector<string> errors;
+
+        LogManager::configure(config, errors);
+    } catch (...) {
+        clog << "*** Unable to apply the built-in logging defaults" << endl;
+    }
 }
 
 void xServer::startLogging(bool logrotate) {

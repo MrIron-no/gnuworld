@@ -778,6 +778,159 @@ void testErrors() {
     expectError("e-equals.conf", "===\n", "line 1");
 }
 
+/* ------------------------------------------------------------------ *
+ * A file that is not a configuration but an attack on the process
+ * ------------------------------------------------------------------ */
+
+/**
+ * A name of tens of thousands of segments used to be a name the registry
+ * walked down, creating a logger for every prefix of it: memory the square of
+ * what the file cost to write, and a std::bad_alloc on its way out of a
+ * SIGHUP.  A name has a length and a depth now, and anything beyond either is
+ * an ordinary parse error - which is what a broken file has always been.
+ */
+void testMonstrousNames() {
+    const std::string longName(300, 'a');
+
+    expectError("m-longname.conf", "logger." + longName + " = INFO\n", "logger.");
+    expectError("m-longadd.conf", "additivity." + longName + " = yes\n", "additivity.");
+
+    // What a message says about such a key is a message, not the key again
+    {
+        LogConfig config;
+        std::vector<std::string> errors;
+
+        CHECK(!parseLogConfig(writeConf("m-longname2.conf", "logger." + longName + " = INFO\n"),
+                              config, errors));
+        CHECK(1 == errors.size());
+
+        for (const std::string& error : errors)
+            CHECK(error.size() < 200);
+    }
+
+    // Sixteen segments is a hierarchy; seventeen is somebody trying it on
+    std::string deep = "s1";
+    for (int at = 2; at <= 16; ++at)
+        deep += ".s" + std::to_string(at);
+
+    {
+        LogConfig config;
+        std::vector<std::string> errors;
+
+        CHECK(parseLogConfig(writeConf("m-deep16.conf", "logger." + deep + " = INFO\n"), config,
+                             errors));
+        CHECK(errors.empty());
+        CHECK(nullptr != findLogger(config, deep));
+    }
+
+    expectError("m-deep17.conf", "logger." + deep + ".s17 = INFO\n", "logger.");
+
+    // The empty segments are not segments, here as everywhere else
+    {
+        LogConfig config;
+        std::vector<std::string> errors;
+
+        CHECK(parseLogConfig(
+            writeConf("m-dots.conf", "logger." + std::string(60, '.') + deep + " = INFO\n"), config,
+            errors));
+        CHECK(errors.empty());
+    }
+
+    // And a sink id nobody would type
+    expectError("m-longsink.conf", "sink." + std::string(65, 'b') + ".type = console\n", "sink.");
+
+    {
+        LogConfig config;
+        std::vector<std::string> errors;
+
+        CHECK(parseLogConfig(
+            writeConf("m-sink64.conf", "sink." + std::string(64, 'b') + ".type = console\n"),
+            config, errors));
+        CHECK(errors.empty());
+    }
+}
+
+/**
+ * A line naming a thousand sinks used to be a thousand errors, each of them a
+ * string: the report of what is wrong with a file is capped, and says how much
+ * of it is not being shown.
+ */
+void testErrorsAreCapped() {
+    std::string line = "logger.capped = INFO";
+
+    for (int at = 0; at < 1000; ++at)
+        line += ", nosuch" + std::to_string(at);
+
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(!parseLogConfig(writeConf("m-capped.conf", line + "\n"), config, errors));
+    CHECK(errors.size() <= 20);
+    CHECK(!errors.empty());
+
+    if (errors.empty())
+        return;
+
+    CHECK(contains(errors.back(), "more"));
+    CHECK(contains(errors.back(), "981"));
+}
+
+/**
+ * None of it stops the process or takes its logging away: loadFile() says no,
+ * says why on core.config, and what was in force is still in force.
+ */
+void testMonstrousFilesKeepTheConfiguration() {
+    const std::string keepLog = scratchPath("monstrous.log");
+
+    LogConfig working;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("m-working.conf", "sink.m1.type = file\n"
+                                                     "sink.m1.path = " +
+                                                         keepLog +
+                                                         "\n"
+                                                         "logger.cfg20.a = INFO, m1\n"),
+                         working, errors));
+    CHECK(LogManager::configure(working, errors));
+
+    emit(LogManager::get("cfg20.a"), INFO, "before");
+    CHECK(1 == readFileLines(keepLog).size());
+
+    const std::shared_ptr<CaptureSink> reports = std::make_shared<CaptureSink>();
+    LogManager::get("core.config")->addSink(reports, TRACE);
+
+    std::string deep = "d1";
+    for (int at = 2; at <= 17; ++at)
+        deep += ".d" + std::to_string(at);
+
+    std::string capped = "logger.cfg20.b = INFO";
+    for (int at = 0; at < 1000; ++at)
+        capped += ", nosuch" + std::to_string(at);
+
+    const std::string files[4] = {
+        writeConf("m-l1.conf", "logger." + std::string(300, 'a') + " = INFO\n"),
+        writeConf("m-l2.conf", "logger." + deep + " = INFO\n"),
+        writeConf("m-l3.conf", "sink." + std::string(65, 'b') + ".type = console\n"),
+        writeConf("m-l4.conf", capped + "\n")};
+
+    std::size_t written = 1;
+
+    for (const std::string& path : files) {
+        reports->clear();
+
+        CHECK(!LogManager::loadFile(path));
+        CHECK(!reports->records.empty());
+        CHECK(reports->size() <= 20);
+
+        // The routing of the configuration in force is untouched
+        ++written;
+        emit(LogManager::get("cfg20.a"), INFO, "still here");
+        CHECK(written == readFileLines(keepLog).size());
+    }
+
+    LogManager::get("core.config")->removeSink(reports);
+}
+
 /**
  * The name of a logger line is the name the registry knows, and it is that name
  * before the file is looked at for duplicates: "logger.x" and "logger..x" are
@@ -1604,6 +1757,9 @@ int main() {
     testControlCharactersInErrors();
     testSecondLook();
     testErrors();
+    testMonstrousNames();
+    testErrorsAreCapped();
+    testMonstrousFilesKeepTheConfiguration();
     testLoggerNames();
     testDuplicateFileSinkPaths();
     testMissingFile();

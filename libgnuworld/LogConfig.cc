@@ -57,6 +57,69 @@ const string blanks(" \t\r\n\v\f");
 /// The three bytes an editor may put in front of the first line of a file
 const string byteOrderMark("\xEF\xBB\xBF");
 
+/**
+ * The most a logger name may be.
+ *
+ * A name is a path through a hierarchy, and the registry creates a logger for
+ * every prefix of one: a name of tens of thousands of segments is not a deep
+ * hierarchy but a file asking the process for the square of what the file cost
+ * to write.  Anything past either of these is an ordinary parse error, which is
+ * what a file that is not a configuration has always been.
+ */
+const string::size_type maximumNameLength = 255;
+const std::size_t maximumNameSegments = 16;
+
+/// The most a sink id may be, for the same reason and in the same spirit
+const string::size_type maximumSinkIdLength = 64;
+
+/// The most a message says of a key or a value a file wrote
+const string::size_type maximumShownLength = 64;
+
+/**
+ * The most errors a report about one file carries.  A single line may name
+ * half a million sinks, and every one of them that is unknown is an error of
+ * its own: what comes back is the first few of them and a count of the rest,
+ * which is as much as anyone reads anyway.
+ */
+const std::size_t maximumErrors = 20;
+
+/// The ellipsis a truncated key or a shortened list of errors ends with
+const string ellipsis("\xE2\x80\xA6");
+
+/**
+ * What a message shows of something a file wrote: nothing raw, and no more of
+ * it than a reader wants to see.  A key or a value may be of any length at
+ * all, and an error about one is read by a person, not parsed by anything.
+ */
+string shown(const string& text) {
+    const string escaped = escapeControl(text);
+
+    if (escaped.size() <= maximumShownLength)
+        return escaped;
+
+    return escaped.substr(0, maximumShownLength) + ellipsis;
+}
+
+/**
+ * The errors, no more than maximumErrors of them, the last saying how many of
+ * them are not being shown.  suppressed is how many were never written down in
+ * the first place, which is what a loop over one monstrous line counts instead
+ * of allocating a string for every step of it.
+ */
+void capErrors(std::vector<string>& errors, std::size_t suppressed = 0) {
+    if (0 == suppressed && errors.size() <= maximumErrors)
+        return;
+
+    std::size_t hidden = suppressed;
+
+    if (errors.size() > maximumErrors - 1) {
+        hidden += errors.size() - (maximumErrors - 1);
+        errors.resize(maximumErrors - 1);
+    }
+
+    errors.push_back(ellipsis + " and " + std::to_string(hidden) + " more");
+}
+
 /// The text without the blank characters at either end of it
 string trim(const string& text) {
     const string::size_type begin = text.find_first_not_of(blanks);
@@ -159,6 +222,32 @@ bool loggerName(const string& written, string& name) {
     return true;
 }
 
+/**
+ * Whether a normalised logger name is one a hierarchy could have, and why not
+ * when it is not.
+ */
+bool nameWithinLimits(const string& name, string& why) {
+    if (name.size() > maximumNameLength) {
+        why = "the logger name is longer than " + std::to_string(maximumNameLength) + " bytes";
+
+        return false;
+    }
+
+    std::size_t segments = name.empty() ? 0 : 1;
+
+    for (const char c : name)
+        if ('.' == c)
+            ++segments;
+
+    if (segments > maximumNameSegments) {
+        why = "the logger name has more than " + std::to_string(maximumNameSegments) + " segments";
+
+        return false;
+    }
+
+    return true;
+}
+
 /// Whether this is a sink id: letters, digits, '_' and '-', and at least one
 bool validSinkId(const string& id) {
     if (id.empty())
@@ -206,7 +295,7 @@ string findMalformedLine(const string& fileName) {
         const string where = " (line " + std::to_string(number) + ")";
 
         if (string::npos == equals)
-            return "\"" + escapeControl(trimmed) + "\" is not a key = value line" + where;
+            return "\"" + shown(trimmed) + "\" is not a key = value line" + where;
 
         // EConfig takes the spaces out of a key, so the message names it as it
         // would have been keyed
@@ -222,7 +311,7 @@ string findMalformedLine(const string& fileName) {
             return "line " + std::to_string(number) + ": no key before '='";
 
         if (trim(trimmed.substr(equals + 1)).empty())
-            return escapeControl(key) + ": the value is empty" + where;
+            return shown(key) + ": the value is empty" + where;
     }
 
     return string();
@@ -317,6 +406,19 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
     std::map<string, SinkDraft> sinks;
     std::map<string, LoggerDraft> loggers;
 
+    /* One line may list half a million sinks, and each of them may be wrong in
+     * a way of its own.  Past the cap those are counted rather than written
+     * down: the report says how many there were, and a file cannot make this
+     * function allocate a string for every comma in it */
+    std::size_t suppressed = 0;
+
+    const auto addListError = [&errors, &suppressed](const string& text) {
+        if (errors.size() < maximumErrors)
+            errors.push_back(text);
+        else
+            ++suppressed;
+    };
+
     for (EConfig::const_iterator entry = file.begin(); entry != file.end(); ++entry) {
         /* The key as the file meant it: without the blanks EConfig leaves at
          * either end of it, and without the byte order mark an editor may have
@@ -325,7 +427,7 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
         const string value = trim(entry->second);
 
         // What a message may say about this key, with nothing raw left in it
-        const string shownKey = escapeControl(key);
+        const string shownKey = shown(key);
 
         /* ---- sink.<id>.<setting> ---- */
         if (hasPrefix(key, sinkPrefix)) {
@@ -341,8 +443,14 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
             const string written = rest.substr(dot + 1);
             const string setting = lower(written);
 
+            if (id.size() > maximumSinkIdLength) {
+                errors.push_back(shownKey + ": the sink id is longer than " +
+                                 std::to_string(maximumSinkIdLength) + " bytes");
+                continue;
+            }
+
             if (!validSinkId(id)) {
-                errors.push_back(shownKey + ": \"" + escapeControl(id) +
+                errors.push_back(shownKey + ": \"" + shown(id) +
                                  "\" is not a sink id (letters, digits, '_' and '-')");
                 continue;
             }
@@ -377,7 +485,7 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                 else if ("text" == format)
                     draft.spec.json = false;
                 else
-                    errors.push_back(shownKey + ": \"" + escapeControl(value) +
+                    errors.push_back(shownKey + ": \"" + shown(value) +
                                      "\" is not a format, expected json or text");
             } else if ("level" == setting) {
                 Verbosity level = TRACE;
@@ -385,8 +493,7 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                 if (parseLevel(value, level))
                     draft.spec.level = level;
                 else
-                    errors.push_back(shownKey + ": \"" + escapeControl(value) +
-                                     "\" is not a level");
+                    errors.push_back(shownKey + ": \"" + shown(value) + "\" is not a level");
             } else if ("colour" == setting) {
                 const string colour = lower(value);
                 bool wanted = true;
@@ -396,7 +503,7 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                 else if (parseBoolean(colour, wanted))
                     draft.spec.colour = wanted ? ConsoleSink::Colour::Yes : ConsoleSink::Colour::No;
                 else
-                    errors.push_back(shownKey + ": \"" + escapeControl(value) +
+                    errors.push_back(shownKey + ": \"" + shown(value) +
                                      "\" is not a colour, expected auto, yes or no");
             } else if ("highlight" == setting) {
                 bool wanted = true;
@@ -404,11 +511,9 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                 if (parseBoolean(value, wanted))
                     draft.spec.highlight = wanted;
                 else
-                    errors.push_back(shownKey + ": \"" + escapeControl(value) +
-                                     "\" is not a yes or a no");
+                    errors.push_back(shownKey + ": \"" + shown(value) + "\" is not a yes or a no");
             } else {
-                errors.push_back(shownKey + ": unknown sink setting \"" + escapeControl(written) +
-                                 "\"");
+                errors.push_back(shownKey + ": unknown sink setting \"" + shown(written) + "\"");
             }
 
             continue;
@@ -425,6 +530,13 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
              * name is read case for case, so "ROOT" is a logger of its own */
             if (!loggerName(written, name)) {
                 errors.push_back(shownKey + ": empty logger name");
+                continue;
+            }
+
+            string why;
+
+            if (!nameWithinLimits(name, why)) {
+                errors.push_back(shownKey + ": " + why);
                 continue;
             }
 
@@ -445,7 +557,7 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
             }
 
             if (!parseLevel(parts[0], level)) {
-                errors.push_back(shownKey + ": \"" + escapeControl(parts[0]) + "\" is not a level");
+                errors.push_back(shownKey + ": \"" + shown(parts[0]) + "\" is not a level");
                 continue;
             }
 
@@ -454,7 +566,7 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
 
             for (std::size_t at = 1; at < parts.size(); ++at) {
                 if (parts[at].empty()) {
-                    errors.push_back(shownKey + ": an empty sink id in the list");
+                    addListError(shownKey + ": an empty sink id in the list");
                     continue;
                 }
 
@@ -467,8 +579,8 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                     }
 
                 if (already) {
-                    errors.push_back(shownKey + ": the sink \"" + escapeControl(parts[at]) +
-                                     "\" is listed twice");
+                    addListError(shownKey + ": the sink \"" + shown(parts[at]) +
+                                 "\" is listed twice");
                     continue;
                 }
 
@@ -489,6 +601,13 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                 continue;
             }
 
+            string why;
+
+            if (!nameWithinLimits(name, why)) {
+                errors.push_back(shownKey + ": " + why);
+                continue;
+            }
+
             LoggerDraft& draft = loggers[name];
             draft.spec.name = name;
 
@@ -500,8 +619,7 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
             bool wanted = true;
 
             if (!parseBoolean(value, wanted)) {
-                errors.push_back(shownKey + ": \"" + escapeControl(value) +
-                                 "\" is not a yes or a no");
+                errors.push_back(shownKey + ": \"" + shown(value) + "\" is not a yes or a no");
                 continue;
             }
 
@@ -551,12 +669,13 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
     for (const std::pair<const string, LoggerDraft>& entry : loggers)
         for (const string& id : entry.second.spec.sinks)
             if (sinks.end() == sinks.find(id))
-                errors.push_back(entry.second.levelKey + ": unknown sink \"" + escapeControl(id) +
-                                 "\"");
+                addListError(entry.second.levelKey + ": unknown sink \"" + shown(id) + "\"");
 
-    if (!errors.empty()) {
+    if (!errors.empty() || 0 != suppressed) {
         // The file is taken as a whole or not at all
         out = LogConfig();
+
+        capErrors(errors, suppressed);
 
         return false;
     }

@@ -19,6 +19,7 @@
  */
 #include <algorithm>
 #include <cstddef>
+#include <exception>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -49,6 +50,26 @@ const std::size_t maximumNameWidth = 20;
 
 /// The width the name of the root takes, which it prints as
 const std::size_t rootNameWidth = 4;
+
+/**
+ * The most errors a report about one configuration carries.  A configuration
+ * built out of a file that names ten thousand sinks of a kind this build has
+ * not got is ten thousand errors otherwise, and nobody reads past the first few
+ * of them.  parseLogConfig() caps what it returns in the same way.
+ */
+const std::size_t maximumErrors = 20;
+
+/// The errors, no more than maximumErrors of them, the last saying how many of
+/// them are not being shown
+void capErrors(std::vector<string>& errors) {
+    if (errors.size() <= maximumErrors)
+        return;
+
+    const std::size_t hidden = errors.size() - (maximumErrors - 1);
+
+    errors.resize(maximumErrors - 1);
+    errors.push_back("\xE2\x80\xA6 and " + std::to_string(hidden) + " more");
+}
 
 /// A type name as the registry of the sink kinds keys it: without its case
 string lowerType(const string& type) {
@@ -433,6 +454,8 @@ bool LogManager::configure(const LogConfig& config, std::vector<string>& errors)
         // Nothing at all changes; what was built is let go of here, unlocked
         built.clear();
 
+        capErrors(errors);
+
         return false;
     }
 
@@ -526,15 +549,32 @@ bool LogManager::isConfigured(const string& name) {
  * Whatever went wrong is logged once configure() has returned and no lock of the
  * registry is held any more: reporting a problem is itself logging, and logging
  * writes to sinks.
+ *
+ * A file is data, and data neither stops this process nor takes its logging
+ * away: whatever reading one may cost - the allocation a monstrous file asks
+ * for, say - is caught here and reported like any other thing wrong with it.
+ * What was in force stays in force.
  */
 bool LogManager::loadFile(const string& fileName) {
     LogConfig config;
     std::vector<string> errors;
 
-    bool applied = parseLogConfig(fileName, config, errors);
+    bool applied = false;
 
-    if (applied)
-        applied = configure(config, errors);
+    try {
+        applied = parseLogConfig(fileName, config, errors);
+
+        if (applied)
+            applied = configure(config, errors);
+    } catch (const std::exception& e) {
+        applied = false;
+        errors.clear();
+        errors.push_back(string("the file could not be read: ") + e.what());
+    } catch (...) {
+        applied = false;
+        errors.clear();
+        errors.push_back("the file could not be read");
+    }
 
     if (!applied) {
         Logger* const reporter = get("core.config");
