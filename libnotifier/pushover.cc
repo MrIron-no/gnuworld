@@ -43,7 +43,7 @@
 #include "pushover.h"
 #include "threadworker.h"
 
-GNUWORLD_MODULE_LOGGER("core.notifier");
+GNUWORLD_CORE_LOGGER(Notifier);
 
 namespace gnuworld {
 

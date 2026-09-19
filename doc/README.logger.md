@@ -610,8 +610,10 @@ resolve; every translation unit of the module that includes the header logs
 under the same name. It has internal linkage on purpose: modules are
 separate shared objects, and an exported symbol would have every module
 that forgot to redefine it bind to whichever one loaded first. Core code
-(one binary, not a module) instead puts one `GNUWORLD_MODULE_LOGGER(...)`
-per `.cc` file, naming that file's own sub-logger, and never in a header.
+(one binary, not a module) instead puts one `GNUWORLD_CORE_LOGGER(<which>)`
+per `.cc` file — `GNUWORLD_CORE_LOGGER(Proto);` — naming that file's own
+logger by its `CoreLogger` value rather than by a string, and never in a
+header.
 
 **Logging.**
 
@@ -1003,8 +1005,8 @@ forces this.
 
 ### Conversion rules (as applied to core; usable for a module too)
 
-- One `GNUWORLD_MODULE_LOGGER("<name>")` per `.cc` file (core), or once in
-  the module's common header (a module); a header that logs on its own
+- One `GNUWORLD_CORE_LOGGER(<which>)` per `.cc` file (core), or one
+  `GNUWORLD_MODULE_LOGGER("<name>")` in the module's common header (a module); a header that logs on its own
   uses `LOG_CORE(<which>, ...)` in core, and
   `LOG_TO(::gnuworld::LogManager::get("<name>"), ...)` in a module.
 - One `elog` statement becomes one `LOG`/`LOG_MSG` call; a hand-written

@@ -58,7 +58,7 @@
 /* The logger this file writes to: the server itself, which main() and xServer
  * share.  Core is one binary and not one module, so this stands once per .cc
  * file rather than in a header */
-GNUWORLD_MODULE_LOGGER("core");
+GNUWORLD_CORE_LOGGER(Core);
 
 // main() must be in the global namespace
 using namespace gnuworld;

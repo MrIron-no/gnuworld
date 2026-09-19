@@ -24,7 +24,7 @@
 #include "logger.h"
 #include "misc.h"
 
-GNUWORLD_MODULE_LOGGER("core");
+GNUWORLD_CORE_LOGGER(Core);
 
 namespace gnuworld {
 

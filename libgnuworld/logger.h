@@ -48,8 +48,9 @@
  * It is used at GLOBAL scope - outside every namespace - once per module, in the
  * module's common header, so that every translation unit of the module logs
  * under the module's name.  Core code, which is one binary and not one module,
- * uses it once per .cc file with the sub-logger of that file, and never in a
- * header, where it would name the logger of whoever includes it.
+ * uses GNUWORLD_CORE_LOGGER below once per .cc file, with the logger of that
+ * file, and never in a header, where it would name the logger of whoever
+ * includes it.
  *
  * Usage: GNUWORLD_MODULE_LOGGER("cservice");
  *
@@ -69,6 +70,22 @@
     [[maybe_unused]] inline Logger* moduleLogger() {                                               \
         static Logger* const l = ::gnuworld::LogManager::get(name);                                \
         return l;                                                                                  \
+    }                                                                                              \
+    }                                                                                              \
+    }
+
+/**
+ * The same for a file of core, whose logger is one of core's own and is named
+ * by CoreLogger rather than by a string, so that a name that is not one does
+ * not compile.
+ *
+ * Usage: GNUWORLD_CORE_LOGGER(Proto);
+ */
+#define GNUWORLD_CORE_LOGGER(which)                                                                \
+    namespace gnuworld {                                                                           \
+    namespace {                                                                                    \
+    [[maybe_unused]] inline Logger* moduleLogger() {                                               \
+        return ::gnuworld::coreLogger(::gnuworld::CoreLogger::which);                              \
     }                                                                                              \
     }                                                                                              \
     }

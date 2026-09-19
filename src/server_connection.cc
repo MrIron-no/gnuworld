@@ -71,7 +71,7 @@
 
 /* The logger this file writes to: the link to the uplink.  Core is one binary
  * and not one module, so this stands once per .cc file rather than in a header */
-GNUWORLD_MODULE_LOGGER("core.net");
+GNUWORLD_CORE_LOGGER(Net);
 
 namespace gnuworld {
 

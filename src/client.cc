@@ -54,7 +54,7 @@
 #endif
 #include "events.h"
 
-GNUWORLD_MODULE_LOGGER("core.modules");
+GNUWORLD_CORE_LOGGER(Modules);
 
 namespace gnuworld {
 

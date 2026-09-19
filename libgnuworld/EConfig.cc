@@ -38,7 +38,7 @@
 #include "logger.h"
 #include "misc.h"
 
-GNUWORLD_MODULE_LOGGER("core.config");
+GNUWORLD_CORE_LOGGER(Config);
 
 namespace gnuworld {
 

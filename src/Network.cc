@@ -47,7 +47,7 @@
 #include "gnuworld_config.h"
 #include "logger.h"
 
-GNUWORLD_MODULE_LOGGER("core.state");
+GNUWORLD_CORE_LOGGER(State);
 
 namespace gnuworld {
 

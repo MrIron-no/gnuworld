@@ -38,7 +38,7 @@
 #include "Signal.h"
 #include "logger.h"
 
-GNUWORLD_MODULE_LOGGER("core");
+GNUWORLD_CORE_LOGGER(Core);
 
 namespace gnuworld {
 using std::cout;

@@ -52,7 +52,7 @@
 #include "Buffer.h"
 #include "logger.h"
 
-GNUWORLD_MODULE_LOGGER("core.net");
+GNUWORLD_CORE_LOGGER(Net);
 
 namespace gnuworld {
 

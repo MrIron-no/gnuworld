@@ -28,7 +28,7 @@
 #include "xparameters.h"
 #include "logger.h"
 
-GNUWORLD_MODULE_LOGGER("core.proto");
+GNUWORLD_CORE_LOGGER(Proto);
 
 namespace gnuworld {
 

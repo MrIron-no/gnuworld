@@ -29,7 +29,7 @@
 #include "threadworker.h"
 #include "logger.h"
 
-GNUWORLD_MODULE_LOGGER("core.notifier");
+GNUWORLD_CORE_LOGGER(Notifier);
 
 namespace gnuworld {
 
