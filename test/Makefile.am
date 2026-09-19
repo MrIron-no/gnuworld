@@ -32,6 +32,14 @@ if COND_PCRE
 noinst_PROGRAMS += test_regex
 endif
 
+# The pushover sink really talking to an HTTP endpoint, which needs the libcurl
+# the sink is compiled against: where there is none there is no sink either, so
+# there is nothing for this program to test (see test/docker/full-deps/run.sh,
+# which is the build that has one).
+if COND_LIBCURL
+noinst_PROGRAMS += test_pushover_delivery
+endif
+
 test_burst_SOURCES = test/burst.cc
 test_burst_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_burst_LDADD = libgnuworld.la
@@ -178,8 +186,21 @@ test_logger_adversarial_SOURCES = test/logger_adversarial.cc
 test_logger_adversarial_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_logger_adversarial_LDADD = libgnuworld.la $(threadLib)
 
+# What a pushover sink of logging.conf really puts on the wire: libnotifier for
+# the sink, libgnuworld for the configuration that builds it, libcurl for the
+# request.  It posts to whatever PUSHOVER_TEST_URL names and says so and passes
+# where that is unset, so "make check" needs no endpoint and no network.
+test_pushover_delivery_SOURCES = test/pushover_delivery.cc
+test_pushover_delivery_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier
+test_pushover_delivery_LDADD = libnotifier.la libgnuworld.la $(threadLib)
+
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
 TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
 	test_logger_format test_logger_sinks test_logger_basic test_logger_hierarchy \
 	test_logger_config test_logger_ratelimit test_elog_shim test_logger_adversarial
+
+if COND_LIBCURL
+TESTS += test_pushover_delivery
+endif
