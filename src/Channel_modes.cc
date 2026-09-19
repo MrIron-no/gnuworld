@@ -1,7 +1,7 @@
 /*
  * Channel_modes.cc
- * Author: Daniel Karrels (dan@karrels.com)
- * Copyright (C) 2002 Daniel Karrels <dan@karrels.com>
+ * Author: MrIron <mriron@undernet.org>
+ * Copyright (C) 2026 MrIron <mriron@undernet.org>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -17,8 +17,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
- *
- * $Id: Channel.cc,v 1.55 2008/04/16 20:29:37 danielaustin Exp $
  */
 
 /*
