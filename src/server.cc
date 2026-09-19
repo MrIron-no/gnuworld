@@ -89,18 +89,6 @@ GNUWORLD_MODULE_LOGGER("core");
 
 namespace gnuworld {
 
-namespace {
-
-/// The logger of what is loaded and attached, for a function that speaks of
-/// it once: looked up the first time and kept
-Logger* modulesLogger() {
-    static Logger* const modules = LogManager::get("core.modules");
-
-    return modules;
-}
-
-} // namespace
-
 using std::clog;
 using std::cout;
 using std::endl;
@@ -121,9 +109,6 @@ xNetwork* Network = 0;
 const string xServer::CHANNEL_ALL("*");
 
 void xServer::initializeSystem() {
-    /* Loading a module is this logger's business rather than the server's */
-    static Logger* const modules = LogManager::get("core.modules");
-
     initializeVariables();
 
     clog << "*** Parsing configuration file " << configFileName << "..." << endl;
@@ -156,12 +141,12 @@ void xServer::initializeSystem() {
     Network->setServer(this);
 
     if (!loadCommandHandlers()) {
-        LOG_TO(modules, FATAL, "Failed to load command handlers");
+        LOG_CORE(Modules, FATAL, "Failed to load command handlers");
         ::exit(-1);
     }
 
     if (!loadClients(configFileName)) {
-        LOG_TO(modules, FATAL, "Failed in loading one or more modules");
+        LOG_CORE(Modules, FATAL, "Failed in loading one or more modules");
         ::exit(-1);
     }
 
@@ -320,12 +305,9 @@ bool xServer::initTls() {
 #endif
 
 bool xServer::loadCommandHandlers() {
-    /* Loading a module is this logger's business rather than the server's */
-    static Logger* const modules = LogManager::get("core.modules");
-
     std::ifstream commandMapFile(commandMapFileName.c_str());
     if (!commandMapFile) {
-        LOG_TO(modules, ERROR, "Unable to open command map file: {}", commandMapFileName);
+        LOG_CORE(Modules, ERROR, "Unable to open command map file: {}", commandMapFileName);
         return false;
     }
 
@@ -343,8 +325,8 @@ bool xServer::loadCommandHandlers() {
         // module_file_name module_loader_symbol command_key
         StringTokenizer st(line);
         if (st.size() != 3) {
-            LOG_TO(modules, ERROR, "{}:{}> Invalid syntax, 3 tokens expected, {} tokens found",
-                   commandMapFileName, lineNumber, st.size());
+            LOG_CORE(Modules, ERROR, "{}:{}> Invalid syntax, 3 tokens expected, {} tokens found",
+                     commandMapFileName, lineNumber, st.size());
             returnVal = false;
             break;
         }
@@ -374,10 +356,11 @@ bool xServer::loadCommandHandlers() {
         }
 
         if (!loadCommandHandler(fileName, st[1], st[2])) {
-            LOG_TO(modules, ERROR,
-                   "Failed to load handler for message token {}, from module file: {}, with symbol "
-                   "suffix: {}",
-                   st[2], fileName, st[1]);
+            LOG_CORE(
+                Modules, ERROR,
+                "Failed to load handler for message token {}, from module file: {}, with symbol "
+                "suffix: {}",
+                st[2], fileName, st[1]);
             returnVal = false;
             break;
         }
@@ -388,7 +371,7 @@ bool xServer::loadCommandHandlers() {
 
     } // while()
 
-    LOG_TO(modules, INFO, "Loaded {} command handlers", commandMap.size());
+    LOG_CORE(Modules, INFO, "Loaded {} command handlers", commandMap.size());
 
     commandMapFile.close();
 
@@ -397,9 +380,6 @@ bool xServer::loadCommandHandlers() {
 
 bool xServer::loadCommandHandler(const string& fileName, const string& symbolName,
                                  const string& commandKey) {
-    /* Loading a module is this logger's business rather than the server's */
-    static Logger* const modules = LogManager::get("core.modules");
-
     // Let's first check to see if the module is already open
     // It is possible that a single module handler may be
     // registered to handle multiple commands (NOOP for example)
@@ -426,10 +406,10 @@ bool xServer::loadCommandHandler(const string& fileName, const string& symbolNam
 
     ServerCommandHandler* sch = ml->loadObject(this, symbolSuffix);
     if (NULL == sch) {
-        LOG_TO(modules, ERROR,
-               "Failed to load handler for message token {}, from module file: {}, with symbol "
-               "suffix: {}",
-               commandKey, fileName, symbolName);
+        LOG_CORE(Modules, ERROR,
+                 "Failed to load handler for message token {}, from module file: {}, with symbol "
+                 "suffix: {}",
+                 commandKey, fileName, symbolName);
 
         delete (ml);
         ml = 0;
@@ -446,7 +426,7 @@ bool xServer::loadCommandHandler(const string& fileName, const string& symbolNam
 
     // Add the command handler to the handler map
     if (!commandMap.insert(commandMapType::value_type(commandKey, sch)).second) {
-        LOG_TO(modules, ERROR, "Unable to add handler for message {} to commandMap", commandKey);
+        LOG_CORE(Modules, ERROR, "Unable to add handler for message {} to commandMap", commandKey);
 
         delete ml;
         ml = 0;
@@ -471,9 +451,6 @@ xServer::commandModuleType* xServer::lookupCommandModule(const string& moduleNam
 }
 
 bool xServer::loadClients(const string& fileName) {
-    /* Loading a module is this logger's business rather than the server's */
-    static Logger* const modules = LogManager::get("core.modules");
-
     // Load the config file
     EConfig conf(fileName);
 
@@ -485,8 +462,8 @@ bool xServer::loadClients(const string& fileName) {
         StringTokenizer modInfo(ptr->second);
 
         if (2 != modInfo.size()) {
-            LOG_TO(modules, ERROR,
-                   "modules require two arguments, modulename followed by config file name");
+            LOG_CORE(Modules, ERROR,
+                     "modules require two arguments, modulename followed by config file name");
 
             return false;
         }
@@ -510,7 +487,7 @@ bool xServer::loadClients(const string& fileName) {
         if (!AttachClient(fileName, modInfo[1])) {
             // No need for error output here because AttachClient()
             // will do that for us
-            LOG_TO(modules, ERROR, "Failed to attach client: {}", fileName);
+            LOG_CORE(Modules, ERROR, "Failed to attach client: {}", fileName);
 
             return false;
         }
@@ -899,9 +876,6 @@ void xServer::BurstServer(iServer* fakeServer) {
  * returned to its state when the method was called.
  */
 bool xServer::AttachClient(xClient* Client, bool doBurst) {
-    /* Attaching a client is this logger's business rather than the server's */
-    static Logger* const modules = LogManager::get("core.modules");
-
     // Make sure the pointer is valid.
     assert(NULL != Client);
 
@@ -911,7 +885,7 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
     // addClient() will allocate a new XXX and
     // update Client.
     if (!Network->addClient(Client)) {
-        LOG_TO(modules, ERROR, "Failed to update network tables");
+        LOG_CORE(Modules, ERROR, "Failed to update network tables");
         return false;
     }
 
@@ -928,8 +902,8 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
             Client->OnConnect();
         }
 
-        LOG_TO(modules, INFO, "Loaded stealth client, nickname: {}, with config file: {}",
-               Client->getNickName(), Client->getConfigFileName());
+        LOG_CORE(Modules, INFO, "Loaded stealth client, nickname: {}, with config file: {}",
+                 Client->getNickName(), Client->getConfigFileName());
         return true;
     }
 
@@ -948,7 +922,7 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
     // Add the iClient to the network tables
     if (!Network->addClient(theIClient)) {
         // Failed to add the iClient to the network tables
-        LOG_TO(modules, ERROR, "Unable to add theIClient to the Network table");
+        LOG_CORE(Modules, ERROR, "Unable to add theIClient to the Network table");
 
         // We have already reserved a numeric for this client,
         // go ahead and remove it
@@ -971,8 +945,8 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
         Client->BurstGlines();
     }
 
-    LOG_MSG_TO(modules, INFO, "Loaded client, nickname: {client}, with config file: {}",
-               Client->getConfigFileName())
+    LOG_MSG_CORE(Modules, INFO, "Loaded client, nickname: {client}, with config file: {}",
+                 Client->getConfigFileName())
         .with("client", theIClient)
         .log();
 
@@ -981,9 +955,6 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
 }
 
 bool xServer::AttachClient(const string& moduleName, const string& configFileName, bool doBurst) {
-    /* Loading a module is this logger's business rather than the server's */
-    static Logger* const modules = LogManager::get("core.modules");
-
     // Create a moduleLoader instance, based on the given moduleName
     moduleLoader<xClient*>* ml = new (std::nothrow) moduleLoader<xClient*>(moduleName);
     assert(ml != 0);
@@ -1005,7 +976,7 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
     // Check if the object was loaded successfully
     if (NULL == clientPtr) {
         // Failed to load the object
-        LOG_TO(modules, ERROR, "Failed to instantiate module: {}", moduleName);
+        LOG_CORE(Modules, ERROR, "Failed to instantiate module: {}", moduleName);
 
         // Deallocate the module, this will also close the module file
         delete ml;
@@ -1018,7 +989,7 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
     // Attempt to attach the client to the server
     if (!AttachClient(clientPtr, doBurst)) {
         // Failed to attach the client
-        LOG_TO(modules, ERROR, "Failed to attach new xClient: {}", moduleName);
+        LOG_CORE(Modules, ERROR, "Failed to attach new xClient: {}", moduleName);
 
         // Deallocate the client and its encapsulating module
         delete clientPtr;
@@ -1046,16 +1017,13 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
  * AQ N ripper_ 1 952038834 ~dan 127.0.0.1 +owg B]AAAB AQAAA :Dan Karrels
  */
 bool xServer::AttachClient(iClient* fakeClient, xClient* ownerClient) {
-    /* Attaching a client is this logger's business rather than the server's */
-    static Logger* const modules = LogManager::get("core.modules");
-
     assert(fakeClient != NULL);
     assert(ownerClient != 0);
 
     // Verify that the iClient is in good order
     if (fakeClient->getNickName().empty() || fakeClient->getUserName().empty() ||
         fakeClient->getInsecureHost().empty() || fakeClient->getDescription().empty()) {
-        LOG_MSG_TO(modules, WARN, "Missing data in iClient: {client}")
+        LOG_MSG_CORE(Modules, WARN, "Missing data in iClient: {client}")
             .with("client", fakeClient)
             .log();
         return false;
@@ -1064,7 +1032,7 @@ bool xServer::AttachClient(iClient* fakeClient, xClient* ownerClient) {
     // Let the xNetwork class handle filling in the information about the
     // iClient.
     if (!Network->addFakeClient(fakeClient, ownerClient)) {
-        LOG_TO(modules, ERROR, "addFakeClient() failed");
+        LOG_CORE(Modules, ERROR, "addFakeClient() failed");
         return false;
     }
 
@@ -1135,7 +1103,7 @@ bool xServer::DetachClient(const string& moduleName, const string& reason) {
         }
     }
 
-    LOG_TO(modulesLogger(), WARN, "Unable to find client moduleName: {}", moduleName);
+    LOG_CORE(Modules, WARN, "Unable to find client moduleName: {}", moduleName);
 
     return false;
 }
@@ -1193,7 +1161,7 @@ void xServer::UnloadClient(xClient* theClient, const string& reason) {
         }
     }
 
-    LOG_TO(modulesLogger(), WARN, "Unable to find client: {}", theClient->getNickName());
+    LOG_CORE(Modules, WARN, "Unable to find client: {}", theClient->getNickName());
 }
 
 // This method is responsible for updating all internal
@@ -1819,7 +1787,7 @@ string debugLogPath(const LogConfig& config) {
  * lines that write the message.
  */
 void reportLogConfigErrors(const char* function, const std::vector<string>& errors) {
-    Logger* const reporter = LogManager::get("core.config");
+    Logger* const reporter = coreLogger(CoreLogger::Config);
 
     for (const string& error : errors)
         reporter->writeFunc(ERROR, function, "logging.conf: {}", error);
@@ -1983,7 +1951,7 @@ void xServer::setupLogging(bool reload) {
     }
 
     if (reload) {
-        LOG_TO(LogManager::get("core.config"), ERROR, "logging.conf: {}", failure);
+        LOG_CORE(Config, ERROR, "logging.conf: {}", failure);
 
         return;
     }
@@ -2795,9 +2763,6 @@ void xServer::doShutdown() {
     // elog	<< "xServer::doShutdown> Removing modules..."
     //	<< endl ;
 
-    /* Letting a client or a command module go is this logger's business */
-    static Logger* const modules = LogManager::get("core.modules");
-
     size_t count = 0;
 
     // First, remove all clients
@@ -2807,7 +2772,7 @@ void xServer::doShutdown() {
         DetachClient(clientItr++->second, "Server shutdown");
     }
 
-    LOG_TO(modules, DEBUG, "Removed {} local clients", count);
+    LOG_CORE(Modules, DEBUG, "Removed {} local clients", count);
 
     // elog	<< "xServer::doShutdown> Removing network clients..."
     //	<< endl ;
@@ -2872,7 +2837,7 @@ void xServer::doShutdown() {
         commandMap.erase(cItr++);
         delete tmpCommand;
     }
-    LOG_TO(modules, DEBUG, "Removed {} server command handlers", count);
+    LOG_CORE(Modules, DEBUG, "Removed {} server command handlers", count);
 
     commandMap.clear();
 
@@ -2884,7 +2849,7 @@ void xServer::doShutdown() {
         delete tmpCommand;
         cmItr = commandModuleList.erase(cmItr);
     }
-    LOG_TO(modules, DEBUG, "Removed {} server command modules", count);
+    LOG_CORE(Modules, DEBUG, "Removed {} server command modules", count);
 
     commandModuleList.clear();
 
@@ -2927,8 +2892,8 @@ bool xServer::DetachClient(iClient* fakeClient, const string& quitMessage) {
     // xNetwork::removeFakeClient() will remove the client from
     // the network data structurs, and free its numeric
     if (0 == Network->removeClient(fakeClient)) {
-        LOG_MSG_TO(modulesLogger(), ERROR,
-                   "Failed to remove fakeClient from network data structures: {client}")
+        LOG_MSG_CORE(Modules, ERROR,
+                     "Failed to remove fakeClient from network data structures: {client}")
             .with("client", fakeClient)
             .log();
         return false;

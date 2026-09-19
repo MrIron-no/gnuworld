@@ -95,9 +95,8 @@ template <typename modType, typename argType = std::string> class moduleLoader {
             // lt_dlerror() is a null pointer when it has nothing to say
             const char* const error = lt_dlerror();
 
-            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR,
-                   "Failed to initialize module loading system: {}",
-                   nullptr == error ? "(null)" : error);
+            LOG_CORE(Modules, ERROR, "Failed to initialize module loading system: {}",
+                     nullptr == error ? "(null)" : error);
             setError();
             return;
         }
@@ -127,9 +126,8 @@ template <typename modType, typename argType = std::string> class moduleLoader {
         if (0 == moduleHandle) {
             const char* const error = lt_dlerror();
 
-            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR,
-                   "Error opening module ({}): {}", moduleName,
-                   nullptr == error ? "(null)" : error);
+            LOG_CORE(Modules, ERROR, "Error opening module ({}): {}", moduleName,
+                     nullptr == error ? "(null)" : error);
             setError();
             return;
         }
@@ -148,8 +146,8 @@ template <typename modType, typename argType = std::string> class moduleLoader {
         if (lt_dlclose(moduleHandle) != 0) {
             const char* const error = lt_dlerror();
 
-            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR, "Error closing module: {}",
-                   nullptr == error ? "(null)" : error);
+            LOG_CORE(Modules, ERROR, "Error closing module: {}",
+                     nullptr == error ? "(null)" : error);
         }
         moduleHandle = 0;
     }
@@ -174,8 +172,7 @@ template <typename modType, typename argType = std::string> class moduleLoader {
         if (0 == modFunc) {
             const char* const error = lt_dlerror();
 
-            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR, "Error: {}",
-                   nullptr == error ? "(null)" : error);
+            LOG_CORE(Modules, ERROR, "Error: {}", nullptr == error ? "(null)" : error);
             setError();
             return 0;
         }
@@ -184,8 +181,7 @@ template <typename modType, typename argType = std::string> class moduleLoader {
 
         // Types usable by this class must support comparison against 0
         if (0 == modPtr) {
-            LOG_TO(::gnuworld::LogManager::get("core.modules"), ERROR,
-                   "Unable to instantiate modType.");
+            LOG_CORE(Modules, ERROR, "Unable to instantiate modType.");
             setError();
         }
 

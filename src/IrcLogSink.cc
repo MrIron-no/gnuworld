@@ -152,10 +152,10 @@ void IrcLogSink::flush() {
      * dispatch, so the record below is delivered rather than queued, and the
      * counters it reports are already settled: it cannot make work for itself */
     if (0 != lost)
-        LOG_TO(LogManager::get("core"), WARN,
-               "A channel log sink dropped {} records that arrived from other threads faster "
-               "than the main loop could send them",
-               lost);
+        LOG_CORE(Core, WARN,
+                 "A channel log sink dropped {} records that arrived from other threads faster "
+                 "than the main loop could send them",
+                 lost);
 }
 
 void IrcLogSink::forgetServer(const xServer* gone) {
@@ -224,10 +224,10 @@ static void sayChannelIsMissing(const xServer& theServer, const std::string& the
     if (!missingChannels().insert(string_lower(theChannel)).second)
         return;
 
-    LOG_TO(LogManager::get("core"), WARN,
-           "The log channel {} does not exist on the network, so what is logged to it is lost: "
-           "a channel exists while somebody, a bot of ours included, is in it",
-           theChannel);
+    LOG_CORE(Core, WARN,
+             "The log channel {} does not exist on the network, so what is logged to it is lost: "
+             "a channel exists while somebody, a bot of ours included, is in it",
+             theChannel);
 }
 
 void IrcLogSink::deliver(const LogRecord& record) {

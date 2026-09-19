@@ -194,9 +194,8 @@ class xParameters {
 
     /// Say which parameter of which line was asked for, and abort.
     [[noreturn]] void outOfRange(const size_type& pos) const {
-        LOG_TO(::gnuworld::LogManager::get("core.proto"), FATAL,
-               "PROTOCOL ERROR, parameter {} of a line that has {}: {}", pos, myVector.size(),
-               assemble(0));
+        LOG_CORE(Proto, FATAL, "PROTOCOL ERROR, parameter {} of a line that has {}: {}", pos,
+                 myVector.size(), assemble(0));
         if (!::gnuworld::ConsoleSink::enabled()) {
             std::cerr << "xParameters> PROTOCOL ERROR, parameter " << pos << " of a line that has "
                       << myVector.size() << std::endl;

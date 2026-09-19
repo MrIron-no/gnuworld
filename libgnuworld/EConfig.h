@@ -277,14 +277,13 @@ class EConfig {
             /* FATAL only when the process is about to leave.  A non-fatal ask
              * throws instead, and TryRequire(), which is who asks that way, says
              * what came of it at WARN: this is the detail behind that line */
-            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : DEBUG, "{}",
-                   msg.str());
+            LOG_CORE(Config, fatal ? FATAL : DEBUG, "{}", msg.str());
             if (fatal)
                 ::exit(1);
             throw std::runtime_error(msg.str());
         } catch (const std::out_of_range& e) {
             std::string msg = "Value out of range for key \"" + key + "\": " + e.what();
-            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : DEBUG, "{}", msg);
+            LOG_CORE(Config, fatal ? FATAL : DEBUG, "{}", msg);
             if (fatal)
                 ::exit(1);
             throw std::runtime_error(msg);
@@ -303,7 +302,7 @@ class EConfig {
         } catch (const std::exception& e) {
             std::ostringstream err;
             err << "Failed to parse key \"" << key << "\". Keeping old value. Reason: " << e.what();
-            LOG_TO(::gnuworld::LogManager::get("core.config"), WARN, "{}", err.str());
+            LOG_CORE(Config, WARN, "{}", err.str());
             configErrors.push_back(err.str());
             setError();
             return fallback;

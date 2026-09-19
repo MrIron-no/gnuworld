@@ -649,6 +649,21 @@ LOG_TO(myLogger, INFO, "listening");
 LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
 ```
 
+Core names its own loggers with an enum rather than a string:
+`LOG_CORE(which, level, ...)` and `LOG_MSG_CORE(which, level, template, ...)`,
+where `which` is a `CoreLogger` — `Core`, `Net`, `Proto`, `State`, `Config`,
+`Modules`, `Notifier`, for `core`, `core.net` and so on. It is for a
+statement that belongs to another of core's loggers than its file's, and for
+a header, which cannot name a logger of its own:
+
+```cpp
+LOG_CORE(Modules, ERROR, "Error closing module: {}", error);
+LOG_MSG_CORE(State, WARN, "{client} is on no server").with("client", theClient).log();
+```
+
+A new logger of core is one line of the enum and one of `coreLogger()`, both
+in `libgnuworld/logger.h`.
+
 `Logger* child(const std::string&)` is a sub-logger (`logger->child("sub")`
 == `LogManager::get(moduleName + ".sub")`), or, giving it a level unless
 `logging.conf` overrides it, `child("sub", codeDefault)`.
@@ -1004,7 +1019,8 @@ forces this.
 
 - One `GNUWORLD_MODULE_LOGGER("<name>")` per `.cc` file (core), or once in
   the module's common header (a module); a header that logs on its own
-  uses `LOG_TO(::gnuworld::LogManager::get("<name>"), ...)`.
+  uses `LOG_CORE(<which>, ...)` in core, and
+  `LOG_TO(::gnuworld::LogManager::get("<name>"), ...)` in a module.
 - One `elog` statement becomes one `LOG`/`LOG_MSG` call; a hand-written
   `Class::method> ` prefix is dropped (the function is captured
   automatically).

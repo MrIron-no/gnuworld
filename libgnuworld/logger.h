@@ -100,6 +100,21 @@
 #define LOG_MSG_TO(loggerPtr, level, template_msg, ...)                                            \
     (loggerPtr)->createMessage(level, __PRETTY_FUNCTION__, template_msg, ##__VA_ARGS__)
 
+/**
+ * To one of core's own loggers, named by CoreLogger and not by a string: a file
+ * of core that speaks for one of them all along names it once with
+ * GNUWORLD_MODULE_LOGGER and uses LOG; this is for the statement that belongs
+ * to another, and for a header, which can do neither.
+ * Usage: LOG_CORE(Modules, ERROR, "Error closing module: {}", error);
+ */
+#define LOG_CORE(which, x, ...)                                                                    \
+    LOG_TO(::gnuworld::coreLogger(::gnuworld::CoreLogger::which), x, __VA_ARGS__)
+
+/// The same, as a structured message: LOG_MSG_CORE(State, WARN, "{client} ...").with(...).log();
+#define LOG_MSG_CORE(which, level, template_msg, ...)                                              \
+    LOG_MSG_TO(::gnuworld::coreLogger(::gnuworld::CoreLogger::which), level, template_msg,         \
+               ##__VA_ARGS__)
+
 namespace gnuworld {
 
 class LogManager;
@@ -671,5 +686,31 @@ class Logger {
 
     mutable std::mutex logMutex;
 }; // class Logger
+
+/**
+ * The loggers of core itself, which LOG_CORE and LOG_MSG_CORE take by name.
+ * One more is a line here and a line of coreLogger(), in the same place.
+ */
+enum class CoreLogger {
+    Core,     ///< "core": the server itself
+    Net,      ///< "core.net": the connection layer
+    Proto,    ///< "core.proto": the protocol handlers
+    State,    ///< "core.state": clients, servers and channels
+    Config,   ///< "core.config": configuration files
+    Modules,  ///< "core.modules": what is loaded and attached
+    Notifier, ///< "core.notifier": the Pushover and Prometheus clients
+};
+
+/// The logger of that name: looked up once, and kept for as long as the process
+inline Logger* coreLogger(CoreLogger which) {
+    static Logger* const loggers[] = {
+        LogManager::get("core"),          LogManager::get("core.net"),
+        LogManager::get("core.proto"),    LogManager::get("core.state"),
+        LogManager::get("core.config"),   LogManager::get("core.modules"),
+        LogManager::get("core.notifier"),
+    };
+
+    return loggers[static_cast<std::size_t>(which)];
+}
 
 } // namespace gnuworld

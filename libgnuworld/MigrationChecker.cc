@@ -158,7 +158,7 @@ std::vector<std::string> MigrationChecker::scanMigrationFiles() {
         });
 
     } catch (const std::exception& e) {
-        LOG_TO(logger ? logger : ::gnuworld::LogManager::get("core"), ERROR,
+        LOG_TO(logger ? logger : coreLogger(CoreLogger::Core), ERROR,
                "Failed to scan migrations directory '{}': {}", migrationsDir, e.what());
     }
 
