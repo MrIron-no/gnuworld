@@ -52,6 +52,26 @@ namespace {
 /// The logger this sink reports its own failures on, and takes nothing from
 const std::string notifierLogger("core.notifier");
 
+/// What truncateUtf8() puts where it cut
+const std::string ellipsis("...");
+
+/// Whether this byte is one that continues a UTF-8 character begun before it
+bool isContinuationByte(char byte) { return 0x80 == (static_cast<unsigned char>(byte) & 0xC0); }
+
+/**
+ * at, or the first position before it that begins a UTF-8 character.
+ *
+ * Nothing but the beginning of the string stops the walk back, so a string of
+ * continuation bytes - which is not UTF-8 at all - ends it at 0 rather than
+ * before it.
+ */
+std::size_t characterBoundaryAt(const std::string& input, std::size_t at) {
+    while (0 != at && at < input.size() && isContinuationByte(input[at]))
+        --at;
+
+    return at;
+}
+
 #ifdef HAVE_LIBCURL
 /**
  * Throws the endpoint's answer away.
@@ -95,6 +115,36 @@ std::vector<std::string> splitList(const std::string& value) {
 #endif // HAVE_LIBCURL
 
 } // namespace
+
+std::string truncateUtf8(const std::string& input, std::size_t limit) {
+    if (input.size() <= limit)
+        return input;
+
+    /* No room to both say something and say that something was cut: what fits,
+     * and nothing to mark it with */
+    if (limit <= ellipsis.size())
+        return input.substr(0, characterBoundaryAt(input, limit));
+
+    return input.substr(0, characterBoundaryAt(input, limit - ellipsis.size())) + ellipsis;
+}
+
+std::string withoutControlCharacters(const std::string& input) {
+    std::string cleaned;
+
+    cleaned.reserve(input.size());
+
+    for (const char byte : input) {
+        const unsigned char value = static_cast<unsigned char>(byte);
+
+        // The newline is a line of a multi-line record; the rest of C0, and DEL, are not
+        if ((0x20 > value && '\n' != byte) || 0x7F == value)
+            continue;
+
+        cleaned.push_back(byte);
+    }
+
+    return cleaned;
+}
 
 PushoverClient::PushoverClient(std::string token, pushoverKeysType users, std::string url,
                                Verbosity threshold, std::size_t rateCount,
@@ -273,8 +323,12 @@ bool PushoverClient::sendToUser([[maybe_unused]] std::size_t position,
     try {
         initialise_curl();
 
-        std::string safeTitle = truncate(title, 250);
-        std::string safeMessage = truncate(message, 1024);
+        /* Cleaned, then cut on a character boundary, and only then escaped: the
+         * limits are Pushover's documented ones (a title of up to 250
+         * characters, a message of up to 1024) counted in BYTES, which is the
+         * stricter reading of the two and the one that needs no decoding */
+        const std::string safeTitle = truncateUtf8(withoutControlCharacters(title), 250);
+        const std::string safeMessage = truncateUtf8(withoutControlCharacters(message), 1024);
 
         std::ostringstream postData;
         postData << "token=" << apiToken << "&user=" << user << "&title=" << safeTitle

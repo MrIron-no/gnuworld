@@ -45,6 +45,41 @@ struct SinkSpec;
 typedef std::vector<std::string> pushoverKeysType;
 
 /**
+ * input cut to at most limit BYTES, never through a UTF-8 character, with "..."
+ * standing for whatever was cut off.
+ *
+ * A notification's text is a rendered log sentence, and a log sentence carries
+ * whatever a remote server or an IRC user put into it: a nick or a channel name
+ * is arbitrary bytes, and a cut counted in bytes lands inside a multi-byte
+ * character sooner or later.  The byte the cut falls on is therefore walked back
+ * over the continuation bytes (0x80-0xBF) that follow a character's lead byte,
+ * so that the result is never half a character - which Pushover would answer
+ * 400 to, and which a phone would draw as a replacement glyph.
+ *
+ * A limit no larger than the ellipsis has no room to both say something and mark
+ * that something was cut, so it says what fits and marks nothing.  Input that is
+ * not UTF-8 at all - a string of continuation bytes is the worst of it - ends the
+ * walk back at the beginning of the string rather than before it.
+ *
+ * Defined outside pushover.cc's HAVE_LIBCURL: this is pure text, it is where the
+ * length limits of Pushover's API are really applied, and test_pushover_text
+ * exercises it on a machine with no libcurl at all.
+ */
+std::string truncateUtf8(const std::string& input, std::size_t limit);
+
+/**
+ * input without the control characters a notification has no use for: every C0
+ * control character but the newline (0x00-0x1F), and DEL (0x7F).
+ *
+ * The newline STAYS: a record rendered over two lines is two lines at Pushover
+ * too.  Everything else of C0 goes, because the sentence reaches this sink
+ * unescaped - a file or a console sink is what escapes a control character for
+ * its own output - and an escape sequence or a NUL in a notification is at best
+ * noise.  Every byte of 0x80 and up is text and is passed through as it stands.
+ */
+std::string withoutControlCharacters(const std::string& input);
+
+/**
  * A pager: one Pushover notification per log record it is given.
  *
  * This is a kind of sink logging.conf names, "sink.<id>.type = pushover", so it
@@ -144,10 +179,6 @@ class PushoverClient : public notifier {
 #ifdef HAVE_LIBCURL
     void initialise_curl();
 #endif
-
-    std::string truncate(const std::string input, std::size_t maxLength) const {
-        return input.size() <= maxLength ? input : input.substr(0, maxLength - 3) + "...";
-    }
 
     /// Queues the message on the worker, or sends it where there is no worker
     bool queueMessage(const std::string& title, const std::string& message, int priority, int retry,

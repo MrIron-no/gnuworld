@@ -26,7 +26,8 @@ noinst_PROGRAMS = test_burst \
 	test_logger_config \
 	test_logger_ratelimit \
 	test_elog_shim \
-	test_logger_adversarial
+	test_logger_adversarial \
+	test_pushover_text
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
@@ -186,6 +187,15 @@ test_logger_adversarial_SOURCES = test/logger_adversarial.cc
 test_logger_adversarial_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_logger_adversarial_LDADD = libgnuworld.la $(threadLib)
 
+# The two text helpers of the pushover sink: the cut that never lands inside a
+# UTF-8 character and the control-character clean-up.  Both are pure text and are
+# defined outside pushover.cc's HAVE_LIBCURL, so this is built and run
+# everywhere - which is the point of having them outside it.
+test_pushover_text_SOURCES = test/pushover_text.cc
+test_pushover_text_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier
+test_pushover_text_LDADD = libnotifier.la libgnuworld.la $(threadLib)
+
 # What a pushover sink of logging.conf really puts on the wire: libnotifier for
 # the sink, libgnuworld for the configuration that builds it, libcurl for the
 # request.  It posts to whatever PUSHOVER_TEST_URL names and says so and passes
@@ -199,7 +209,8 @@ test_pushover_delivery_LDADD = libnotifier.la libgnuworld.la $(threadLib)
 # interactive or benchmarks, not tests.
 TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
 	test_logger_format test_logger_sinks test_logger_basic test_logger_hierarchy \
-	test_logger_config test_logger_ratelimit test_elog_shim test_logger_adversarial
+	test_logger_config test_logger_ratelimit test_elog_shim test_logger_adversarial \
+	test_pushover_text
 
 if COND_LIBCURL
 TESTS += test_pushover_delivery
