@@ -164,7 +164,11 @@ if [ "$(cat /usr/local/share/gnuworld-have-log4cplus 2>/dev/null)" = "yes" ]; th
 
     make distclean > /dev/null 2>&1
 
+    # Debian keeps the library under the multiarch directory, which is not the
+    # "<prefix>/lib" configure.ac derives from --with-log4cplus on its own
     ./configure --enable-modules="$MODULES" --with-test --with-log4cplus \
+        --with-log4cplus-lib="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" \
+        --with-log4cplus-include=/usr/include \
         > /tmp/configure-log4cplus.log 2>&1
     log4cplus_configure=$?
 
