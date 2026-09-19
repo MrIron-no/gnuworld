@@ -29,9 +29,11 @@
 #include "server.h"
 #include "Network.h"
 #include "events.h"
-#include "ELog.h"
 #include "iServer.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -55,7 +57,7 @@ bool msg_EA::Execute(const xParameters& Param) {
     //	{
     iServer* burstServer = Network->findServer(Param[0]);
     if (NULL == burstServer) {
-        elog << "msg_EA> Unable to find server: " << Param[0] << endl;
+        LOG(WARN, "Unable to find server: {}", std::string(Param[0]));
         return false;
     }
 

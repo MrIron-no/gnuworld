@@ -27,6 +27,9 @@
 #include "Network.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -52,7 +55,7 @@ bool msg_JU::Execute(const xParameters& Param) {
         char temp[3];
         temp[2] = '\0';
         if (!Network->allocateServerNumeric(intYY)) {
-            elog << "msg_JU> Error while allocating server numeric!" << endl;
+            LOG(ERROR, "Error while allocating server numeric!");
             return false;
         }
         const char* temp2 = inttobase64(temp, intYY, 2);
@@ -66,7 +69,7 @@ bool msg_JU::Execute(const xParameters& Param) {
         assert(jupeServer != 0);
         jupeServer->setJupe();
         if (!Network->addServer(jupeServer)) {
-            elog << "msg_JU> error while adding new server :(" << endl;
+            LOG(ERROR, "error while adding new server :(");
             return false;
         }
         theServer->PostEvent(EVT_NETJOIN, // TODO add EVT_JUPE
@@ -77,11 +80,11 @@ bool msg_JU::Execute(const xParameters& Param) {
         SName = SName.substr(1);
         iServer* jupeServer = Network->findServerName(SName);
         if (!jupeServer) {
-            elog << "msg_JU> Cant find server for removal" << endl;
+            LOG(WARN, "Cant find server for removal");
             return false;
         }
         if (jupeServer->getCharYY() == theServer->getCharYY()) {
-            elog << "msg_JU> Let's not even try to remove ourself" << endl;
+            LOG(WARN, "Let's not even try to remove ourself");
             return false;
         }
         // BUG: Nothing here?

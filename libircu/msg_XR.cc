@@ -28,10 +28,12 @@
 #include "Network.h"
 #include "iClient.h"
 #include "client.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
 #include "StringTokenizer.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -57,18 +59,18 @@ bool msg_XR::Execute(const xParameters& Param) {
     iServer* serverSource = Network->findServer(Param[0]);
 
     if (NULL == serverSource) {
-        elog << "msg_XR> Unable to find source: " << Param[0] << endl;
+        LOG(WARN, "Unable to find source: {}", std::string(Param[0]));
         return false;
     }
 
     if (Network->findServer(Param[1]) != theServer->getMe()) {
         // Should we do something here?
-        elog << "msg_XR> Received XQ not meant for us but for: " << Param[1] << endl;
+        LOG(WARN, "Received XQ not meant for us but for: {}", std::string(Param[1]));
         return false;
     }
 
-    elog << "msg_XR> Received, from: " << Param[0] << " To: " << Param[1] << " Token: " << Param[2]
-         << " Message: " << Param[3] << endl;
+    LOG(TRACE, "Received, from: {} To: {} Token: {} Message: {}", std::string(Param[0]),
+        std::string(Param[1]), std::string(Param[2]), std::string(Param[3]));
 
     string Routing(Param[2]);
     string Message(Param[3]);

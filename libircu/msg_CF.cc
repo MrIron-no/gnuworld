@@ -28,7 +28,9 @@
 #include "Channel.h"
 #include "Network.h"
 #include "iClient.h"
-#include "ELog.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -45,7 +47,7 @@ bool msg_CF::Execute(const xParameters& Param) {
 
     iServer* sourceServer = Network->findServer(Param[0]);
     if (NULL == sourceServer) {
-        elog << "msg_CF> Unable to find source server: " << Param[0] << std::endl;
+        LOG(WARN, "Unable to find source server: {}", std::string(Param[0]));
         return false;
     }
 
@@ -56,20 +58,21 @@ bool msg_CF::Execute(const xParameters& Param) {
     auto netConf = Network->findNetConf(key);
     if (netConf && netConf->second > timestamp) {
         // This should never happen.
-        elog << "msg_CF> Netconf variable already exists and is newer: " << key
-             << " (timestamp on file: " << netConf->second
-             << ", timestamp on network: " << timestamp << ")" << std::endl;
+        LOG(WARN,
+            "Netconf variable already exists and is newer: {} (timestamp on file: {}, timestamp "
+            "on network: {})",
+            key, static_cast<std::int64_t>(netConf->second), static_cast<std::int64_t>(timestamp));
         return false;
     }
 
     // Delete?
     if (value.empty()) {
         Network->removeNetConf(key);
-        elog << "msg_CF> Removing netconf variable: " << key << std::endl;
+        LOG(DEBUG, "Removing netconf variable: {}", key);
     } else {
         Network->addNetConf(key, value, timestamp);
-        elog << "msg_CF> Adding netconf variable: " << key << " (value: " << value << ")"
-             << " (timestamp: " << timestamp << ")" << std::endl;
+        LOG(DEBUG, "Adding netconf variable: {} (value: {}) (timestamp: {})", key, value,
+            static_cast<std::int64_t>(timestamp));
     }
 
     // Post event to listening clients

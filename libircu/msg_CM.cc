@@ -34,8 +34,10 @@
 #include "Network.h"
 #include "iClient.h"
 #include "xparameters.h"
-#include "ELog.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -56,7 +58,7 @@ bool msg_CM::Execute(const xParameters& Param) {
     Channel* tmpChan = Network->findChannel(Param[1]);
     if (!tmpChan) {
         // Log Error.
-        elog << "msg_CM> Unable to locate channel: " << Param[1] << endl;
+        LOG(WARN, "Unable to locate channel: {}", std::string(Param[1]));
         return false;
     }
 

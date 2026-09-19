@@ -29,7 +29,9 @@
 #include "Channel.h"
 #include "Network.h"
 #include "iClient.h"
-#include "ELog.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -48,7 +50,7 @@ bool msg_AC::Execute(const xParameters& Param) {
     // Find the target user
     iClient* theClient = Network->findClient(Param[1]);
     if (!theClient) {
-        elog << "msg_AC> Unable to find target client: " << Param[1] << std::endl;
+        LOG(WARN, "Unable to find target client: {}", std::string(Param[1]));
         return false;
     }
 

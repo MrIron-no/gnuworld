@@ -30,9 +30,11 @@
 #include "events.h"
 #include "Network.h"
 #include "iServer.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -68,12 +70,12 @@ bool msg_SQ::Execute(const xParameters& Param) {
     }
 
     if (NULL == squitServer) {
-        elog << "msg_SQ> Unable to find server: " << Param[1] << endl;
+        LOG(WARN, "Unable to find server: {}", std::string(Param[1]));
         return false;
     }
 
     if (squitServer->getIntYY() == theServer->getUplinkIntYY()) {
-        elog << "msg_SQ> Ive been delinked!!" << endl;
+        LOG(INFO, "Ive been delinked!!");
 
         // It's my uplink, we have been squit...those bastards!
         theServer->Shutdown();

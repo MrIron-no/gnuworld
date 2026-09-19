@@ -40,12 +40,14 @@
 #include "server.h"
 #include "xparameters.h"
 #include "StringTokenizer.h"
-#include "ELog.h"
 #include "Channel.h"
 #include "ChannelUser.h"
 #include "Network.h"
 #include "iClient.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -130,7 +132,7 @@ bool msg_B::Execute(const xParameters& Param) {
         // Add the new Channel to the network channel table
         if (!Network->addChannel(theChan)) {
             // The addition of this channel failed, *shrug*
-            elog << "msg_B> Failed to add channel: " << Param[1] << endl;
+            LOG(ERROR, "Failed to add channel: {}", std::string(Param[1]));
 
             // Prevent a memory leak by deleting the channel
             delete theChan;
@@ -287,8 +289,7 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
                      * it is skipped so that it does not count as an error.
                      */
                 } else {
-                    elog << "msg_B::parseBurstUsers> "
-                         << "Unknown mode: " << flag << endl;
+                    LOG(WARN, "Unknown mode: {}", flag);
                 }
             } // for()
         }
@@ -318,8 +319,9 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         if (NULL == theClient) {
             // Nope, no such user
             // Log the error
-            elog << "msg_B::parseBurstUsers> (" << theChan->getName() << ")"
-                 << ": Unable to find client: " << numeric << endl;
+            LOG_MSG(WARN, "({chan}): Unable to find client: {}", numeric)
+                .with("chan", theChan)
+                .log();
 
             // Skip this user
             continue;
@@ -332,8 +334,10 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
 
         // Add this channel to the user's channel structure.
         if (!theClient->addChannel(theChan)) {
-            elog << "msg_B::parseBurstUsers> Failed to add "
-                 << "channel " << *theChan << " to iClient " << *theClient << endl;
+            LOG_MSG(ERROR, "Failed to add channel {chan} to iClient {client}")
+                .with("chan", theChan)
+                .with("client", theClient)
+                .log();
 
             // Non-fatal error
             continue;
@@ -347,8 +351,10 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         // Add this user to the channel's database.
         if (!addUser(theChan, chanUser)) {
             // The addition failed
-            elog << "msg_B::parseBurstUsers> Unable to add user " << theClient->getNickName()
-                 << " to channel " << theChan->getName() << endl;
+            LOG_MSG(ERROR, "Unable to add user {client} to channel {chan}")
+                .with("client", theClient)
+                .with("chan", theChan)
+                .log();
 
             // Prevent a memory leak by deallocating the unused
             // ChannelUser object

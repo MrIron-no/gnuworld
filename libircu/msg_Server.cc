@@ -31,9 +31,11 @@
 #include "events.h"
 #include "Network.h"
 #include "iServer.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -111,8 +113,7 @@ bool msg_Server::Execute(const xParameters& Param) {
         // Find this server (me)
         iServer* me = Network->findServer(theServer->getIntYY());
         if (NULL == me) {
-            elog << "msg_Server> Unable to find myself "
-                 << " (" << theServer->getIntYY() << ")" << endl;
+            LOG(FATAL, "Unable to find myself  ({})", theServer->getIntYY());
             ::exit(0);
         }
 

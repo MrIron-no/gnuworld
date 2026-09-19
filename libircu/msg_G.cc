@@ -33,9 +33,11 @@
 #include "gnuworld_config.h"
 #include "server.h"
 #include "xparameters.h"
-#include "ELog.h"
 #include "ServerCommandHandler.h"
 #include "StringTokenizer.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -107,20 +109,20 @@ bool msg_G::Execute(const xParameters& params) {
 
         timeval now = {0, 0};
         if (::gettimeofday(&now, 0) < 0) {
-            elog << "msg_G> gettimeofday() failed: " << strerror(errno) << endl;
+            LOG(ERROR, "gettimeofday() failed: {}", std::string(strerror(errno)));
             return false;
         }
 
         StringTokenizer st(params[1] + 1, '.');
         if (st.size() != 2) {
-            elog << "msg_G> Error in Remote TS" << endl;
+            LOG(WARN, "Error in Remote TS");
             return false;
         }
         // Only used to measure the lag: nothing to abort for
         const std::optional<long> remoteSec = parseNumber<long>(st[0]);
         const std::optional<long> remoteUsec = parseNumber<long>(st[1]);
         if (!remoteSec || !remoteUsec) {
-            elog << "msg_G> Error in Remote TS: " << params[1] << endl;
+            LOG(WARN, "Error in Remote TS: {}", std::string(params[1]));
             return false;
         }
         int tsDiff = (now.tv_sec - *remoteSec) * 1000 + (now.tv_usec - *remoteUsec) / 1000;

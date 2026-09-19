@@ -33,9 +33,11 @@
 #include "ChannelUser.h"
 #include "events.h"
 #include "Network.h"
-#include "ELog.h"
 #include "StringTokenizer.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -75,7 +77,7 @@ bool msg_J::Execute(const xParameters& Param) {
     // Did we find the client?
     if (NULL == Target) {
         // Nope, log the error
-        elog << "msg_J> (" << Param[1] << ") Unable to find user: " << Param[0] << endl;
+        LOG(WARN, "({}) Unable to find user: {}", std::string(Param[1]), std::string(Param[0]));
 
         // Return error
         return false;
@@ -128,7 +130,7 @@ bool msg_J::Execute(const xParameters& Param) {
             if (!Network->addChannel(theChan)) {
                 // Addition to network tables failed
                 // Log the error
-                elog << "msg_J> Unable to add channel: " << theChan->getName() << endl;
+                LOG_MSG(ERROR, "Unable to add channel: {chan}").with("chan", theChan).log();
 
                 // Prevent memory leaks by deallocating the
                 // Channel object
@@ -217,8 +219,10 @@ bool msg_J::Execute(const xParameters& Param) {
         if (!addUser(theChan, theUser)) {
             // Addition of this ChannelUser to the Channel failed
             // Log the error
-            elog << "msg_J> Unable to add user " << theUser->getNickName()
-                 << " to channel: " << theChan->getName() << endl;
+            LOG_MSG(ERROR, "Unable to add user {client} to channel: {chan}")
+                .with("client", Target)
+                .with("chan", theChan)
+                .log();
 
             // Prevent memory leaks by deallocating the unused
             // ChannelUser object
@@ -242,8 +246,10 @@ bool msg_J::Execute(const xParameters& Param) {
 
         // Add this channel to this client's channel structure.
         if (!Target->addChannel(theChan)) {
-            elog << "msg_J> Unable to add channel " << *theChan << " to iClient " << *Target
-                 << endl;
+            LOG_MSG(ERROR, "Unable to add channel {chan} to iClient {client}")
+                .with("chan", theChan)
+                .with("client", Target)
+                .log();
 
             // Remove the ChannelUser from this channel, and
             // deallocate the ChannelUser to prevent memory
@@ -292,8 +298,10 @@ void msg_J::userPartAllChannels(iClient* theClient) {
         // Deallocate the ChannelUser
         ChannelUser* theChanUser = removeUser(*ptr, theClient);
         if (NULL == theChanUser) {
-            elog << "msg_J::userPartAllChannels> Unable to "
-                 << "remove iClient " << *theClient << " from channel " << *(*ptr) << endl;
+            LOG_MSG(ERROR, "Unable to remove iClient {client} from channel {chan}")
+                .with("client", theClient)
+                .with("chan", *ptr)
+                .log();
         }
         delete theChanUser;
         theChanUser = 0;

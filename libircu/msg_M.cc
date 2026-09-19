@@ -36,9 +36,11 @@
 #include "Channel.h"
 #include "ChannelUser.h"
 #include "Network.h"
-#include "ELog.h"
 #include "StringTokenizer.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -88,7 +90,7 @@ bool msg_M::Execute(const xParameters& Param) {
     }
 
     if ((NULL == clientSource) && (NULL == serverSource)) {
-        elog << "msg_M> Unable to find source: " << Param[0] << endl;
+        LOG(WARN, "Unable to find source: {}", std::string(Param[0]));
         return false;
     }
 
@@ -101,7 +103,7 @@ bool msg_M::Execute(const xParameters& Param) {
     // Find the channel in question
     Channel* theChan = Network->findChannel(Param[1]);
     if (NULL == theChan) {
-        elog << "msg_M> Unable to find channel: " << Param[1] << endl;
+        LOG(WARN, "Unable to find channel: {}", std::string(Param[1]));
         return false;
     }
 
@@ -167,15 +169,16 @@ bool msg_M::onUserModeChange(const xParameters& Param) {
     // specifies the second argument to be nickname instaed of numeric.
     iClient* theClient = Network->findClient(Param[0]);
     if (NULL == theClient) {
-        elog << "msg_M::OnUserModeChange> Unable to find target "
-             << "client: " << Param[1] << endl;
+        LOG(WARN, "Unable to find target client: {}", std::string(Param[1]));
         return false;
     }
 
     if (theClient->getNickName() != Param[1]) {
-        elog << "msg_M::OnUserModeChange> User trying to change "
-             << "mode for someone other than itself: " << *theClient << ", nickname: " << Param[1]
-             << endl;
+        LOG_MSG(WARN,
+                "User trying to change mode for someone other than itself: {client}, nickname: {}",
+                std::string(Param[1]))
+            .with("client", theClient)
+            .log();
         return false;
     }
 
@@ -255,8 +258,7 @@ bool msg_M::onUserModeChange(const xParameters& Param) {
             // TODO?
             break;
         default:
-            elog << "msg_M::onUserModeChange> "
-                 << "Unknown mode: " << *modePtr << endl;
+            LOG(WARN, "Unknown mode: {}", *modePtr);
             break;
         } // close switch
     } // close for

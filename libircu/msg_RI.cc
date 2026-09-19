@@ -29,9 +29,11 @@
 #include "iClient.h"
 #include "events.h"
 #include "Network.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -68,7 +70,7 @@ bool msg_RI::Execute(const xParameters& params) {
     }
 
     if (params[1] != theServer->getCharYY()) {
-        elog << "msg_RI> Got RPING destined for someone else." << endl;
+        LOG(WARN, "Got RPING destined for someone else.");
         return false;
     }
 
@@ -76,7 +78,7 @@ bool msg_RI::Execute(const xParameters& params) {
     iClient* remoteClient = Network->findClient(params[2]);
 
     if (!remoteServer || !remoteClient) {
-        elog << "msg_RI> Got RPING from non-existant client/server." << endl;
+        LOG(WARN, "Got RPING from non-existant client/server.");
         return false;
     }
 

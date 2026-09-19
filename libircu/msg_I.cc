@@ -27,10 +27,12 @@
 #include "xparameters.h"
 #include "Channel.h"
 #include "iClient.h"
-#include "ELog.h"
 #include "client.h"
 #include "Network.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -44,19 +46,19 @@ bool msg_I::Execute(const xParameters& Param) {
 
     iClient* srcClient = Network->findClient(Param[0]);
     if (NULL == srcClient) {
-        elog << "msg_I> Unable to find source client: " << Param[0] << endl;
+        LOG(WARN, "Unable to find source client: {}", std::string(Param[0]));
         return false;
     }
 
     xClient* destClient = Network->findLocalNick(Param[1]);
     if (NULL == destClient) {
-        elog << "msg_I> Unable to find destination client: " << Param[1] << endl;
+        LOG(WARN, "Unable to find destination client: {}", std::string(Param[1]));
         return false;
     }
 
     Channel* theChan = Network->findChannel(Param[2]);
     if (NULL == theChan) {
-        elog << "msg_I> Unable to find channel: " << Param[2] << endl;
+        LOG(WARN, "Unable to find channel: {}", std::string(Param[2]));
         return false;
     }
 

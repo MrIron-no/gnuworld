@@ -28,10 +28,12 @@
 #include "Network.h"
 #include "iClient.h"
 #include "client.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
 #include "StringTokenizer.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -65,9 +67,10 @@ void channelNotice(iClient* srcClient, Channel* theChan, const string& message) 
         // just for readability.
         xClient* ownerClient = Network->findFakeClientOwner(targetClient);
         if (0 == ownerClient) {
-            elog << "msg_O::channelNotice> Unable to "
-                 << "find owner of client: " << *targetClient << ", in channel: " << *theChan
-                 << endl;
+            LOG_MSG(WARN, "Unable to find owner of client: {target}, in channel: {chan}")
+                .with("target", targetClient)
+                .with("chan", theChan)
+                .log();
             continue;
         }
 
@@ -95,7 +98,7 @@ bool msg_O::Execute(const xParameters& Param) {
         // Channel notice
         theChan = Network->findChannel(Param[1]);
         if (0 == theChan) {
-            elog << "msg_O> Unable to locate channel: " << Param[1] << endl;
+            LOG(WARN, "Unable to locate channel: {}", std::string(Param[1]));
             return false;
         }
     }
@@ -109,7 +112,7 @@ bool msg_O::Execute(const xParameters& Param) {
 
     iClient* srcClient = Network->findClient(Param[0]);
     if (0 == srcClient) {
-        elog << "msg_O> Unable to find source client: " << Param[0] << endl;
+        LOG(WARN, "Unable to find source client: {}", std::string(Param[0]));
         return false;
     }
 
@@ -127,8 +130,8 @@ bool msg_O::Execute(const xParameters& Param) {
         if (0 == targetClient) {
             fakeTarget = Network->findFakeNick(st[0]);
             if (0 == fakeTarget) {
-                elog << "msg_O> Received notice for unknown "
-                     << "client: " << Param[1] << ", nick: " << st[0] << endl;
+                LOG(WARN, "Received notice for unknown client: {}, nick: {}", std::string(Param[1]),
+                    st[0]);
                 return true;
             }
         }
@@ -145,13 +148,13 @@ bool msg_O::Execute(const xParameters& Param) {
             // Not an xClient, is it a fake client?
             fakeTarget = Network->findFakeClient(Param[1]);
             if (0 == fakeTarget) {
-                elog << "msg_O> Unable to find local client: " << Param[1] << endl;
+                LOG(WARN, "Unable to find local client: {}", std::string(Param[1]));
                 return true;
             }
         }
     } else if (0 == theChan) {
         // TODO
-        elog << "msg_O> Unknown target: " << Param[1] << endl;
+        LOG(WARN, "Unknown target: {}", std::string(Param[1]));
 
         // May be a message to a juped client on a juped server,
         // ignore it.
@@ -170,7 +173,7 @@ bool msg_O::Execute(const xParameters& Param) {
         // The target is a fake client, let's find its owner
         ownerClient = Network->findFakeClientOwner(fakeTarget);
         if (0 == ownerClient) {
-            elog << "msg_O> Fake client without owner: " << *fakeTarget << endl;
+            LOG_MSG(WARN, "Fake client without owner: {target}").with("target", fakeTarget).log();
             return true;
         }
     }

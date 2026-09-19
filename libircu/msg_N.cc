@@ -32,10 +32,12 @@
 #include "events.h"
 #include "ip.h"
 #include "Network.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
 #include "StringTokenizer.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -125,7 +127,7 @@ bool msg_N::Execute(const xParameters& params) {
 
     // Else, it's the network giving us a new client.
     if (NULL == nickUplink) {
-        elog << "msg_N> Unable to find server: " << params[0] << endl;
+        LOG(WARN, "Unable to find server: {}", std::string(params[0]));
         return false;
     }
 
@@ -237,8 +239,10 @@ bool msg_N::Execute(const xParameters& params) {
     assert(newClient != 0);
 
     if (!Network->addClient(newClient)) {
-        elog << "msg_N> Failed to add client: " << *newClient << ", user already exists? "
-             << (Network->findClient(newClient->getCharYYXXX()) ? "yes" : "no") << endl;
+        LOG_MSG(ERROR, "Failed to add client: {client}, user already exists? {}",
+                std::string(Network->findClient(newClient->getCharYYXXX()) ? "yes" : "no"))
+            .with("client", newClient)
+            .log();
         delete newClient;
         newClient = 0;
         return false;

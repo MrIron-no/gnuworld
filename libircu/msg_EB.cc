@@ -30,9 +30,11 @@
 #include "iServer.h"
 #include "events.h"
 #include "Network.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::clog;
@@ -88,7 +90,7 @@ bool msg_EB::Execute(const xParameters& params) {
             clog << "*** Completed net burst" << endl;
         }
 
-        elog << "*** Completed net burst" << endl;
+        LOG(INFO, "*** Completed net burst");
 
         if (theServer->getSendEB()) {
             // Send our EB
@@ -108,7 +110,7 @@ bool msg_EB::Execute(const xParameters& params) {
         /* Its another server that has just completed its net.burst. */
         iServer* targetServer = Network->findServer(params[0]);
         if (NULL == targetServer) {
-            elog << "msg_EB> Unable to find server: " << params[0] << endl;
+            LOG(WARN, "Unable to find server: {}", std::string(params[0]));
             return -1;
         }
 

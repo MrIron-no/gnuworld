@@ -26,9 +26,11 @@
 #include "gnuworld_config.h"
 #include "server.h"
 #include "Network.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -42,13 +44,13 @@ bool msg_RO::Execute(const xParameters& Param) {
 
     xClient* theClient = Network->findLocalClient(Param[2]);
     if (NULL == theClient) {
-        elog << "msg_RO> Unable to find nick: " << Param[1] << endl;
+        LOG(WARN, "Unable to find nick: {}", std::string(Param[1]));
         return false;
     }
 
     iServer* tmpServer = Network->findServer(Param[0]);
     if (NULL == tmpServer) {
-        elog << "msg_RO> Unable to find server: " << Param[0] << endl;
+        LOG(WARN, "Unable to find server: {}", std::string(Param[0]));
         return false;
     }
 

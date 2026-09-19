@@ -25,11 +25,13 @@
 #include "gnuworld_config.h"
 #include "server.h"
 #include "xparameters.h"
-#include "ELog.h"
 #include "Network.h"
 #include "iClient.h"
 #include "client.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -48,13 +50,13 @@ bool msg_W::Execute(const xParameters& Param) {
 
     iClient* sourceClient = Network->findClient(Param[0]);
     if (NULL == sourceClient) {
-        elog << "msg_W> Unable to find source client: " << Param[0] << endl;
+        LOG(WARN, "Unable to find source client: {}", std::string(Param[0]));
         return false;
     }
 
     iClient* targetClient = Network->findNick(Param[2]);
     if (NULL == targetClient) {
-        elog << "msg_W> Unable to find target client: " << Param[2] << endl;
+        LOG(WARN, "Unable to find target client: {}", std::string(Param[2]));
         return false;
     }
 

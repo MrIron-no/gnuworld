@@ -25,9 +25,11 @@
 #include "iClient.h"
 #include "Channel.h"
 #include "Network.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -59,12 +61,12 @@ bool msg_RV::Execute(const xParameters& Param) {
     if (0 == theClient) {
         // A server source is a protocol violation, and so is a client
         // we have never heard of.
-        elog << "msg_RV> (" << Param[1] << "): Unable to find client: " << Param[0] << endl;
+        LOG(WARN, "({}): Unable to find client: {}", std::string(Param[1]), std::string(Param[0]));
         return false;
     }
 
     if (Param[1][0] != '#') {
-        elog << "msg_RV> Not a global channel: " << Param[1] << endl;
+        LOG(WARN, "Not a global channel: {}", std::string(Param[1]));
         return false;
     }
 

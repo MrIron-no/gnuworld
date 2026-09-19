@@ -31,9 +31,11 @@
 #include "events.h"
 #include "Network.h"
 #include "iServer.h"
-#include "ELog.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -72,7 +74,7 @@ bool msg_S::Execute(const xParameters& params) {
     iServer* uplinkServer = Network->findServer(uplinkIntYY);
 
     if (NULL == uplinkServer) {
-        elog << "msg_S> Unable to find uplink server" << endl;
+        LOG(WARN, "Unable to find uplink server");
         return false;
     }
 
@@ -86,9 +88,10 @@ bool msg_S::Execute(const xParameters& params) {
 
     // Does the new server's numeric already exist?
     if (NULL != Network->findServer(serverIntYY)) {
-        elog << "msg_S> Server numeric collision, numeric: " << params[6]
-             << ", old name: " << Network->findServer(serverIntYY)->getName()
-             << ", new name: " << serverName << endl;
+        LOG_MSG(WARN, "Server numeric collision, numeric: {}, old name: {server}, new name: {}",
+                std::string(params[6]), serverName)
+            .with("server", Network->findServer(serverIntYY))
+            .log();
         delete Network->removeServer(serverIntYY);
     }
 

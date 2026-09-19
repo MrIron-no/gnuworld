@@ -26,6 +26,9 @@
 #include "server.h"
 #include "ServerCommandHandler.h"
 #include "xparameters.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -51,7 +54,7 @@ bool msg_V::Execute(const xParameters& Param) {
 
     /* The destination numeric should always match us exactly */
     if (strncmp(Param[1], theServer->getCharYY().c_str(), 2) != 0) {
-        elog << "msg_V> Target server is not me!" << endl;
+        LOG(WARN, "Target server is not me!");
         return false;
     }
 

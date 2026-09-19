@@ -29,11 +29,13 @@
 #include "Channel.h"
 #include "ChannelUser.h"
 #include "Network.h"
-#include "ELog.h"
 #include "StringTokenizer.h"
 #include "events.h"
 #include "xparameters.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -59,7 +61,7 @@ bool msg_L::Execute(const xParameters& Param) {
         // Nope, no matching client found
 
         // Log the error
-        elog << "msg_L> (" << Param[1] << "): Unable to find client: " << Param[0] << endl;
+        LOG(WARN, "({}): Unable to find client: {}", std::string(Param[1]), std::string(Param[0]));
 
         // Return error
         return false;
@@ -98,7 +100,7 @@ bool msg_L::Execute(const xParameters& Param) {
         // Was the channel found?
         if (NULL == theChan) {
             // Channel not found, log the error
-            elog << "msg_L> Unable to find channel: " << st[i] << endl;
+            LOG(WARN, "Unable to find channel: {}", st[i]);
 
             // Continue on to the next channel
             continue;
@@ -126,8 +128,10 @@ bool msg_L::Execute(const xParameters& Param) {
 
         // Remove this channel from this client's channel structure.
         if (!theClient->removeChannel(theChan)) {
-            elog << "msg_L> Unable to remove iClient " << *theClient << " from channel " << *theChan
-                 << endl;
+            LOG_MSG(ERROR, "Unable to remove iClient {client} from channel {chan}")
+                .with("client", theClient)
+                .with("chan", theChan)
+                .log();
         }
 
         // elog << "msg_L> " << theClient << " Part " << theChan->getName() << " (" << partMsg <<

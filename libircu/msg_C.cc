@@ -32,13 +32,15 @@
 #include "Network.h"
 #include "events.h"
 
-#include "ELog.h"
 #include "StringTokenizer.h"
 #include "xparameters.h"
 #include "iClient.h"
 #include "Channel.h"
 #include "ChannelUser.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -65,7 +67,7 @@ bool msg_C::Execute(const xParameters& Param) {
     // Did we find the client?
     if (NULL == theClient) {
         // Nope, log the error
-        elog << "msg_C> (" << Param[1] << ") Unable to find client: " << Param[0] << endl;
+        LOG(WARN, "({}) Unable to find client: {}", std::string(Param[1]), std::string(Param[0]));
 
         // Return error
         return false;
@@ -114,7 +116,7 @@ bool msg_C::Execute(const xParameters& Param) {
             // Add this channel to the network channel table
             if (!Network->addChannel(theChan)) {
                 // Addition failed, log the error
-                elog << "msg_C> Failed to add channel: " << *theChan << endl;
+                LOG_MSG(ERROR, "Failed to add channel: {chan}").with("chan", theChan).log();
 
                 // Prevent memory leaks by removing the unused
                 // channel
@@ -136,8 +138,10 @@ bool msg_C::Execute(const xParameters& Param) {
                 // the other way around.
                 // theUser will be created and added to the
                 // channel membership table below.
-                elog << "msg_C> Half-way membership found "
-                     << " for client " << *theClient << ", in channel " << *theChan << endl;
+                LOG_MSG(WARN, "Half-way membership found  for client {client}, in channel {chan}")
+                    .with("client", theClient)
+                    .with("chan", theChan)
+                    .log();
             } else {
                 // User is already in the channel, probably lag or
                 // a non-authoritative kick
@@ -146,8 +150,10 @@ bool msg_C::Execute(const xParameters& Param) {
         } else {
             // Add this channel to the client's channel structure.
             if (!theClient->addChannel(theChan)) {
-                elog << "msg_C> Unable to add channel " << *theChan << " to iClient " << *theClient
-                     << endl;
+                LOG_MSG(ERROR, "Unable to add channel {chan} to iClient {client}")
+                    .with("chan", theChan)
+                    .with("client", theClient)
+                    .log();
 
                 continue;
             }
@@ -165,8 +171,10 @@ bool msg_C::Execute(const xParameters& Param) {
             if (!addUser(theChan, theUser)) {
                 // Addition failed, log the error
                 // This should never happen.
-                elog << "msg_C> Unable to add user " << theUser->getNickName() << " to channel "
-                     << theChan->getName() << endl;
+                LOG_MSG(ERROR, "Unable to add user {client} to channel {chan}")
+                    .with("client", theClient)
+                    .with("chan", theChan)
+                    .log();
 
                 // Prevent a memory leak by deallocating the
                 // unused ChannelUser structure

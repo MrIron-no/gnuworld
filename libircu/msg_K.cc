@@ -33,9 +33,11 @@
 #include "ChannelUser.h"
 #include "events.h"
 #include "Network.h"
-#include "ELog.h"
 #include "StringTokenizer.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -90,7 +92,8 @@ bool msg_K::Execute(const xParameters& Param) {
     // Did we find the target client?
     if (NULL == destClient) {
         // Nope, log the error
-        elog << "msg_K> (" << Param[1] << ") Unable to find target client: " << Param[2] << endl;
+        LOG(WARN, "({}) Unable to find target client: {}", std::string(Param[1]),
+            std::string(Param[2]));
 
         // Return error
         return false;
@@ -102,7 +105,7 @@ bool msg_K::Execute(const xParameters& Param) {
     // Did we find the channel?
     if (NULL == theChan) {
         // Nope, log the error
-        elog << "msg_K> Unable to find channel: " << Param[1] << endl;
+        LOG(WARN, "Unable to find channel: {}", std::string(Param[1]));
 
         // Return error
         return false;
@@ -150,8 +153,10 @@ bool msg_K::Execute(const xParameters& Param) {
         // Remove the channel information from the client's internal
         // channel structure
         if (!destClient->removeChannel(theChan)) {
-            elog << "msg_K> Unable to remove channel " << theChan->getName() << " from the iClient "
-                 << *destClient << endl;
+            LOG_MSG(ERROR, "Unable to remove channel {chan} from the iClient {client}")
+                .with("chan", theChan)
+                .with("client", destClient)
+                .log();
         }
     } else {
         // Check if the kick wasnt issued by a server ,
@@ -167,8 +172,10 @@ bool msg_K::Execute(const xParameters& Param) {
         // Remove the channel information from the client's internal
         // channel structure
         if (!destClient->removeChannel(theChan)) {
-            elog << "msg_K> Unable to remove channel " << theChan->getName() << " from the iClient "
-                 << *destClient << endl;
+            LOG_MSG(ERROR, "Unable to remove channel {chan} from the iClient {client}")
+                .with("chan", theChan)
+                .with("client", destClient)
+                .log();
         }
 
         //		}

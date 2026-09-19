@@ -31,9 +31,11 @@
 #include "iServer.h"
 #include "events.h"
 #include "Network.h"
-#include "ELog.h"
 #include "StringTokenizer.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 using std::endl;
@@ -115,7 +117,7 @@ bool msg_D::Execute(const xParameters& Param) {
     }
 
     if ((NULL == serverSource) && (NULL == source)) {
-        elog << "msg_D> Unable to find source: " << Param[0] << endl;
+        LOG(WARN, "Unable to find source: {}", std::string(Param[0]));
         return false;
     }
 
@@ -125,7 +127,7 @@ bool msg_D::Execute(const xParameters& Param) {
     // Make sure we have valid pointers to both source
     // and target.
     if (NULL == target) {
-        elog << "msg_D> Unable to find target client: " << Param[1] << endl;
+        LOG(WARN, "Unable to find target client: {}", std::string(Param[1]));
         return false;
     }
 

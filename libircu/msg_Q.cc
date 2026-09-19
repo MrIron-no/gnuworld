@@ -29,8 +29,10 @@
 #include "iClient.h"
 #include "Network.h"
 #include "Channel.h"
-#include "ELog.h"
 #include "ServerCommandHandler.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.proto");
 
 namespace gnuworld {
 
@@ -48,7 +50,7 @@ bool msg_Q::Execute(const xParameters& Param) {
 
     iClient* theClient = Network->findClient(Param[0]);
     if (NULL == theClient) {
-        elog << "msg_Q> Unable to find client: " << Param[0] << endl;
+        LOG(WARN, "Unable to find client: {}", std::string(Param[0]));
         return false;
     }
 
