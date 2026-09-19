@@ -41,7 +41,6 @@
 #endif
 */
 
-#include "ELog.h"
 #include "IrcLogSink.h"
 #include "LogExtractors.h"
 #include "LogSinks.h"
@@ -409,13 +408,12 @@ void xServer::mainLoop() {
         int theSignal = -1;
         while (Signal::getSignal(theSignal)) {
             if (-1 == theSignal) {
-                elog << "xServer::mainLoop> Criticial failure "
-                     << "in the signal handling system" << endl;
+                LOG(ERROR, "Criticial failure in the signal handling system");
                 checkSignals = false;
                 break;
             }
 
-            elog << "xServer::mainLoop> Received signal: " << theSignal << endl;
+            LOG(INFO, "Received signal: {}", theSignal);
 
             if (!PostSignal(theSignal)) {
                 keepRunning = false;

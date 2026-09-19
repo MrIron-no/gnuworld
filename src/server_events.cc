@@ -43,11 +43,15 @@
 #include "misc.h"
 #include "Network.h"
 #include "iClient.h"
-#include "ELog.h"
+#include "LogSinks.h"
+#include "logger.h"
+
+/* The logger this file writes to: the server itself.  Core is one binary and
+ * not one module, so this stands once per .cc file rather than in a header */
+GNUWORLD_MODULE_LOGGER("core");
 
 namespace gnuworld {
 
-using std::endl;
 using std::list;
 using std::stack;
 using std::string;
@@ -187,7 +191,7 @@ void xServer::PostEvent(const eventType& theEvent, void* Data1, void* Data2, voi
                         void* Data4, const xClient* excludeMe) {
     // Make sure the event is valid.
     if (!validEvent(theEvent)) {
-        elog << "xServer::PostEvent> Invalid event number: " << theEvent << endl;
+        LOG(WARN, "Invalid event number: {}", static_cast<int>(theEvent));
         return;
     }
 
@@ -690,12 +694,12 @@ void xServer::ApplyChannelModes(Channel* theChan, ChannelUser* sourceUser,
 }
 
 void xServer::ProtocolError(std::string_view where, std::span<const std::string> problems) const {
-    // elog goes to the log file, and to the terminal unless we are a
-    // daemon; make sure it is seen somewhere
-    std::ostream* fallback = (0 == elog.getStream() && !elog.isOpen()) ? &std::cerr : 0;
+    // A record goes wherever logging.conf says; the console sink is off on a
+    // daemon, so make sure this one is seen somewhere
+    std::ostream* fallback = !ConsoleSink::enabled() ? &std::cerr : 0;
 
     const auto say = [&](const std::string& text) {
-        elog << text << endl;
+        LOG(FATAL, "{}", text);
         if (fallback != 0) {
             *fallback << text << std::endl;
         }
@@ -714,7 +718,9 @@ void xServer::ProtocolError(std::string_view where, std::span<const std::string>
 void xServer::logModeProblems(std::string_view where, std::string_view channelName,
                               std::span<const std::string> problems) const {
     for (const std::string& problem : problems) {
-        elog << where << " (" << channelName << "): " << problem << endl;
+        // "where" names the caller, which the captured function - always this
+        // one - cannot: it stays part of the message
+        LOG(WARN, "{} ({}): {}", where, channelName, problem);
     }
 }
 

@@ -108,22 +108,24 @@ xNetwork* Network = 0;
 const string xServer::CHANNEL_ALL("*");
 
 void xServer::initializeSystem() {
+    /* Loading a module is this logger's business rather than the server's */
+    static Logger* const modules = LogManager::get("core.modules");
+
     initializeVariables();
 
     clog << "*** Parsing configuration file " << configFileName << "..." << endl;
     if (!readConfigFile(configFileName)) {
-        elog << "Error reading config file: " << configFileName << endl;
+        LOG(FATAL, "Error reading config file: {}", configFileName);
         ::exit(-1);
     }
 
     // Output the information to the console.
-    elog << endl;
-    elog << "Numeric: " << getIntYY() << " (" << getCharYY() << ")" << endl;
-    elog << "Max Clients: " << getIntXXX() << " (" << getCharXXX() << ")" << endl;
-    elog << "Uplink Name: " << UplinkName << endl;
-    elog << "Uplink Port: " << Port << endl;
-    elog << "Server Name: " << ServerName << endl;
-    elog << "Server Description: " << ServerDescription << endl;
+    LOG(INFO, "Numeric: {} ({})", getIntYY(), getCharYY());
+    LOG(INFO, "Max Clients: {} ({})", getIntXXX(), getCharXXX());
+    LOG(INFO, "Uplink Name: {}", UplinkName);
+    LOG(INFO, "Uplink Port: {}", Port);
+    LOG(INFO, "Server Name: {}", ServerName);
+    LOG(INFO, "Server Description: {}", ServerDescription);
 
     // elog	<< "xServer::charYY> " << getCharYY() << endl ;
     // elog	<< "xServer::charXXX> " << getCharXXX() << endl ;
@@ -134,21 +136,19 @@ void xServer::initializeSystem() {
     assert(me != 0);
 
     if (!Network->addServer(me)) {
-        elog << "xServer::initializeSystem> Failed to add "
-             << "(me) to the system tables" << endl;
+        LOG(FATAL, "Failed to add (me) to the system tables");
         ::exit(-1);
     }
 
     Network->setServer(this);
 
     if (!loadCommandHandlers()) {
-        elog << "xServer::initializeSystem> Failed to load "
-             << "command handlers" << endl;
+        LOG_TO(modules, FATAL, "Failed to load command handlers");
         ::exit(-1);
     }
 
     if (!loadClients(configFileName)) {
-        elog << "xServer> Failed in loading one or more modules" << endl;
+        LOG_TO(modules, FATAL, "Failed in loading one or more modules");
         ::exit(-1);
     }
 
@@ -258,7 +258,7 @@ bool xServer::readConfigFile(const string& fileName) {
         tlsCertFile = conf.Require("tlsCertFile")->second;
 
         if (!initTls()) {
-            elog << "TLS initialization error. Exiting." << endl;
+            LOG(FATAL, "TLS initialization error. Exiting.");
             ::exit(1);
         }
     }
@@ -272,7 +272,7 @@ bool xServer::readConfigFile(const string& fileName) {
  */
 #ifdef HAVE_LIBSSL
 bool xServer::initTls() {
-    elog << "xServer::initTls - Spinning up TLS" << endl;
+    LOG(INFO, "Spinning up TLS");
     SSL_library_init();
     SSL_load_error_strings();
     sslCtx = SSL_CTX_new(TLS_method());
@@ -283,21 +283,21 @@ bool xServer::initTls() {
 
     int res = SSL_CTX_use_certificate_chain_file(sslCtx, tlsCertFile.c_str());
     if (res != 1) {
-        elog << "xServer::initTls - Could not load certificate file" << endl;
+        LOG(ERROR, "Could not load certificate file");
         SSL_CTX_free(sslCtx);
         return false;
     }
 
     res = SSL_CTX_use_PrivateKey_file(sslCtx, tlsKeyFile.c_str(), SSL_FILETYPE_PEM);
     if (res != 1) {
-        elog << "xServer::initTls - Could not load key file" << endl;
+        LOG(ERROR, "Could not load key file");
         SSL_CTX_free(sslCtx);
         return false;
     }
 
     res = SSL_CTX_check_private_key(sslCtx);
     if (res != 1) {
-        elog << "xServer::initTls - Private key validation failed" << endl;
+        LOG(ERROR, "Private key validation failed");
         SSL_CTX_free(sslCtx);
         return false;
     }
@@ -308,10 +308,12 @@ bool xServer::initTls() {
 #endif
 
 bool xServer::loadCommandHandlers() {
+    /* Loading a module is this logger's business rather than the server's */
+    static Logger* const modules = LogManager::get("core.modules");
+
     std::ifstream commandMapFile(commandMapFileName.c_str());
     if (!commandMapFile) {
-        elog << "xServer::loadCommandHandlers> Unable to open "
-             << "command map file: " << commandMapFileName << endl;
+        LOG_TO(modules, ERROR, "Unable to open command map file: {}", commandMapFileName);
         return false;
     }
 
@@ -329,8 +331,8 @@ bool xServer::loadCommandHandlers() {
         // module_file_name module_loader_symbol command_key
         StringTokenizer st(line);
         if (st.size() != 3) {
-            elog << "xServer::loadCommandHandlers> " << commandMapFileName << ":" << lineNumber
-                 << "> Invalid syntax, 3 tokens expected, " << st.size() << " tokens found" << endl;
+            LOG_TO(modules, ERROR, "{}:{}> Invalid syntax, 3 tokens expected, {} tokens found",
+                   commandMapFileName, lineNumber, st.size());
             returnVal = false;
             break;
         }
@@ -360,9 +362,10 @@ bool xServer::loadCommandHandlers() {
         }
 
         if (!loadCommandHandler(fileName, st[1], st[2])) {
-            elog << "xServer::loadCommandHandlers> Failed to load "
-                 << "handler for message token " << st[2] << ", from module file: " << fileName
-                 << ", with symbol suffix: " << st[1] << endl;
+            LOG_TO(modules, ERROR,
+                   "Failed to load handler for message token {}, from module file: {}, with symbol "
+                   "suffix: {}",
+                   st[2], fileName, st[1]);
             returnVal = false;
             break;
         }
@@ -373,7 +376,7 @@ bool xServer::loadCommandHandlers() {
 
     } // while()
 
-    elog << "Loaded " << commandMap.size() << " command handlers" << endl << endl;
+    LOG_TO(modules, INFO, "Loaded {} command handlers", commandMap.size());
 
     commandMapFile.close();
 
@@ -382,6 +385,9 @@ bool xServer::loadCommandHandlers() {
 
 bool xServer::loadCommandHandler(const string& fileName, const string& symbolName,
                                  const string& commandKey) {
+    /* Loading a module is this logger's business rather than the server's */
+    static Logger* const modules = LogManager::get("core.modules");
+
     // Let's first check to see if the module is already open
     // It is possible that a single module handler may be
     // registered to handle multiple commands (NOOP for example)
@@ -408,9 +414,10 @@ bool xServer::loadCommandHandler(const string& fileName, const string& symbolNam
 
     ServerCommandHandler* sch = ml->loadObject(this, symbolSuffix);
     if (NULL == sch) {
-        elog << "xServer::loadCommandHandler> Failed to load "
-             << "handler for message token " << commandKey << ", from module file: " << fileName
-             << ", with symbol suffix: " << symbolName << endl;
+        LOG_TO(modules, ERROR,
+               "Failed to load handler for message token {}, from module file: {}, with symbol "
+               "suffix: {}",
+               commandKey, fileName, symbolName);
 
         delete (ml);
         ml = 0;
@@ -427,8 +434,7 @@ bool xServer::loadCommandHandler(const string& fileName, const string& symbolNam
 
     // Add the command handler to the handler map
     if (!commandMap.insert(commandMapType::value_type(commandKey, sch)).second) {
-        elog << "xServer::loadCommandHandler> Unable to add "
-             << "handler for message " << commandKey << " to commandMap" << endl;
+        LOG_TO(modules, ERROR, "Unable to add handler for message {} to commandMap", commandKey);
 
         delete ml;
         ml = 0;
@@ -453,6 +459,9 @@ xServer::commandModuleType* xServer::lookupCommandModule(const string& moduleNam
 }
 
 bool xServer::loadClients(const string& fileName) {
+    /* Loading a module is this logger's business rather than the server's */
+    static Logger* const modules = LogManager::get("core.modules");
+
     // Load the config file
     EConfig conf(fileName);
 
@@ -464,9 +473,8 @@ bool xServer::loadClients(const string& fileName) {
         StringTokenizer modInfo(ptr->second);
 
         if (2 != modInfo.size()) {
-            elog << "xServer::loadClients> modules require two "
-                 << "arguments, modulename followed by config "
-                 << "file name" << endl;
+            LOG_TO(modules, ERROR,
+                   "modules require two arguments, modulename followed by config file name");
 
             return false;
         }
@@ -490,7 +498,7 @@ bool xServer::loadClients(const string& fileName) {
         if (!AttachClient(fileName, modInfo[1])) {
             // No need for error output here because AttachClient()
             // will do that for us
-            elog << "xServer::loadClients> Failed to attach client: " << fileName << endl;
+            LOG_TO(modules, ERROR, "Failed to attach client: {}", fileName);
 
             return false;
         }
@@ -573,7 +581,7 @@ void xServer::Process(char* s) {
         const char* const yxxEnd = YXX + sizeof(YXX) - 1;
         while (*s && (' ' != *s)) {
             if (yxxPtr == yxxEnd) {
-                elog << "xServer::Process> Dropping line with oversized first token" << endl;
+                LOG(WARN, "Dropping line with oversized first token");
                 return;
             }
             *yxxPtr++ = *s++;
@@ -638,7 +646,7 @@ void xServer::Process(char* s) {
     }
 
     if (NULL == Sender) {
-        elog << "xServer::Process> NULL == Sender... *shrug*" << endl;
+        LOG(WARN, "NULL == Sender... *shrug*");
         Command = strtok(s, " ");
     }
 
@@ -746,7 +754,7 @@ void xServer::Process(char* s) {
         }
 
     } else {
-        elog << "xServer::Process> Unable to find handler for: " << Command << endl;
+        LOG(WARN, "Unable to find handler for: {}", nullptr == Command ? "" : Command);
     }
 }
 
@@ -758,7 +766,7 @@ bool xServer::SquitServer(const string& serverName, const string& reason) {
     // Is it our server?
     if (!strcasecmp(serverName, this->ServerName)) {
         // I don't see that happening
-        elog << "xServer::SquitServer> Attempt to squit myself!" << endl;
+        LOG(WARN, "Attempt to squit myself!");
         return false;
     }
 
@@ -773,7 +781,7 @@ bool xServer::SquitServer(const string& serverName, const string& reason) {
     iServer* tmpServer = Network->findServerName(serverName);
     if (NULL == tmpServer) {
         // The server doesn't exist.
-        elog << "xServer::SquitServer> Unable to find server: " << serverName << endl;
+        LOG(WARN, "Unable to find server: {}", serverName);
         return false;
     }
     string source(getCharYY());
@@ -784,7 +792,7 @@ bool xServer::SquitServer(const string& serverName, const string& reason) {
     iServer* theServer = Network->removeServer(tmpServer->getIntYY(), true);
     if (NULL == theServer) {
         // The server doesn't exist.
-        elog << "xServer::SquitServer> Unable to find server: " << serverName << endl;
+        LOG(WARN, "Unable to find server: {}", serverName);
         return false;
     }
 
@@ -831,8 +839,7 @@ bool xServer::AttachServer(iServer* fakeServer, xClient* owningClient) {
     }
 
     if (!Network->addFakeServer(fakeServer, owningClient)) {
-        elog << "xNetwork::AttachServer> Failed to attach fake "
-             << "server: " << *fakeServer << endl;
+        LOG_MSG(ERROR, "Failed to attach fake server: {server}").with("server", fakeServer).log();
         return false;
     }
 
@@ -880,6 +887,9 @@ void xServer::BurstServer(iServer* fakeServer) {
  * returned to its state when the method was called.
  */
 bool xServer::AttachClient(xClient* Client, bool doBurst) {
+    /* Attaching a client is this logger's business rather than the server's */
+    static Logger* const modules = LogManager::get("core.modules");
+
     // Make sure the pointer is valid.
     assert(NULL != Client);
 
@@ -889,7 +899,7 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
     // addClient() will allocate a new XXX and
     // update Client.
     if (!Network->addClient(Client)) {
-        elog << "xServer::AttachClient> Failed to update network tables" << endl;
+        LOG_TO(modules, ERROR, "Failed to update network tables");
         return false;
     }
 
@@ -906,8 +916,8 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
             Client->OnConnect();
         }
 
-        elog << "Loaded stealth client, nickname: " << Client->getNickName()
-             << ", with config file: " << Client->getConfigFileName() << endl;
+        LOG_TO(modules, INFO, "Loaded stealth client, nickname: {}, with config file: {}",
+               Client->getNickName(), Client->getConfigFileName());
         return true;
     }
 
@@ -926,8 +936,7 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
     // Add the iClient to the network tables
     if (!Network->addClient(theIClient)) {
         // Failed to add the iClient to the network tables
-        elog << "xServer::AttachClient> Unable to add theIClient "
-             << "to the Network table" << endl;
+        LOG_TO(modules, ERROR, "Unable to add theIClient to the Network table");
 
         // We have already reserved a numeric for this client,
         // go ahead and remove it
@@ -950,14 +959,19 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
         Client->BurstGlines();
     }
 
-    elog << "Loaded client, nickname: " << theIClient->getNickName()
-         << ", with config file: " << Client->getConfigFileName() << endl;
+    LOG_MSG_TO(modules, INFO, "Loaded client, nickname: {client}, with config file: {}",
+               Client->getConfigFileName())
+        .with("client", theIClient)
+        .log();
 
     // Success
     return true;
 }
 
 bool xServer::AttachClient(const string& moduleName, const string& configFileName, bool doBurst) {
+    /* Loading a module is this logger's business rather than the server's */
+    static Logger* const modules = LogManager::get("core.modules");
+
     // Create a moduleLoader instance, based on the given moduleName
     moduleLoader<xClient*>* ml = new (std::nothrow) moduleLoader<xClient*>(moduleName);
     assert(ml != 0);
@@ -979,7 +993,7 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
     // Check if the object was loaded successfully
     if (NULL == clientPtr) {
         // Failed to load the object
-        elog << "xServer::AttachClient> Failed to instantiate module: " << moduleName << endl;
+        LOG_TO(modules, ERROR, "Failed to instantiate module: {}", moduleName);
 
         // Deallocate the module, this will also close the module file
         delete ml;
@@ -992,7 +1006,7 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
     // Attempt to attach the client to the server
     if (!AttachClient(clientPtr, doBurst)) {
         // Failed to attach the client
-        elog << "xServer::AttachClient> Failed to attach new xClient: " << moduleName << endl;
+        LOG_TO(modules, ERROR, "Failed to attach new xClient: {}", moduleName);
 
         // Deallocate the client and its encapsulating module
         delete clientPtr;
@@ -1020,22 +1034,25 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
  * AQ N ripper_ 1 952038834 ~dan 127.0.0.1 +owg B]AAAB AQAAA :Dan Karrels
  */
 bool xServer::AttachClient(iClient* fakeClient, xClient* ownerClient) {
+    /* Attaching a client is this logger's business rather than the server's */
+    static Logger* const modules = LogManager::get("core.modules");
+
     assert(fakeClient != NULL);
     assert(ownerClient != 0);
 
     // Verify that the iClient is in good order
     if (fakeClient->getNickName().empty() || fakeClient->getUserName().empty() ||
         fakeClient->getInsecureHost().empty() || fakeClient->getDescription().empty()) {
-        elog << "xServer::AttachClient(iClient)> Missing data "
-             << "in iClient: " << *fakeClient << endl;
+        LOG_MSG_TO(modules, WARN, "Missing data in iClient: {client}")
+            .with("client", fakeClient)
+            .log();
         return false;
     }
 
     // Let the xNetwork class handle filling in the information about the
     // iClient.
     if (!Network->addFakeClient(fakeClient, ownerClient)) {
-        elog << "xServer::AttachClient(iClient)> addFakeClient() "
-             << "failed" << endl;
+        LOG_TO(modules, ERROR, "addFakeClient() failed");
         return false;
     }
 
@@ -1106,7 +1123,8 @@ bool xServer::DetachClient(const string& moduleName, const string& reason) {
         }
     }
 
-    elog << "xServer::DetachClient> Unable to find client moduleName: " << moduleName << endl;
+    LOG_TO(LogManager::get("core.modules"), WARN, "Unable to find client moduleName: {}",
+           moduleName);
 
     return false;
 }
@@ -1164,8 +1182,8 @@ void xServer::UnloadClient(xClient* theClient, const string& reason) {
         }
     }
 
-    elog << "xServer::UnloadClient(xClient*)> Unable to find client: " << theClient->getNickName()
-         << endl;
+    LOG_TO(LogManager::get("core.modules"), WARN, "Unable to find client: {}",
+           theClient->getNickName());
 }
 
 // This method is responsible for updating all internal
@@ -1284,7 +1302,7 @@ void xServer::PartChannel(xClient* theClient, const string& chanName, const stri
 
     Channel* theChan = Network->findChannel(chanName);
     if (NULL == theChan) {
-        elog << "xServer::PartChannel> Unable to find channel: " << chanName << endl;
+        LOG(WARN, "Unable to find channel: {}", chanName);
         return;
     }
 
@@ -1321,7 +1339,7 @@ void xServer::OnPartChannel(iClient* theClient, const string& chanName) {
 
     Channel* theChan = Network->findChannel(chanName);
     if (NULL == theChan) {
-        elog << "xServer::OnPartChannel> Unable to find channel: " << chanName << endl;
+        LOG(WARN, "Unable to find channel: {}", chanName);
         return;
     }
 
@@ -1356,7 +1374,7 @@ void xServer::OnPartChannel(xClient* theClient, const string& chanName) {
 
     Channel* theChan = Network->findChannel(chanName);
     if (NULL == theChan) {
-        elog << "xServer::OnPartChannel> Unable to find channel: " << chanName << endl;
+        LOG(WARN, "Unable to find channel: {}", chanName);
         return;
     }
     OnPartChannel(theClient, theChan);
@@ -1398,8 +1416,9 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
     }
 
     if ((theChan != 0) && (theChan->findUser(theClient->getInstance()))) {
-        elog << "xServer::JoinChannel(xClient)> Client attempted "
-             << "to join channel " << theChan->getName() << " more than once" << endl;
+        LOG_MSG(WARN, "Client attempted to join channel {chan} more than once")
+            .with("chan", theChan)
+            .log();
         return false;
     }
 
@@ -1421,8 +1440,8 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         for (Channel::ModeChange& change : parsed.changes) {
             const Channel::ModeType type = change.mode.type;
             if (Channel::ModeType::Prefix == type || Channel::ModeType::List == type) {
-                elog << "xServer::JoinChannel> (" << chanName << "): mode '" << change.mode.letter
-                     << "' is not a channel mode to join with" << endl;
+                LOG(WARN, "({}): mode '{}' is not a channel mode to join with", chanName,
+                    change.mode.letter);
                 continue;
             }
 
@@ -1471,8 +1490,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
         // Add it to the network channel table
         if (!Network->addChannel(theChan)) {
-            elog << "xServer::JoinChannel> addChannel() "
-                 << "failed: " << theChan->getName() << endl;
+            LOG_MSG(ERROR, "addChannel() failed: {chan}").with("chan", theChan).log();
 
             // Prevent a memory leak
             delete theChan;
@@ -1508,8 +1526,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
         // Add it to the network channel table
         if (!Network->addChannel(theChan)) {
-            elog << "xServer::JoinChannel> addChannel() "
-                 << "failed: " << theChan->getName() << endl;
+            LOG_MSG(ERROR, "addChannel() failed: {chan}").with("chan", theChan).log();
 
             // Prevent a memory leak
             delete theChan;
@@ -1598,8 +1615,9 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
     // Add the ChannelUser to the channel
     if (!theChan->addUser(theChanUser)) {
-        elog << "xServer::JoinChannel> Unable to add xClient (" << theClient->getNickName()
-             << ") to channel " << theChan->getName() << endl;
+        LOG_MSG(ERROR, "Unable to add xClient ({}) to channel {chan}", theClient->getNickName())
+            .with("chan", theChan)
+            .log();
 
         // TODO
         return false;
@@ -1940,7 +1958,7 @@ void xServer::startLogging(bool logrotate) {
     elog.setStream(verbose ? &clog : nullptr);
 
     if (verbose) {
-        elog << "*** Running in verbose mode..." << endl;
+        LOG(INFO, "Running in verbose mode...");
     }
 
     if (logSocket) {
@@ -1957,7 +1975,7 @@ void xServer::startLogging(bool logrotate) {
 }
 
 void xServer::rotateLogs() {
-    elog << endl << "Received SIGHUP. Rotating log files..." << endl;
+    LOG(INFO, "Received SIGHUP. Rotating log files...");
 
     /* Every sink of every logger opens its path anew, the ones a module
      * attached in code included, so that the next record lands in a new file
@@ -2251,8 +2269,7 @@ bool xServer::changeMembers(Channel* theChan, char letter, bool set,
 
         if (problem != 0) {
             if (*problem != 0) {
-                elog << "xServer::changeMembers> (" << theChan->getName() << "): " << problem
-                     << endl;
+                LOG_MSG(WARN, "({chan}): {}", problem).with("chan", theChan).log();
             }
             if (single) {
                 return false;
@@ -2281,8 +2298,7 @@ xServer::banVectorType xServer::bansFor(const Channel* theChan,
     banVectorType bans;
     for (const iClient* target : targets) {
         if (NULL == target) {
-            elog << "xServer::bansFor> Found NULL iClient for channel: " << theChan->getName()
-                 << endl;
+            LOG_MSG(WARN, "Found NULL iClient for channel: {chan}").with("chan", theChan).log();
             continue;
         }
         // A network service (+k) is not banned, and neither is somebody
@@ -2302,8 +2318,7 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
     std::vector<iClient*> kicked;
     for (iClient* target : targets) {
         if (NULL == target) {
-            elog << "xServer::kickMembers> Found NULL iClient for channel: " << theChan->getName()
-                 << endl;
+            LOG_MSG(WARN, "Found NULL iClient for channel: {chan}").with("chan", theChan).log();
             continue;
         }
         // A network service (+k) is not kicked
@@ -2311,8 +2326,10 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
             continue;
         }
         if (NULL == theChan->findUser(target)) {
-            elog << "xServer::kickMembers> Can't find " << target->getNickName() << " on channel "
-                 << theChan->getName() << endl;
+            LOG_MSG(WARN, "Can't find {client} on channel {chan}")
+                .with("client", target)
+                .with("chan", theChan)
+                .log();
             continue;
         }
         kicked.push_back(target);
@@ -2338,8 +2355,10 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
         delete theChan->removeUser(target);
 
         if (!target->removeChannel(theChan)) {
-            elog << "xServer::kickMembers> Unable to remove channel " << theChan->getName()
-                 << " from the iClient " << *target << endl;
+            LOG_MSG(ERROR, "Unable to remove channel {chan} from the iClient {client}")
+                .with("chan", theChan)
+                .with("client", target)
+                .log();
         }
 
         // The network keeps a kicked member as a zombie until its own server
@@ -2451,7 +2470,7 @@ bool xServer::Invite(iClient* target, Channel* theChan, const iClient* from) {
 
     // An INVITE from a server is a protocol violation (ircu doc/P11.md 8.11)
     if ((0 == from)) {
-        elog << "xServer::Invite> (" << theChan->getName() << "): only a client can invite" << endl;
+        LOG_MSG(WARN, "({chan}): only a client can invite").with("chan", theChan).log();
         return false;
     }
 
@@ -2675,7 +2694,9 @@ void xServer::UserLogin(iClient* destClient, const string& account, const unsign
     assert(destClient != 0);
 
     if (account.empty()) {
-        elog << "xServer::UserLogin> Empty account name/domain for user: " << *destClient << endl;
+        LOG_MSG(WARN, "Empty account name/domain for user: {client}")
+            .with("client", destClient)
+            .log();
         return;
     }
 
@@ -2699,14 +2720,17 @@ void xServer::setBursting(bool newVal) {
         burstBytes = burstLines = 0;
     } else {
         // Completed bursting
-        elog << "Completed net burst in " << (burstEnd - burstStart) << " seconds, read "
-             << burstBytes << " bytes and processed " << burstLines << " commands" << endl;
+        LOG(INFO, "Completed net burst in {} seconds, read {} bytes and processed {} commands",
+            static_cast<long>(burstEnd - burstStart), burstBytes, burstLines);
     }
 }
 
 void xServer::doShutdown() {
     // elog	<< "xServer::doShutdown> Removing modules..."
     //	<< endl ;
+
+    /* Letting a client or a command module go is this logger's business */
+    static Logger* const modules = LogManager::get("core.modules");
 
     size_t count = 0;
 
@@ -2717,7 +2741,7 @@ void xServer::doShutdown() {
         DetachClient(clientItr++->second, "Server shutdown");
     }
 
-    elog << "xServer::doShutdown> Removed " << count << " local clients" << endl;
+    LOG_TO(modules, DEBUG, "Removed {} local clients", count);
 
     // elog	<< "xServer::doShutdown> Removing network clients..."
     //	<< endl ;
@@ -2731,7 +2755,7 @@ void xServer::doShutdown() {
         ++cItr;
         delete Network->removeClient(theClient);
     }
-    elog << "xServer::doShutdown> Removed " << count << " network clients" << endl;
+    LOG(DEBUG, "Removed {} network clients", count);
 
     // elog	<< "xServer::doShutdown> Removing channels..."
     //	<< endl ;
@@ -2743,11 +2767,11 @@ void xServer::doShutdown() {
         ++count;
         ++cItr;
 
-        elog << "xServer::doShutdown> Found channel: " << *theChan << endl;
+        LOG_MSG(DEBUG, "Found channel: {chan}").with("chan", theChan).log();
 
         delete Network->removeChannel(theChan);
     }
-    elog << "xServer::doShutdown> Removed " << count << " channels" << endl;
+    LOG(DEBUG, "Removed {} channels", count);
 
     // Remove servers
     count = 0;
@@ -2759,7 +2783,7 @@ void xServer::doShutdown() {
         delete Network->removeServer(tmpServer->getIntYY());
     }
 
-    elog << "xServer::doShutdown> Removed " << count << " servers..." << endl;
+    LOG(DEBUG, "Removed {} servers...", count);
 
     // elog	<< "xServer::doShutdown> Removing glines..."
     //	<< endl ;
@@ -2772,7 +2796,7 @@ void xServer::doShutdown() {
         eraseGline(gItr++);
         delete tmpGline;
     }
-    elog << "xServer::doShutdown> Removed " << count << " glines" << endl;
+    LOG(DEBUG, "Removed {} glines", count);
 
     count = 0;
     // Remove server command handlers
@@ -2782,7 +2806,7 @@ void xServer::doShutdown() {
         commandMap.erase(cItr++);
         delete tmpCommand;
     }
-    elog << "xServer::doShutdown> Removed " << count << " server command handlers" << endl;
+    LOG_TO(modules, DEBUG, "Removed {} server command handlers", count);
 
     commandMap.clear();
 
@@ -2794,7 +2818,7 @@ void xServer::doShutdown() {
         delete tmpCommand;
         cmItr = commandModuleList.erase(cmItr);
     }
-    elog << "xServer::doShutdown> Removed " << count << " server command modules" << endl;
+    LOG_TO(modules, DEBUG, "Removed {} server command modules", count);
 
     commandModuleList.clear();
 
@@ -2814,9 +2838,9 @@ void xServer::doShutdown() {
         delete timerQueue.top().second;
         timerQueue.pop();
     }
-    elog << "xServer::doShutdown> Removed " << count << " timers" << endl;
+    LOG(DEBUG, "Removed {} timers", count);
 
-    elog << "xServer::doShutdown> Disconnecting..." << endl;
+    LOG(INFO, "Disconnecting...");
 
     // Close the connection
     if (serverConnection != 0) {
@@ -2837,8 +2861,10 @@ bool xServer::DetachClient(iClient* fakeClient, const string& quitMessage) {
     // xNetwork::removeFakeClient() will remove the client from
     // the network data structurs, and free its numeric
     if (0 == Network->removeClient(fakeClient)) {
-        elog << "xNetwork::DetachClient(iClient)> Failed to remove "
-             << "fakeClient from network data structures: " << *fakeClient << endl;
+        LOG_MSG_TO(LogManager::get("core.modules"), ERROR,
+                   "Failed to remove fakeClient from network data structures: {client}")
+            .with("client", fakeClient)
+            .log();
         return false;
     }
 
@@ -2857,7 +2883,7 @@ bool xServer::DetachServer(iServer* fakeServer) {
     assert(fakeServer != 0);
 
     if (0 == Network->removeServer(fakeServer->getIntYY())) {
-        elog << "xServer::DetachServer> Failed to remove server: " << *fakeServer << endl;
+        LOG_MSG(ERROR, "Failed to remove server: {server}").with("server", fakeServer).log();
         return false;
     }
 
@@ -2881,16 +2907,16 @@ bool xServer::JoinChannel(iClient* theClient, const string& chanName) {
 
     if (0 == Network->findFakeClient(theClient)) {
         // Not a fake client
-        elog << "xServer::JoinChannel (fake)> Attempt to force a "
-             << "non-fake client to join a channel: " << *theClient << endl;
+        LOG_MSG(WARN, "Attempt to force a non-fake client to join a channel: {client}")
+            .with("client", theClient)
+            .log();
 
         return false;
     }
 
     Channel* theChan = Network->findChannel(chanName);
     if (0 == theChan) {
-        elog << "xServer::JoinChannel (fake)> Attempting to join "
-             << "non-existing channel: " << chanName << endl;
+        LOG(WARN, "Attempting to join non-existing channel: {}", chanName);
         return false;
     }
 
@@ -2904,16 +2930,14 @@ bool xServer::JoinChannel(iClient* theClient, const string& chanName) {
     assert(theUser != 0);
 
     if (!theChan->addUser(theUser)) {
-        elog << "xServer::JoinChannel (fake)> Failed to add user "
-             << "to channel: " << *theChan << endl;
+        LOG_MSG(ERROR, "Failed to add user to channel: {chan}").with("chan", theChan).log();
         delete theUser;
         theUser = 0;
         return false;
     }
 
     if (!theClient->addChannel(theChan)) {
-        elog << "xServer::JoinChannel (fake)> Failed to add channel "
-             << "to client: " << *theClient << endl;
+        LOG_MSG(ERROR, "Failed to add channel to client: {client}").with("client", theClient).log();
 
         theChan->removeUser(theUser);
         delete theUser;
@@ -2935,23 +2959,22 @@ void xServer::PartChannel(iClient* theClient, const string& chanName, const stri
 
     if (0 == Network->findFakeClient(theClient)) {
         // Not a fake client
-        elog << "xServer::PartChannel (fake)> Attempt to force a "
-             << "non-fake client to part a channel: " << *theClient << endl;
+        LOG_MSG(WARN, "Attempt to force a non-fake client to part a channel: {client}")
+            .with("client", theClient)
+            .log();
 
         return;
     }
 
     Channel* theChan = Network->findChannel(chanName);
     if (0 == theChan) {
-        elog << "xServer::ParChannel (fake)> Attempting to part "
-             << "non-existing channel: " << chanName << endl;
+        LOG(WARN, "Attempting to part non-existing channel: {}", chanName);
         return;
     }
 
     // The network knows of no membership to end if we know of none
     if (0 == theChan->findUser(theClient)) {
-        elog << "xServer::PartChannel (fake)> " << *theClient << " is not on channel: " << chanName
-             << endl;
+        LOG_MSG(WARN, "{client} is not on channel: {}", chanName).with("client", theClient).log();
         return;
     }
 
@@ -2996,14 +3019,13 @@ bool xServer::BurstChannel(const string& chanName, const string& chanModes,
         for (const Channel::ModeChange& change : parsed.changes) {
             // A BURST can only set channel modes
             if (!change.set) {
-                elog << "xServer::BurstChannel> Channel modes cannot "
-                     << "contain a \'-\' polarity modifier" << endl;
+                LOG(WARN, "Channel modes cannot contain a '-' polarity modifier");
                 return false;
             }
             if (Channel::ModeType::Prefix == change.mode.type ||
                 Channel::ModeType::List == change.mode.type) {
-                elog << "xServer::BurstChannel> (" << chanName << "): mode '" << change.mode.letter
-                     << "' is not a channel mode to burst" << endl;
+                LOG(WARN, "({}): mode '{}' is not a channel mode to burst", chanName,
+                    change.mode.letter);
                 return false;
             }
         }
@@ -3012,13 +3034,12 @@ bool xServer::BurstChannel(const string& chanName, const string& chanModes,
 
     Channel* theChan = Network->findChannel(chanName);
     if (0 == theChan) {
-        elog << "xServer::BurstChannel> Channel does not exist: " << chanName << endl;
+        LOG(WARN, "Channel does not exist: {}", chanName);
         return false;
     }
 
     if (burstTime >= theChan->getCreationTime()) {
-        elog << "xServer::BurstChannel> Channel creation time is "
-             << "older than the burst time" << endl;
+        LOG(WARN, "Channel creation time is older than the burst time");
         return false;
     }
 
@@ -3047,8 +3068,9 @@ bool xServer::findControlNick(const std::string& nickName) const {
 void xServer::ControlCommand(iClient* srcClient, const string& message) {
     assert(srcClient != 0);
 
-    elog << "xServer::ControlCommand> Received control message from: " << *srcClient << ": "
-         << message << endl;
+    LOG_MSG(DEBUG, "Received control message from: {client}: {}", message)
+        .with("client", srcClient)
+        .log();
 
     if (!hasControlAccess(srcClient->getAccount()) || !srcClient->isOper()) {
         // Silently return
@@ -3099,8 +3121,12 @@ void xServer::OnTimeout(Connection* cPtr) {
     if (cPtr == serverConnection) {
         /* If the connection timeout happens on the hub connection, stop the main loop in main.cc */
         lastLoop = true;
-        elog << s.str(); /* Line not added to the debug log file - possibly because the program
-                            exits quickly because of lastLoop. Didn't verify */
+
+        /* The record says the same thing, without the prefix the function
+         * itself carries; s keeps its own, which is what cout printed */
+        std::stringstream conn;
+        conn << *cPtr;
+        LOG(ERROR, "{}", conn.str());
     }
 }
 

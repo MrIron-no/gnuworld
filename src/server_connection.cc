@@ -57,7 +57,7 @@
 // #include	"iClient.h"
 // #include	"EConfig.h"
 // #include	"match.h"
-#include "ELog.h"
+#include "logger.h"
 // #include	"StringTokenizer.h"
 // #include	"xparameters.h"
 // #include	"moduleLoader.h"
@@ -68,6 +68,10 @@
 #include "ConnectionManager.h"
 #include "ConnectionHandler.h"
 #include "Connection.h"
+
+/* The logger this file writes to: the link to the uplink.  Core is one binary
+ * and not one module, so this stands once per .cc file rather than in a header */
+GNUWORLD_MODULE_LOGGER("core.net");
 
 namespace gnuworld {
 
@@ -100,8 +104,8 @@ void xServer::OnConnect(Connection* theConn) {
 
     clog << "*** Connected!" << endl;
 
-    elog << "*** Connected to " << serverConnection->getHostname() << ", port "
-         << serverConnection->getRemotePort() << endl;
+    LOG(INFO, "Connected to {}, port {}", serverConnection->getHostname(),
+        serverConnection->getRemotePort());
 
     // Login to the uplink.
     WriteDuringBurst("PASS :{}\n", Password);
@@ -115,8 +119,8 @@ void xServer::OnConnect(Connection* theConn) {
 }
 
 void xServer::OnConnectFail(Connection* theConn) {
-    elog << "xServer::OnConnectFail> Failed to establish connection "
-         << "to " << theConn->getHostname() << ":" << theConn->getRemotePort() << endl;
+    LOG(FATAL, "Failed to establish connection to {}:{}", theConn->getHostname(),
+        theConn->getRemotePort());
 
     serverConnection = 0;
     keepRunning = false;
@@ -128,7 +132,7 @@ void xServer::OnConnectFail(Connection* theConn) {
  */
 void xServer::OnDisconnect(Connection* theConn) {
     if (theConn != serverConnection) {
-        elog << "xServer::OnDisconnect> Unknown connection" << endl;
+        LOG(WARN, "Unknown connection");
         return;
     }
 
@@ -137,7 +141,7 @@ void xServer::OnDisconnect(Connection* theConn) {
     // the Connection object
     serverConnection = 0;
 
-    elog << "xServer::OnDisconnect> Disconnected :(" << endl;
+    LOG(INFO, "Disconnected :(");
 
     keepRunning = false;
 
@@ -151,7 +155,7 @@ void xServer::OnDisconnect(Connection* theConn) {
 
 void xServer::OnRead(Connection* theConn, const string& line) {
     if (theConn != serverConnection) {
-        elog << "xServer::OnRead> Unknown connection" << endl;
+        LOG(WARN, "Unknown connection");
         return;
     }
 
@@ -177,8 +181,8 @@ void xServer::OnRead(Connection* theConn, const string& line) {
     }
 
     if (len + 1 >= sizeof(inputCharBuffer)) {
-        elog << "xServer::OnRead> Rejecting oversized line (" << (len + 1) << " bytes, max "
-             << (sizeof(inputCharBuffer) - 1) << ")" << endl;
+        LOG(WARN, "Rejecting oversized line ({} bytes, max {})", len + 1,
+            sizeof(inputCharBuffer) - 1);
         return;
     }
 
@@ -266,7 +270,7 @@ void xServer::OnRead(Connection* theConn, const string& line) {
 bool xServer::writeLine(std::string_view text, bool duringBurst) {
     if (!isConnected()) {
         if (duringBurst) {
-            elog << "xServer::writeLine> Not connected" << endl;
+            LOG(WARN, "Not connected");
         }
         return false;
     }
@@ -282,8 +286,8 @@ bool xServer::writeLine(std::string_view text, bool duringBurst) {
     // NUL ends the line for ircu too.
     const std::string_view::size_type cut = text.find_first_of(std::string_view("\r\n\0", 3));
     if (cut != std::string_view::npos) {
-        elog << "xServer::writeLine> Dropped " << (text.size() - cut)
-             << " bytes behind a line break inside: " << text.substr(0, cut) << endl;
+        LOG(WARN, "Dropped {} bytes behind a line break inside: {}", text.size() - cut,
+            text.substr(0, cut));
         text = text.substr(0, cut);
     }
 
