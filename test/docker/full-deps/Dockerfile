@@ -54,10 +54,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # config for the library names /usr/bin/civetweb as an imported target, and
 # find_package(civetweb) fails outright without that file.
 # ENABLE_PUSH=OFF: GNUWorld uses core and pull only.
+#
+# THE TARBALL IS PINNED BY HASH and not by version alone: a version is a tag, and
+# a tag is a name somebody with push rights can move.  The hash below is of
+#
+#     https://codeload.github.com/jupp0r/prometheus-cpp/tar.gz/refs/tags/v1.3.0
+#
+# GitHub's own source archive of the v1.3.0 tag (69,921 bytes), taken from that
+# URL and checked twice.  "sha256sum -c" fails the whole image build if what
+# arrives is anything else, so this image cannot quietly start building somebody
+# else's code.  To move to another version, change both lines: download the
+# tarball once, run "sha256sum" on it, and put that here.
 ARG PROMETHEUS_CPP_VERSION=1.3.0
+ARG PROMETHEUS_CPP_SHA256=ac6e958405a29fbbea9db70b00fa3c420e16ad32e1baf941ab233ba031dd72ee
 RUN cd /tmp \
     && curl -sSL "https://codeload.github.com/jupp0r/prometheus-cpp/tar.gz/refs/tags/v${PROMETHEUS_CPP_VERSION}" \
         -o prometheus-cpp.tar.gz \
+    && printf '%s  prometheus-cpp.tar.gz\n' "$PROMETHEUS_CPP_SHA256" > prometheus-cpp.tar.gz.sha256 \
+    && sha256sum -c prometheus-cpp.tar.gz.sha256 \
     && tar xzf prometheus-cpp.tar.gz \
     && cmake -S "prometheus-cpp-${PROMETHEUS_CPP_VERSION}" -B /tmp/prometheus-build \
         -DCMAKE_BUILD_TYPE=Release \
