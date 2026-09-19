@@ -334,10 +334,6 @@ cservice::cservice(const string& args) : xClient(args) {
     loadConfigVariables();
     loadConfigData();
 
-    /* A conf file of an install from before logging.conf may still carry the
-     * logging keys this module used to have; they are read no more */
-    warnOfRemovedLoggingKeys();
-
     /* What this module used to send as a Pushover notification of its own is an
      * ordinary record: a pager is a sink of logging.conf now, and whether one is
      * attached to this logger - or to the root, or to nothing at all - is that
@@ -7152,49 +7148,6 @@ void cservice::loadConfigVariables(bool rehash) {
     if (daySeconds < 1)
         daySeconds = 1;
     UsersExpireDBDays *= daySeconds;
-}
-
-/**
- * Says once, when this module starts, that a conf file still carrying the five
- * logging keys cservice used to have is carrying them for nothing, and once more
- * for the four pushover keys it used to page with.
- *
- * Find, not Require: the keys are not read any more, so a conf file without them
- * is what is expected and no reason to say anything at all.  Neither warning
- * says what a key's value was: pushover_token's was a token.
- */
-void cservice::warnOfRemovedLoggingKeys() {
-    static const char* const removedKeys[] = {"log_verbosity", "chan_verbosity",
-                                              "console_verbosity", "log_sql", "console_sql"};
-
-    for (const char* const key : removedKeys) {
-        if (cserviceConfig->end() == cserviceConfig->Find(key))
-            continue;
-
-        LOG(WARN,
-            "{}: log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql are no "
-            "longer used; configure logger.cservice in logging.conf (see "
-            "bin/logging.example.conf)",
-            getConfigFileName());
-
-        break;
-    }
-
-    static const char* const removedPushoverKeys[] = {"pushover_enable", "pushover_token",
-                                                      "pushover_userkey", "pushover_verbosity"};
-
-    for (const char* const key : removedPushoverKeys) {
-        if (cserviceConfig->end() == cserviceConfig->Find(key))
-            continue;
-
-        LOG(WARN,
-            "{}: pushover_enable, pushover_token, pushover_userkey and pushover_verbosity are no "
-            "longer used; configure a pushover sink in logging.conf (see "
-            "bin/logging.example.conf)",
-            getConfigFileName());
-
-        break;
-    }
 }
 
 void cservice::rehashConfigVariables() {

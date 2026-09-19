@@ -326,14 +326,7 @@ harmless in a GNUWorld running without cservice.
 An install from before this rewrite has five keys in its `cservice.conf`
 that configured cservice's logging: `log_verbosity`, `chan_verbosity`,
 `console_verbosity`, `log_sql` and `console_sql`. **They are gone.** The
-file keeps working with them in it — they are simply not read, and cservice
-says so once when it starts, at `WARN`:
-
-```
-<conf>: log_verbosity, chan_verbosity, console_verbosity, log_sql and
-console_sql are no longer used; configure logger.cservice in logging.conf
-(see bin/logging.example.conf)
-```
+file keeps working with them in it — they are simply not read.
 
 What an operator has to do: **copy the cservice section above into
 `logging.conf`** (adjusting `sink.debugchan.channel` to whatever the
@@ -356,15 +349,8 @@ An install that paged through cservice has four more keys in its
 pager is a sink of `logging.conf`, so it can be attached to any logger rather
 than to cservice's alone — which is what made the records most worth a page
 (a `FATAL` on `core` or `core.net`, another module's failure) the ones that
-never reached Pushover. The file keeps working with the keys in it; cservice
-says so once when it starts, at `WARN`, naming the keys and never their
-values:
-
-```
-<conf>: pushover_enable, pushover_token, pushover_userkey and
-pushover_verbosity are no longer used; configure a pushover sink in
-logging.conf (see bin/logging.example.conf)
-```
+never reached Pushover. The file keeps working with the keys in it; they are
+not read.
 
 What to put into `logging.conf` instead — the four keys, line for line:
 
@@ -1287,8 +1273,7 @@ sensitive (see [Security Notes](#security-notes)).
 **`cservice.log` is not written any more, and nothing reaches the debug
 channel.** cservice has no logging keys of its own: `logging.conf` is what
 gives it a file and a channel. Copy the section under [cservice](#cservice)
-into it — and see [Upgrade notes](#upgrade-notes) for the `WARN` line a
-`cservice.conf` that still carries the five old keys gets.
+into it; see [Upgrade notes](#upgrade-notes).
 
 **A query never shows up.** A statement is a `DEBUG` record of
 `cservice.sql`, whose code default is `ERROR`: only a statement that fails is

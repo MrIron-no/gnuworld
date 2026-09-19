@@ -774,12 +774,11 @@ async def test_cservice_writes_no_log_of_its_own_without_a_logging_conf(
 
 
 @pytest.mark.asyncio
-async def test_cservice_conf_with_the_removed_logging_keys_warns_once(
+async def test_cservice_conf_with_the_removed_logging_keys_still_starts(
     docker_stack, fake_hub_p11, tmp_path
 ):
-    """A cservice.conf that still carries the five keys starts normally, says
-    once that they are not read, and is not read for them: log_sql = yes asks
-    for every statement and gets none."""
+    """A cservice.conf that still carries the five keys starts normally and is
+    not read for them: log_sql = yes asks for every statement and gets none."""
     root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
     log_path = f"{root}/main.log"
     logging_conf = (
@@ -796,15 +795,7 @@ async def test_cservice_conf_with_the_removed_logging_keys_warns_once(
         await asyncio.sleep(0.5)
 
     records = _read_json_lines(Path(log_path))
-    warnings = [
-        r for r in records
-        if r.get("level") == "WARNING"
-        and "are no longer used" in r.get("message", "")
-        and "configure logger.cservice in logging.conf" in r.get("message", "")
-    ]
-    assert len(warnings) == 1, warnings
-    assert warnings[0].get("logger") == "cservice", warnings[0]
-    assert warnings[0]["message"].startswith(f"{root}/cservice.conf: log_verbosity"), warnings[0]
+    assert records, "gnuworld logged nothing: did it start?"
 
     # Not read: no log of cservice's own, and no statement logged either
     assert not (conf_dir / "cservice.log").exists()
@@ -827,13 +818,11 @@ CSERVICE_REMOVED_PUSHOVER_KEYS = (
 
 
 @pytest.mark.asyncio
-async def test_cservice_conf_with_the_removed_pushover_keys_warns_once(
+async def test_cservice_conf_with_the_removed_pushover_keys_still_starts(
     docker_stack, fake_hub_p11, tmp_path
 ):
     """A cservice.conf that still carries the four pushover keys starts
-    normally, says once that they are not read, and prints neither the token nor
-    the user key while doing it - which is the whole reason the warning names
-    the keys and not their values."""
+    normally, prints neither the token nor the user key, and pages nobody."""
     root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
     log_path = f"{root}/main.log"
     logging_conf = (
@@ -851,15 +840,7 @@ async def test_cservice_conf_with_the_removed_pushover_keys_warns_once(
         console = list(proc.stdout_lines)
 
     records = _read_json_lines(Path(log_path))
-    warnings = [
-        r for r in records
-        if r.get("level") == "WARNING"
-        and "are no longer used" in r.get("message", "")
-        and "configure a pushover sink in logging.conf" in r.get("message", "")
-    ]
-    assert len(warnings) == 1, warnings
-    assert warnings[0].get("logger") == "cservice", warnings[0]
-    assert warnings[0]["message"].startswith(f"{root}/cservice.conf: pushover_enable"), warnings[0]
+    assert records, "gnuworld logged nothing: did it start?"
 
     # No record and no console line carries the token or the user key
     whole_log = Path(log_path).read_text(encoding="utf-8", errors="replace")

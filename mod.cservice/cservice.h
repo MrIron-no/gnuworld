@@ -959,24 +959,6 @@ class cservice : public xClient {
 
   private:
     /**
-     * Says once, when this module starts, that a conf file still carrying the
-     * logging keys cservice used to have is carrying them for nothing.
-     *
-     * log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql
-     * were what cservice was configured with before logging.conf existed; they
-     * are not read any more, and where this module's records go is a matter of
-     * logger.cservice in logging.conf like every other logger's.  An existing
-     * conf file keeps working with them in it, which is why this is a warning
-     * and not an error.
-     *
-     * The same goes for the four pushover keys: paging is a sink of
-     * logging.conf now, "sink.<id>.type = pushover", attachable to any logger
-     * and not to cservice's alone.  Neither warning ever prints a key's VALUE -
-     * one of them was a token.
-     */
-    void warnOfRemovedLoggingKeys();
-
-    /**
      * The logger of the command log, "cservice.commands", looked up once and
      * held: one record per command a user sends X.
      *
