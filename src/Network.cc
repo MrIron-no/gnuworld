@@ -30,6 +30,7 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <format>
 
 #include <cassert>
 
@@ -49,6 +50,22 @@
 GNUWORLD_MODULE_LOGGER("core.state");
 
 namespace gnuworld {
+
+namespace {
+
+/**
+ * A client of ours the way the old log stream wrote one.  There is no log
+ * extractor for an xClient, and the user@host and the numeric are what one
+ * wants to read when a table refuses it.
+ */
+std::string describeClient(const xClient* theClient) {
+    return std::format("{}!{}@{} Numeric: {}, int YY/XXX/YYXXX: {}/{}/{}", theClient->getNickName(),
+                       theClient->getUserName(), theClient->getHostName(),
+                       theClient->getCharYYXXX(), theClient->getIntYY(), theClient->getIntXXX(),
+                       theClient->getIntYYXXX());
+}
+
+} // namespace
 
 using std::list;
 using std::make_pair;
@@ -105,7 +122,7 @@ bool xNetwork::addClient(xClient* newClient) {
     newClient->setIntXXX(intXXX);
 
     if (!localClients.insert(make_pair(newClient->getIntYYXXX(), newClient)).second) {
-        LOG(WARN, "Unable to insert new client into localClients: {}", newClient->getNickName());
+        LOG(WARN, "Unable to insert new client into localClients: {}", describeClient(newClient));
         newClient->setIntXXX(0);
         return false;
     }
@@ -372,13 +389,13 @@ xClient* xNetwork::removeLocalClient(xClient* theClient) {
     localClientIterator cItr = localClients.find(theClient->getIntYYXXX());
     if (cItr == localClient_end()) {
         // client not found
-        LOG(WARN, "Unable to find local client: {}", theClient->getNickName());
+        LOG(WARN, "Unable to find local client: {}", describeClient(theClient));
         return 0;
     }
     localClients.erase(cItr);
 
     if (!freeClientNumeric(theClient->getIntYYXXX())) {
-        LOG(ERROR, "Failed to free client numeric for client: {}", theClient->getNickName());
+        LOG(ERROR, "Failed to free client numeric for client: {}", describeClient(theClient));
         return 0;
     }
 
@@ -1207,9 +1224,9 @@ bool xNetwork::freeServerNumeric(unsigned int intYY) {
     }
 
     if (!sItr->second.empty()) {
-        // empty() rather than size(), as it always was
+        // This used to print empty(), which is always 0 here: size() was meant
         LOG(WARN, "Releasing numeric {} which has {} client numerics reserved", intYY,
-            static_cast<int>(sItr->second.empty()));
+            sItr->second.size());
     }
 
     reservedNumericMap.erase(sItr);
