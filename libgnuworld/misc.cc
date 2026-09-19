@@ -699,12 +699,10 @@ double getCPUTime() {
            usage.ru_stime.tv_usec / 1e6;
 }
 
-namespace {
-
 /* The length of the UTF-8 sequence this lead byte starts, or 0 when it starts
  * none: 0xc0 and 0xc1 would be overlong, 0xf5 and above are out of range.
  */
-std::size_t utf8SequenceLength(unsigned char lead) {
+static std::size_t utf8SequenceLength(unsigned char lead) {
     if (lead >= 0xc2 && lead <= 0xdf)
         return 2;
     if (lead >= 0xe0 && lead <= 0xef)
@@ -719,7 +717,7 @@ std::size_t utf8SequenceLength(unsigned char lead) {
  * where the lead byte would otherwise allow an overlong encoding, a surrogate
  * or a code point above U+10FFFF.
  */
-bool isValidUtf8Sequence(const std::string& text, std::size_t position, std::size_t length) {
+static bool isValidUtf8Sequence(const std::string& text, std::size_t position, std::size_t length) {
     if (position + length > text.length())
         return false;
 
@@ -746,8 +744,6 @@ bool isValidUtf8Sequence(const std::string& text, std::size_t position, std::siz
 
     return true;
 }
-
-} // namespace
 
 std::string escapeJsonString(const std::string& input) {
     static const char hexDigits[] = "0123456789abcdef";
