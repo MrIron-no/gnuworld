@@ -98,7 +98,7 @@ std::vector<std::pair<std::string, std::vector<LogSpan>>> splitLines(const LogRe
 /**
  * One line of a record as an IRC notice:
  *
- *   <col>[<name>] <tag> <func-prefix><line><reset>
+ *   <col><tag> [<name>] <func-prefix><line><reset>
  *
  * The colour is mIRC 04 for FATAL and ERROR, 07 for WARN and nothing else;
  * the reset is only written when a colour was.  The function prefix

@@ -680,7 +680,7 @@ void testIrcC1Controls() {
                                         "r",
                                         "watch out");
     CHECK_EQ(formatIrcLine(fields, "watch out", {}, false),
-             "\00307[core] [W] Foo::bar> watch out\003");
+             "\00307[W] [core] Foo::bar> watch out\003");
 }
 
 /* ------------------------------------------------------------------ *
@@ -808,7 +808,7 @@ void testIrcFieldControlCharacters() {
     const LogRecord record = makeRecord(WARN, dirtyLogger, dirtyFunction, "watch out");
     const std::string line = formatIrcLine(record, "watch out", {}, false);
 
-    CHECK_EQ(line, "\00307[cser[31mvice] [W] Foo::bar> watch out\003");
+    CHECK_EQ(line, "\00307[W] [cser[31mvice] Foo::bar> watch out\003");
 
     for (const char c : line) {
         const unsigned char byte = static_cast<unsigned char>(c);
@@ -818,7 +818,7 @@ void testIrcFieldControlCharacters() {
 
     // A function that is nothing but control bytes adds no prefix
     const LogRecord noFunction = makeRecord(ERROR, "core", "\x1b\002\x7f", "gone");
-    CHECK_EQ(formatIrcLine(noFunction, "gone", {}, false), "\00304[core] [E] gone\003");
+    CHECK_EQ(formatIrcLine(noFunction, "gone", {}, false), "\00304[E] [core] gone\003");
 }
 
 /* ------------------------------------------------------------------ *
@@ -877,27 +877,27 @@ void testIrcLine() {
         return;
 
     const std::string bold = formatIrcLine(error, lines[0].first, lines[0].second, true);
-    CHECK_EQ(bold, "\00304[cservice] [E] cservice::parseMode> "
+    CHECK_EQ(bold, "\00304[E] [cservice] cservice::parseMode> "
                    "mode \002+Z\002 unknown\003");
-    CHECK(bold.rfind("\00304[cservice] [E] ", 0) == 0);
+    CHECK(bold.rfind("\00304[E] [cservice] ", 0) == 0);
     CHECK(bold.back() == '\003');
 
     // No highlight: no bold byte
     const std::string quiet = formatIrcLine(error, lines[0].first, lines[0].second, false);
-    CHECK_EQ(quiet, "\00304[cservice] [E] cservice::parseMode> mode +Z unknown\003");
+    CHECK_EQ(quiet, "\00304[E] [cservice] cservice::parseMode> mode +Z unknown\003");
     CHECK(quiet.find('\002') == std::string::npos);
 
     // WARN is orange, INFO has no colour, no reset and no function prefix
     const LogRecord warn = makeRecord(WARN, "cservice", "cservice::parseMode", "watch out");
     CHECK_EQ(formatIrcLine(warn, "watch out", {}, false),
-             "\00307[cservice] [W] cservice::parseMode> watch out\003");
+             "\00307[W] [cservice] cservice::parseMode> watch out\003");
 
     const LogRecord info = makeRecord(INFO, "cservice", "cservice::parseMode", "all good");
-    CHECK_EQ(formatIrcLine(info, "all good", {}, false), "[cservice] [I] all good");
+    CHECK_EQ(formatIrcLine(info, "all good", {}, false), "[I] [cservice] all good");
 
     // The root prints as root, and an empty function adds no prefix
     const LogRecord root = makeRecord(DEBUG, "", "", "hello");
-    CHECK_EQ(formatIrcLine(root, "hello", {}, false), "[root] [D] hello");
+    CHECK_EQ(formatIrcLine(root, "hello", {}, false), "[D] [root] hello");
 }
 
 void testIrcMultipleLines() {
@@ -910,9 +910,9 @@ void testIrcMultipleLines() {
         return;
 
     CHECK_EQ(formatIrcLine(record, lines[0].first, lines[0].second, true),
-             "\00307[core] [W] \002one\002\003");
+             "\00307[W] [core] \002one\002\003");
     CHECK_EQ(formatIrcLine(record, lines[1].first, lines[1].second, true),
-             "\00307[core] [W] \002two\002\003");
+             "\00307[W] [core] \002two\002\003");
 }
 
 void testParseFunction() {

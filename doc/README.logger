@@ -221,7 +221,7 @@ it a channel sink sends everything it is given, as it always has. With it, at
 most N **records** a period are sent — however many notices each of them is —
 and the rest are dropped and counted; the next record that does go out is
 preceded by one notice of the shape
-`[core] [W] <N> log records were not sent to this channel (rate limit 5/min)`.
+`[W] [core] <N> log records were not sent to this channel (rate limit 5/min)`.
 A configuration reload rebuilds the sink, which starts its bucket full again.
 
 **Type-specific settings.** `type`, `level` and `highlight` are common to
@@ -540,7 +540,7 @@ Note the argument of `SCANEMAIL` is in `command_line` and nowhere in
 One server `NOTICE` per non-empty line of the message:
 
 ```
-<colour>[<name>] <tag> <function-prefix><line><reset>
+<colour><tag> [<name>] <function-prefix><line><reset>
 ```
 
 `<tag>` is `[F] [E] [W] [I] [D] [T]`; `<colour>` is mIRC `\00304` for
@@ -557,8 +557,8 @@ chan`, a SIGHUP reload logging `Reloaded <path>`; INFO gets no colour and no
 function prefix):
 
 ```
-highlight = yes:  [core] [I] Reloaded \x02/etc/gnuworld/logging.conf\x02
-highlight = no:   [core] [I] Reloaded /etc/gnuworld/logging.conf
+highlight = yes:  [I] [core] Reloaded \x02/etc/gnuworld/logging.conf\x02
+highlight = no:   [I] [core] Reloaded /etc/gnuworld/logging.conf
 ```
 
 (`\x02` is the literal bold control character, shown escaped here for

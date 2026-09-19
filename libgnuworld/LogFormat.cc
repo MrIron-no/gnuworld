@@ -605,12 +605,13 @@ std::string formatIrcLine(const LogRecord& record, std::string_view line,
     std::string out;
     out.reserve(line.size() + 32);
 
+    // The tag first: it is always three characters wide, so the names of a
+    // channel full of notices start in one column whatever their length
     out += colour;
-    out += '[';
+    out += levelTag(record.level);
+    out += " [";
     out += stripControls(displayName(record.logger));
     out += "] ";
-    out += levelTag(record.level);
-    out += ' ';
 
     if (INFO != record.level && !function.empty()) {
         out += function;

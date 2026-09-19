@@ -532,7 +532,7 @@ async def test_irc_sink_delivers_a_notice_with_highlighted_value(docker_stack, f
         notice = await _wait_for_notice(hub, channel, timeout=15.0, after=idx,
                                         contains="Reloaded")
 
-        assert notice.startswith("[core] "), notice
+        assert notice.startswith("[I] [core] "), notice
         assert "\x02" in notice, "the substituted file name was not bolded"
         assert "\r" not in notice and "\n" not in notice
 
@@ -544,7 +544,7 @@ async def test_irc_sink_delivers_a_notice_with_highlighted_value(docker_stack, f
         notice2 = await _wait_for_notice(hub, channel, timeout=15.0, after=idx2,
                                          contains="Reloaded")
 
-        assert notice2.startswith("[core] "), notice2
+        assert notice2.startswith("[I] [core] "), notice2
         assert "\x02" not in notice2
 
 
@@ -891,7 +891,7 @@ async def test_cservice_example_section_gives_it_a_file_and_the_debug_channel(
         # An INFO record of "cservice" itself, on the channel, as a notice
         notice = await _wait_for_notice(hub, channel, timeout=30.0,
                                         contains="Channel join complete")
-        assert notice.startswith("[cservice] "), notice
+        assert notice.startswith("[I] [cservice] "), notice
 
         # One command, which is a record of "cservice.commands"
         await cs.login(hub)
@@ -913,7 +913,7 @@ async def test_cservice_example_section_gives_it_a_file_and_the_debug_channel(
     assert logins[0].get("message") == "LOGIN by adminone", logins[0]
 
     # The command log is the file's alone: its sentence is noise on a channel
-    assert not [t for t in texts if t.startswith("[cservice.commands]")], texts
+    assert not [t for t in texts if "[cservice.commands]" in t], texts
     assert not [t for t in texts if "LOGIN by" in t], texts
 
     # additivity.cservice = no: none of it walks up to the sinks of the root
@@ -960,7 +960,7 @@ async def test_cservice_sql_debug_logs_every_statement_but_not_to_the_channel(
     assert queries, sorted({r.get("logger") for r in records})
 
     # Not one of them on the channel: a statement is never for a channel
-    assert not [t for t in texts if t.startswith("[cservice.sql]")], texts
+    assert not [t for t in texts if "[cservice.sql]" in t], texts
 
 
 # --------------------------------------------------------------------------
@@ -1280,7 +1280,7 @@ async def test_reconnect_cycle_with_irc_sink_survives(docker_stack, fake_hub, tm
         await send_gnuworld_signal(proc, signal.SIGHUP)
         notice = await _wait_for_notice(hub, channel, timeout=15.0, after=idx,
                                         contains="Reloaded")
-        assert notice.startswith("[core] ")
+        assert notice.startswith("[I] [core] ")
 
 
 # --------------------------------------------------------------------------
