@@ -190,18 +190,15 @@ void ELog::setStream(std::ostream* newStream) {
 }
 
 ELog& ELog::operator<<(__E_omanip var) {
-    /* The manipulator is compared as a function pointer, the way
-     * Logger::LoggerStream does: std::endl completes the line, std::flush has
-     * nothing left to flush, and anything else is a manipulator the buffer
-     * itself should see */
-    if (var == static_cast<__E_omanip>(std::endl)) {
+    /* std::endl completes the line, and anything else is a manipulator the
+     * buffer itself should see - std::flush among them, which has nothing to
+     * flush there.  endsTheLine() and not a comparison with std::endl: the
+     * caller is a module, and with libc++ a module's std::endl is not ours */
+    if (endsTheLine(var)) {
         emit();
 
         return *this;
     }
-
-    if (var == static_cast<__E_omanip>(std::flush))
-        return *this;
 
     var(buffer());
 

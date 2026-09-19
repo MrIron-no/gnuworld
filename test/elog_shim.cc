@@ -265,6 +265,57 @@ void testManipulators() {
     CHECK_EQ(messageOf(2), "nothing was flushed away");
 }
 
+/**
+ * What std::endl is where a module's copy of it is not libgnuworld's: libc++
+ * (FreeBSD, macOS) keeps std::endl out of its ABI, so every shared object has
+ * one of its own, at an address of its own.  It does what std::endl does.
+ */
+std::ostream& anotherObjectsEndl(std::ostream& stream) {
+    stream.put('\n');
+    stream.flush();
+
+    return stream;
+}
+
+/// And a manipulator that is not the end of any line
+std::ostream& writesAStar(std::ostream& stream) { return stream << '*'; }
+
+/**
+ * The end of a line is known by what the manipulator does, not by where it
+ * lives: a module built against libc++ ends its lines too.
+ */
+void testAnEndlOfAnotherSharedObject() {
+    forget();
+
+    elog << "a module's line" << anotherObjectsEndl;
+
+    CHECK(1 == logged());
+    CHECK_EQ(messageOf(0), "a module's line");
+
+    // More than once: the second time is answered from what the first learnt
+    elog << "and another" << anotherObjectsEndl;
+
+    CHECK(2 == logged());
+    CHECK_EQ(messageOf(1), "and another");
+
+    // Any other manipulator is the buffer's business
+    elog << "a" << writesAStar << "b" << std::endl;
+
+    CHECK(3 == logged());
+    CHECK_EQ(messageOf(2), "a*b");
+
+    // The same through a module logger's stream interface
+    const std::shared_ptr<CaptureSink> streamed = std::make_shared<CaptureSink>();
+    Logger* const logger = LogManager::get("elogshimtest");
+    logger->addSink(streamed, TRACE);
+
+    logger->write(INFO) << "streamed by a module" << anotherObjectsEndl;
+
+    CHECK(1 == streamed->size());
+    if (1 == streamed->size())
+        CHECK_EQ(streamed->records[0].message, "streamed by a module");
+}
+
 /* ------------------------------------------------------------------ *
  * Threads
  * ------------------------------------------------------------------ */
@@ -488,6 +539,7 @@ int main() {
     testLineAcrossStatements();
     testNewlines();
     testManipulators();
+    testAnEndlOfAnotherSharedObject();
     testTwoThreads();
     testThreadEndsMidLine();
     testConfiguredLevelSilences();
