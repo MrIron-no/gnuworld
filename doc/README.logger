@@ -312,9 +312,10 @@ dim (`\x1b[2m…`), each run closed by `\x1b[0m`.
 One object per line, `\n` terminated, flushed as it is written. Key order:
 `timestamp` (UTC), `level` (`WARN` prints as `"WARNING"`), `logger`,
 `function` (only when not empty — unlike text, JSON does not drop it at
-INFO), the record's **context** fields (such as `bot`, which a logger has
-only when something called `setContext` on that exact logger — a
-sub-logger does not inherit its parent's context), the record's own fields
+INFO), the record's **context** fields (such as `bot`: what `setContext` put on
+the logger the record was logged on, followed by what its ancestors set —
+a sub-logger inherits its parents' context, whatever the additivity, and
+the nearer logger wins for a key both set), the record's own fields
 in insertion order, and `message`. A field marked display-only (added so a
 template could show it, not so JSON would) is left out. Values keep their
 type: strings are quoted and escaped, everything else is not; a `NaN` or
@@ -335,6 +336,7 @@ A record with context and fields (real, from cservice's command log):
   "level": "INFO",
   "logger": "cservice.commands",
   "function": "cservice::OnPrivateMessage",
+  "bot": "X",
   "command": "SCANEMAIL",
   "command_line": "SCANEMAIL nobody-42@scan.example.invalid",
   "user_id": 1,
@@ -350,8 +352,9 @@ A record with context and fields (real, from cservice's command log):
 }
 ```
 
-and, on `cservice` itself, which does have `setContext("bot", ...)` called
-on it directly:
+and, on `cservice` itself, where `setContext("bot", ...)` is called (its
+sub-loggers `cservice.sql` and `cservice.commands` inherit that field, so
+their records carry `"bot":"X"` right after `function` as well):
 
 ```json
 {"timestamp":"2026-09-19T08:10:36Z","level":"INFO","logger":"cservice","function":"cservice::BurstChannels","bot":"X","message":"Channel join complete."}
@@ -914,11 +917,6 @@ logrotate and a SIGHUP, the same as every other sink in the tree — see
 - The IRC sink has no rate limit of its own: a chatty logger routed there
   is exactly as chatty on the channel (see
   [Security Notes](#security-notes) item 4).
-- A logger's **context** (`setContext`) is a property of that logger only
-  and is not inherited by a sub-logger — see the JSON example under
-  [Output Formats](#output-formats): `cservice.commands` records carry no
-  `bot` field even though `cservice` itself does, because nothing calls
-  `setContext` on `cservice.commands`.
 
 ## Troubleshooting
 
