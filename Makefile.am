@@ -59,6 +59,7 @@ EXTRA_DIST = bin/logging.properties \
 	bin/dronescan.example.conf \
 	bin/gnutest.example.conf \
 	bin/GNUWorld.example.conf \
+	bin/logging.example.conf \
 	bin/nickserv.example.conf \
 	bin/openchanfix.example.conf \
 	bin/scanner.example.conf \

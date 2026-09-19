@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include <new>
+#include <memory>
 #include <string>
 #include <optional>
 #include <charconv>
@@ -65,8 +66,12 @@
 #include "EConfig.h"
 #include "match.h"
 #include "ELog.h"
+#include "IrcLogSink.h"
+#include "LogConfig.h"
 #include "LogManager.h"
+#include "LogSink.h"
 #include "LogSinks.h"
+#include "logger.h"
 #include "StringTokenizer.h"
 #include "xparameters.h"
 #include "moduleLoader.h"
@@ -76,6 +81,10 @@
 #include "ConnectionManager.h"
 #include "ConnectionHandler.h"
 #include "Connection.h"
+
+/* The logger this file writes to: the server itself.  Core is one binary and
+ * not one module, so this stands once per .cc file rather than in a header */
+GNUWORLD_MODULE_LOGGER("core");
 
 namespace gnuworld {
 
@@ -1677,24 +1686,263 @@ void xServer::dumpStats() {
          << " commands over the last " << (::time(0) - burstStart) << " seconds." << endl;
 }
 
+namespace {
+
+/// The name logging.conf is looked for under when the main conf says nothing
+const string defaultLoggingConf("logging.conf");
+
+/// The one sink id the command line is about: the debug file of -d and -D
+const string debugLogSinkId("debuglog");
+
+/**
+ * The configuration of a process that has no logging.conf: the debug log and
+ * the console, both fed by the root at INFO, and the old elog stream at the
+ * DEBUG level it has always had.
+ *
+ * This is the same thing the file
+ *
+ *     sink.console.type    = console
+ *     sink.debuglog.type   = file
+ *     sink.debuglog.path   = debug.log
+ *     sink.debuglog.format = text
+ *     logger.root          = INFO, debuglog, console
+ *     logger.legacy        = DEBUG
+ *
+ * would be, built here rather than written anywhere: an installation without a
+ * logging.conf logs what it always logged.
+ */
+LogConfig builtInLogConfig() {
+    LogConfig config;
+
+    SinkSpec console;
+    console.id = "console";
+    console.type = "console";
+    config.sinks.push_back(console);
+
+    SinkSpec debugLog;
+    debugLog.id = debugLogSinkId;
+    debugLog.type = "file";
+    debugLog.path = "debug.log";
+    debugLog.json = false;
+    config.sinks.push_back(debugLog);
+
+    LoggerSpec root;
+    // The root's name is empty, however a file spells it
+    root.level = INFO;
+    root.sinks.push_back(debugLogSinkId);
+    root.sinks.push_back("console");
+    config.loggers.push_back(root);
+
+    LoggerSpec legacy;
+    legacy.name = "legacy";
+    legacy.level = DEBUG;
+    config.loggers.push_back(legacy);
+
+    return config;
+}
+
+/**
+ * The command line on top of a configuration, whether that came from a file or
+ * from builtInLogConfig(): -d puts the debug log where it said, and -D takes it
+ * away altogether, so that "no debug log" keeps meaning no debug log whatever
+ * logging.conf asks for.  Every other sink is the file's business alone.
+ */
+void adjustForCommandLine(LogConfig& config, bool doDebug, bool elogFileGiven,
+                          const string& elogFileName) {
+    if (elogFileGiven)
+        for (SinkSpec& sink : config.sinks)
+            if (debugLogSinkId == sink.id)
+                sink.path = elogFileName;
+
+    if (doDebug)
+        return;
+
+    for (std::vector<SinkSpec>::iterator sink = config.sinks.begin(); sink != config.sinks.end();)
+        if (debugLogSinkId == sink->id)
+            sink = config.sinks.erase(sink);
+        else
+            ++sink;
+
+    // And with it every mention of it, which would otherwise be a dangling id
+    for (LoggerSpec& logger : config.loggers)
+        for (std::vector<string>::iterator id = logger.sinks.begin(); id != logger.sinks.end();)
+            if (debugLogSinkId == *id)
+                id = logger.sinks.erase(id);
+            else
+                ++id;
+}
+
+/// The path the debug log would be written to, empty when there is none
+string debugLogPath(const LogConfig& config) {
+    for (const SinkSpec& sink : config.sinks)
+        if (debugLogSinkId == sink.id)
+            return sink.path;
+
+    return string();
+}
+
+/**
+ * Says what went wrong with logging.conf, one record per problem, in the words
+ * LogManager::loadFile() uses for the same thing.  These are records like any
+ * other: they go wherever the configuration in force sends "core.config", which
+ * is why the caller says them once it has applied one.
+ *
+ * The function is the caller's rather than this one's: what the reader of a log
+ * file wants to see is where the configuration was being read, not the three
+ * lines that write the message.
+ */
+void reportLogConfigErrors(const char* function, const std::vector<string>& errors) {
+    Logger* const reporter = LogManager::get("core.config");
+
+    for (const string& error : errors)
+        reporter->writeFunc(ERROR, function, "logging.conf: {}", error);
+}
+
+} // anonymous namespace
+
+/**
+ * The name of the logging configuration file: the optional "logging_conf" key
+ * of the main configuration file, or logging.conf.  A relative name is relative
+ * to the working directory, like every other file name of this process.
+ *
+ * The key is read with Find() and not with Require(), which exits: this runs
+ * before the main configuration file has been read properly, and a main conf
+ * that cannot be read is the business of the start-up code that reads it next -
+ * it reports it, and it is the one that stops.
+ */
+string xServer::loggingConfFileName() const {
+    {
+        std::ifstream probe(configFileName.c_str());
+
+        if (!probe.is_open())
+            return defaultLoggingConf;
+    }
+
+    EConfig mainConf(configFileName);
+    const EConfig::const_iterator named = mainConf.Find("logging_conf");
+
+    if (mainConf.end() == named || named->second.empty())
+        return defaultLoggingConf;
+
+    return named->second;
+}
+
+void xServer::setupLogging(bool reload) {
+    /* The console is written to only when the process was asked to be verbose,
+     * which is the condition the old logger wrote to it under.  A logging.conf
+     * with a console sink in it still says nothing on a daemon's terminal */
+    ConsoleSink::setEnabled(verbose);
+
+    /* The kind of sink only core can make, because only core knows what a
+     * channel is.  A reload registers the same thing again, which replaces it */
+    LogManager::registerSinkType(
+        "irc", [this](const SinkSpec& spec, string&) -> std::shared_ptr<LogSink> {
+            return std::make_shared<IrcLogSink>(this, spec.channel, spec.highlight);
+        });
+
+    const string fileName = loggingConfFileName();
+
+    bool haveFile = false;
+
+    {
+        std::ifstream probe(fileName.c_str());
+
+        haveFile = probe.is_open();
+    }
+
+    /* Everything that was wrong with the file, said once at the end: reporting a
+     * problem is itself logging, and said here it would go wherever the process
+     * happened to be logging before - at start-up, nowhere at all */
+    std::vector<string> problems;
+
+    LogConfig config;
+
+    // Whether the configuration that ends up in force is the one in that file
+    bool fromFile = false;
+
+    if (haveFile) {
+        std::vector<string> errors;
+
+        if (parseLogConfig(fileName, config, errors))
+            fromFile = true;
+        else
+            problems = errors;
+    }
+
+    /* A file that is not a configuration changes nothing at all on a reload:
+     * what is in force stays in force, and the process goes on logging where it
+     * was logging.  At start-up there is nothing to keep, and the built-in
+     * default is what a process with no usable file has */
+    if (haveFile && !fromFile && reload) {
+        reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+        return;
+    }
+
+    if (!fromFile)
+        config = builtInLogConfig();
+
+    adjustForCommandLine(config, doDebug, elogFileGiven, elogFileName);
+
+    std::vector<string> errors;
+    bool applied = LogManager::configure(config, errors);
+
+    if (!applied) {
+        problems.insert(problems.end(), errors.begin(), errors.end());
+
+        // As above: on a reload the configuration in force is the one to keep
+        if (reload) {
+            reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+            return;
+        }
+
+        /* At start-up a file that cannot be applied - a sink whose file will
+         * not open, a kind of sink this build has not got - is no reason to log
+         * nowhere at all: the built-in default is tried instead */
+        if (fromFile) {
+            fromFile = false;
+            config = builtInLogConfig();
+            adjustForCommandLine(config, doDebug, elogFileGiven, elogFileName);
+
+            errors.clear();
+            applied = LogManager::configure(config, errors);
+            problems.insert(problems.end(), errors.begin(), errors.end());
+        }
+
+        /* And when even that will not do - an unwritable debug log - the
+         * process starts all the same and logs wherever it still can.  Nothing
+         * here exits: writing a log file is not what this process is for */
+        if (!applied)
+            clog << "*** Unable to open log file: " << debugLogPath(config) << endl;
+    }
+
+    /* Said last of all, so that every one of these goes where the configuration
+     * just applied says it goes rather than wherever the one before it did */
+    reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+    if (!reload && !haveFile)
+        LOG(INFO, "No logging.conf found; using built-in defaults (see "
+                  "bin/logging.example.conf)");
+
+    if (reload && fromFile)
+        LOG(INFO, "Reloaded {}", fileName);
+}
+
 void xServer::startLogging(bool logrotate) {
     if (doDebug) {
-        elog.openFile(elogFileName);
-        if (!elog.isOpen()) {
-            clog << "*** Unable to open elog file: " << elogFileName << endl;
-            ::exit(0);
-        }
         clog << "*** Running in debug mode..." << endl;
     }
 
+    /* The stream is not written to - the console sink of the logging system is,
+     * and setStream() is what turns that on and off - but core still asks
+     * whether one was set to decide whether a message needs a fallback of its
+     * own, so the verbose mode keeps setting it */
+    elog.setStream(verbose ? &clog : nullptr);
+
     if (verbose) {
-        elog.setStream(&clog);
         elog << "*** Running in verbose mode..." << endl;
     }
-
-    // The logging system writes to the console under the same condition the
-    // old logger did: only when the process was asked to be verbose.
-    ConsoleSink::setEnabled(verbose);
 
     if (logSocket) {
         if (logrotate)
@@ -1710,15 +1958,18 @@ void xServer::startLogging(bool logrotate) {
 }
 
 void xServer::rotateLogs() {
-    if (elog.isOpen()) {
-        elog << endl << "Received SIGHUP. Rotating log files..." << endl;
-        // elog.closeFile();  /* Do not close the file, elog.openFile() will handle that.
-    }
+    elog << endl << "Received SIGHUP. Rotating log files..." << endl;
+
+    /* Every sink of every logger opens its path anew, the ones a module
+     * attached in code included, so that the next record lands in a new file
+     * rather than in the one logrotate moved away */
+    LogManager::reopenAll();
+
+    // And logging.conf is read again, so that a change to it takes effect
+    setupLogging(true);
+
     if (logSocket && socketFile.is_open()) {
         socketFile.close();
-    }
-    for (const auto& client : clientModuleList) {
-        client->getObject()->getLogger()->rotateLogs();
     }
     startLogging(true);
 }

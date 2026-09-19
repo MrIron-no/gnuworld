@@ -702,21 +702,6 @@ void Logger::resetLegacyState() {
 }
 
 /**
- * Closes and reopens every destination that has anything to reopen.
- * This function should be called after external log rotation (e.g. via
- * logrotate) so that a file sink writes to the new file rather than the rotated
- * one.  The logger's mutex is not held while a sink reopens.
- */
-void Logger::rotateLogs() {
-    std::vector<std::shared_ptr<LogSink>> targets;
-
-    appendSinks(targets);
-
-    for (const std::shared_ptr<LogSink>& sink : targets)
-        sink->reopen();
-}
-
-/**
  * Adds every sink of this logger to the list, under the logger's mutex and
  * without touching any of them: what the caller does with them, it does on its
  * own time.

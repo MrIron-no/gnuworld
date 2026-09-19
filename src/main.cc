@@ -45,6 +45,7 @@
 #include "IrcLogSink.h"
 #include "LogExtractors.h"
 #include "LogSinks.h"
+#include "logger.h"
 #include "server.h"
 #include "moduleLoader.h"
 #include "md5hash.h"
@@ -54,6 +55,11 @@
 #include <log4cplus/configurator.h>
 #include <log4cplus/logger.h>
 #endif
+
+/* The logger this file writes to: the server itself, which main() and xServer
+ * share.  Core is one binary and not one module, so this stands once per .cc
+ * file rather than in a header */
+GNUWORLD_MODULE_LOGGER("core");
 
 // main() must be in the global namespace
 using namespace gnuworld;
@@ -122,6 +128,9 @@ int main(int argc, char** argv) {
     bool verbose = false;
     bool doDebug = true;
     bool logSocket = true;
+    /* Whether -d named the debug file, which is what lets it override the path
+     * logging.conf gives the sink named "debuglog" */
+    bool elogFileGiven = false;
     std::string elogFileName = "debug.log";
     std::string socketFileName = "socket.log";
     std::string configFileName = CONFFILE;
@@ -135,6 +144,7 @@ int main(int argc, char** argv) {
             break;
         case 'd':
             doDebug = true;
+            elogFileGiven = true;
             elogFileName = optarg;
             break;
         case 'D':
@@ -218,8 +228,9 @@ int main(int argc, char** argv) {
     bool autoConnect = true;
     while (autoConnect) {
         // Allocate a new instance of the xServer
-        gnuworld::xServer* theServer = new (std::nothrow) gnuworld::xServer(
-            verbose, doDebug, logSocket, elogFileName, socketFileName, configFileName, simFileName);
+        gnuworld::xServer* theServer = new (std::nothrow)
+            gnuworld::xServer(verbose, doDebug, logSocket, elogFileName, elogFileGiven,
+                              socketFileName, configFileName, simFileName);
         assert(theServer != 0);
 
         theServer->run();
@@ -251,11 +262,13 @@ int main(int argc, char** argv) {
 }
 
 xServer::xServer(bool verbose_arg, bool doDebug_arg, bool logSocket_arg,
-                 const std::string& elogFileName_arg, const std::string& socketFileName_arg,
-                 const std::string& configFileName_arg, const std::string& simFileName_arg)
+                 const std::string& elogFileName_arg, bool elogFileGiven_arg,
+                 const std::string& socketFileName_arg, const std::string& configFileName_arg,
+                 const std::string& simFileName_arg)
     : eventList(EVT_NOOP), tlsEnabled(false), verbose(verbose_arg), doDebug(doDebug_arg),
-      logSocket(logSocket_arg), elogFileName(elogFileName_arg), socketFileName(socketFileName_arg),
-      configFileName(configFileName_arg), simFileName(simFileName_arg) {
+      logSocket(logSocket_arg), elogFileName(elogFileName_arg), elogFileGiven(elogFileGiven_arg),
+      socketFileName(socketFileName_arg), configFileName(configFileName_arg),
+      simFileName(simFileName_arg) {
 #ifdef ENABLE_LOG4CPLUS
     log4cplus::PropertyConfigurator::doConfigure("logging.properties");
 #endif
@@ -266,6 +279,7 @@ xServer::xServer(bool verbose_arg, bool doDebug_arg, bool logSocket_arg,
     IrcLogSink::setMainThread();
     registerCoreLogExtractors();
 
+    setupLogging(false);
     startLogging(false);
     // Sets up the server internals
     initializeSystem();

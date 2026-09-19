@@ -145,8 +145,11 @@ test_logger_hierarchy_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuw
 test_logger_hierarchy_LDADD = libgnuworld.la $(threadLib)
 
 # The logging.conf parser and the configuration apply, on libgnuworld alone.
+# The example file that ships in bin/ is one of the files it parses, so that a
+# mistake in the documentation of the syntax is a failing test.
 test_logger_config_SOURCES = test/logger_config.cc
-test_logger_config_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_config_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-DLOGGING_EXAMPLE_CONF=\"$(top_srcdir)/bin/logging.example.conf\"
 test_logger_config_LDADD = libgnuworld.la $(threadLib)
 
 # The deprecated elog in front of the logger, on libgnuworld alone.

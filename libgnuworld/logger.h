@@ -619,13 +619,6 @@ class Logger {
      */
     void resetLegacyState();
 
-    /**
-     * Closes and reopens every destination that has anything to reopen, for
-     * external log rotation support.
-     * Called from xServer::rotateLogs() when a SIGHUP is received.
-     */
-    void rotateLogs();
-
   private:
     /**
      * A logger writing under this name, below this parent.  It starts with no

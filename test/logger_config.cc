@@ -373,6 +373,78 @@ void testParseFull() {
 }
 
 /**
+ * The file that ships in bin/, which is what an installation starts from and
+ * the only documentation of this syntax there is: it parses with no complaint
+ * at all, and says what it says it says.  A mistake in the example - a key that
+ * was renamed, a level that no longer exists - fails here rather than on the
+ * first installation that copies it.
+ */
+void testExampleFile() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(LOGGING_EXAMPLE_CONF, config, errors));
+
+    for (const std::string& error : errors)
+        std::cerr << "  " << LOGGING_EXAMPLE_CONF << ": " << error << '\n';
+
+    CHECK(errors.empty());
+
+    // The three sinks it has, sorted by id, and nothing commented out
+    CHECK(3 == config.sinks.size());
+    if (3 == config.sinks.size()) {
+        CHECK_EQ(config.sinks[0].id, "console");
+        CHECK_EQ(config.sinks[1].id, "debuglog");
+        CHECK_EQ(config.sinks[2].id, "main");
+    }
+
+    const SinkSpec* const console = findSink(config, "console");
+    CHECK(nullptr != console);
+    if (nullptr != console)
+        CHECK_EQ(console->type, "console");
+
+    // The file the -d and -D switches are about is the human-readable one
+    const SinkSpec* const debuglog = findSink(config, "debuglog");
+    CHECK(nullptr != debuglog);
+    if (nullptr != debuglog) {
+        CHECK_EQ(debuglog->type, "file");
+        CHECK_EQ(debuglog->path, "debug.log");
+        CHECK(!debuglog->json);
+    }
+
+    const SinkSpec* const main = findSink(config, "main");
+    CHECK(nullptr != main);
+    if (nullptr != main) {
+        CHECK_EQ(main->type, "file");
+        CHECK_EQ(main->path, "gnuworld.log");
+        CHECK(main->json);
+    }
+
+    // The root, at INFO, writing to all three of them
+    const LoggerSpec* const root = findLogger(config, "");
+    CHECK(nullptr != root);
+    if (nullptr != root) {
+        CHECK(root->level && INFO == *root->level);
+        CHECK(3 == root->sinks.size());
+        if (3 == root->sinks.size()) {
+            CHECK_EQ(root->sinks[0], "debuglog");
+            CHECK_EQ(root->sinks[1], "console");
+            CHECK_EQ(root->sinks[2], "main");
+        }
+    }
+
+    const LoggerSpec* const legacy = findLogger(config, "legacy");
+    CHECK(nullptr != legacy);
+    if (nullptr != legacy)
+        CHECK(legacy->level && DEBUG == *legacy->level);
+
+    const LoggerSpec* const core = findLogger(config, "core");
+    CHECK(nullptr != core);
+    if (nullptr != core)
+        CHECK(core->level && INFO == *core->level);
+}
+
+/**
  * Whitespace around a level and around every sink id is not part of them, the
  * name of a setting and the value of a format or of a yes/no are read whatever
  * their case, and the name of a logger keeps the case it was written in.
@@ -505,11 +577,6 @@ void testLineEndingsAndByteOrderMark() {
 }
 
 /**
- * An error quotes what the file said, and what the file said may be anything at
- * all: a control character of a value is written as an escape, never passed on
- * into a log line, a terminal or a channel.
- */
-/**
  * Three things the second look at the parser found: a byte order mark must not
  * hide the line that is really wrong, a sink a logger line asks for is quoted
  * like everything else, and the registry spells the root the way the file does.
@@ -574,6 +641,11 @@ void testSecondLook() {
     CHECK(anyErrorNames(errors, "empty logger name"));
 }
 
+/**
+ * An error quotes what the file said, and what the file said may be anything at
+ * all: a control character of a value is written as an escape, never passed on
+ * into a log line, a terminal or a channel.
+ */
 void testControlCharactersInErrors() {
     LogConfig config;
     std::vector<std::string> errors;
@@ -1521,6 +1593,7 @@ int main() {
     }
 
     testParseFull();
+    testExampleFile();
     testWhitespaceAndCase();
     testLineEndingsAndByteOrderMark();
     testControlCharactersInErrors();
