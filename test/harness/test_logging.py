@@ -549,6 +549,75 @@ async def test_irc_sink_delivers_a_notice_with_highlighted_value(docker_stack, f
 
 
 # --------------------------------------------------------------------------
+# 9b. "sink.<id>.rate" on an irc sink: beyond the rate a record is dropped,
+#     however many records the logger it is on produces.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_irc_sink_rate_limit_caps_what_reaches_the_channel(
+    docker_stack, fake_hub, tmp_path
+):
+    """A channel sink at 2/min beside a file sink with no limit: twenty records
+    on one logger, all twenty in the file, at most two notices on the channel.
+
+    The flood is twenty PRIVMSGs from a source numeric that does not exist, one
+    WARN each on "core.proto" - and not a SIGHUP, which would reload
+    logging.conf and so build a NEW sink with a full bucket every time.
+
+    The notice that says how many records were suppressed needs the bucket to
+    refill, which at this rate is thirty seconds away, so it is not waited for
+    here: the count it carries is what test_logger_ratelimit covers.
+    """
+    _require_local()
+    hub = fake_hub
+    channel = "#logtest"
+    ts = 1_700_000_000
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    log_path = f"{root}/core.log"
+    logging_conf = (
+        "sink.chan.type = irc\n"
+        f"sink.chan.channel = {channel}\n"
+        "sink.chan.level = DEBUG\n"
+        "sink.chan.rate = 2/min\n"
+        "sink.corelog.type = file\n"
+        f"sink.corelog.path = {log_path}\n"
+        "sink.corelog.format = json\n"
+        "logger.core.proto = WARN, chan, corelog\n"
+        "additivity.core.proto = no\n"
+    )
+    burst = [f"{hub.server_numnick} B {channel} {ts} +tn"]
+
+    async with link_bare(
+        docker_stack, hub, tmp_path, logging_conf=logging_conf, burst=burst,
+    ) as (hub, proc, conf_dir):
+        await proc.wait_for_stdout("Connected", timeout=30.0)
+        await hub.drain_messages(timeout=1.0)
+
+        sent = len(hub.received)
+
+        for at in range(20):
+            await hub.send_raw(f"ZZ{at:03d} P AzAAA :flood {at}")
+
+        # The hub reads only when it is asked to, so this is what collects
+        # whatever notices the twenty records above turned into
+        await hub.drain_messages(timeout=1.0)
+
+        notices = [text for text in
+                   (_notice_text(line, channel) for line in hub.received[sent:])
+                   if text is not None]
+
+    records = [r for r in _read_json_lines(Path(log_path)) if r.get("logger") == "core.proto"]
+
+    # Every record was logged; only two of them were sent to the channel
+    assert len(records) == 20, records
+    assert len(notices) <= 2, notices
+
+    # A limit and not a mute: the bucket starts full, so the first records went
+    assert notices, "the rate limit let nothing through at all"
+
+
+# --------------------------------------------------------------------------
 # 10. cservice is configured in logging.conf like every other logger: with no
 #     line of its own its records walk up to the root, the five logging keys
 #     it used to have are read no more, and the section bin/logging.example.conf
@@ -705,6 +774,64 @@ async def test_cservice_conf_with_the_removed_logging_keys_warns_once(
         r for r in records
         if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG"
     ]
+
+
+# The four keys cservice used to page with, which are read no more either: a
+# pager is a sink of logging.conf now.  The token is recognisable on purpose -
+# nothing anywhere may print it.
+PUSHOVER_TOKEN_IN_CONF = "SECRETtokenNobodyMayLog0123456789"
+CSERVICE_REMOVED_PUSHOVER_KEYS = (
+    "pushover_enable = yes\n"
+    f"pushover_token = {PUSHOVER_TOKEN_IN_CONF}\n"
+    "pushover_userkey = SECRETuserkeyNobodyMayLog01234567\n"
+    "pushover_verbosity = 3\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_cservice_conf_with_the_removed_pushover_keys_warns_once(
+    docker_stack, fake_hub_p11, tmp_path
+):
+    """A cservice.conf that still carries the four pushover keys starts
+    normally, says once that they are not read, and prints neither the token nor
+    the user key while doing it - which is the whole reason the warning names
+    the keys and not their values."""
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    log_path = f"{root}/main.log"
+    logging_conf = (
+        "sink.mainlog.type = file\n"
+        f"sink.mainlog.path = {log_path}\n"
+        "sink.mainlog.format = json\n"
+        "logger.root = INFO, mainlog\n"
+    )
+
+    async with link_cservice_logging(
+        docker_stack, fake_hub_p11, tmp_path,
+        logging_conf=logging_conf, cservice_extra=CSERVICE_REMOVED_PUSHOVER_KEYS,
+    ) as (hub, proc, conf_dir):
+        await asyncio.sleep(0.5)
+        console = list(proc.stdout_lines)
+
+    records = _read_json_lines(Path(log_path))
+    warnings = [
+        r for r in records
+        if r.get("level") == "WARNING"
+        and "are no longer used" in r.get("message", "")
+        and "configure a pushover sink in logging.conf" in r.get("message", "")
+    ]
+    assert len(warnings) == 1, warnings
+    assert warnings[0].get("logger") == "cservice", warnings[0]
+    assert warnings[0]["message"].startswith(f"{root}/cservice.conf: pushover_enable"), warnings[0]
+
+    # No record and no console line carries the token or the user key
+    whole_log = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    assert "SECRET" not in whole_log, [l for l in whole_log.splitlines() if "SECRET" in l]
+    assert not [line for line in console if "SECRET" in line]
+
+    # "pushover_enable = yes" enables nothing any more: no notifier is attached,
+    # so nothing is sent and nothing failed to be sent either
+    assert not [r for r in records if r.get("logger", "").startswith("core.notifier")], \
+        [r for r in records if r.get("logger", "").startswith("core.notifier")]
 
 
 @pytest.mark.asyncio
