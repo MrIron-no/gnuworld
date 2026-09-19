@@ -274,16 +274,17 @@ class EConfig {
             else if constexpr (std::is_same_v<T, bool>)
                 msg << " (must be true/false, yes/no, on/off, or 1/0)";
 
-            /* FATAL only when the process is about to leave: a non-fatal ask
-             * throws instead, and its caller may well carry on */
-            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : ERROR, "{}",
+            /* FATAL only when the process is about to leave.  A non-fatal ask
+             * throws instead, and TryRequire(), which is who asks that way, says
+             * what came of it at WARN: this is the detail behind that line */
+            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : DEBUG, "{}",
                    msg.str());
             if (fatal)
                 ::exit(1);
             throw std::runtime_error(msg.str());
         } catch (const std::out_of_range& e) {
             std::string msg = "Value out of range for key \"" + key + "\": " + e.what();
-            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : ERROR, "{}", msg);
+            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : DEBUG, "{}", msg);
             if (fatal)
                 ::exit(1);
             throw std::runtime_error(msg);

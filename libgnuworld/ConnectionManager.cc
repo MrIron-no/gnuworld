@@ -823,7 +823,9 @@ void ConnectionManager::Poll(const long seconds, const long milliseconds) {
                 if (res > 0) {
                     LOG(INFO, "TLS connection gracefully shut down.");
                 } else {
-                    LOG(WARN, "TLS failed to shut down gracefully ({}): {}", res,
+                    // 0 is the ordinary end of a connection the peer has not yet
+                    // said goodbye on, and no failure; below that, something is
+                    LOG(0 == res ? DEBUG : WARN, "TLS failed to shut down gracefully ({}): {}", res,
                         std::string(ERR_error_string(ERR_get_error(), nullptr)));
                 }
             }
@@ -1016,7 +1018,9 @@ bool ConnectionManager::handleRead(ConnectionHandler* hPtr, Connection* cPtr) {
 
     // Check for error on read()
     if (readResult <= 0) {
-        LOG(ERROR, "Read error: {}", std::string(strerror(errno)));
+        // Nothing read and no error is the peer closing the connection: said,
+        // in the words this always had, but not as a failure
+        LOG(0 == readResult ? INFO : ERROR, "Read error: {}", std::string(strerror(errno)));
 
         // Error on read, socket no longer valid
         // Notify handler

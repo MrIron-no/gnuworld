@@ -123,7 +123,7 @@ bool EConfig::readFile(ifstream& configFile) {
 
         if (!removeSpaces(tmp)) {
             // Parse error
-            LOG(WARN, "Parse error at line: {}", lineNumber);
+            LOG(WARN, "Parse error at line: {} of {}", lineNumber, configFileName);
             return false;
         }
 
@@ -140,7 +140,7 @@ bool EConfig::readFile(ifstream& configFile) {
         StringTokenizer st(tmp, '=');
 
         if (st.size() < 2) {
-            LOG(WARN, "Improper number of fields at line: {}", lineNumber);
+            LOG(WARN, "Improper number of fields at line: {} of {}", lineNumber, configFileName);
             LOG(WARN, "Perhaps you meant for an empty value? Use: key = '' to specify empty "
                       "values");
             return false;
