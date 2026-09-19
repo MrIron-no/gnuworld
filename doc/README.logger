@@ -922,6 +922,14 @@ this kind of sink's `defaultThreshold()`.
 5. **Pushover is a third party, and its token lives in `logging.conf`.**
    - Only the rendered sentence and the title (`[core.net] FATAL`) leave
      this host: no fields, no context, no query.
+   - **Every value of the request is percent-encoded**, the token and the
+     user key included. A sentence carries whatever a remote server or an
+     IRC user put into it, and a channel name may legally hold `&`, `=`,
+     `%`, `#` and `+`: unescaped, such a name would add form fields of its
+     own — a second `user` sending the page, with this deployment's token,
+     to somebody else's account. The sentence is also cut on a UTF-8
+     character boundary at Pushover's limit (250 bytes of title, 1024 of
+     message) and stripped of every control character but the newline.
    - **`chmod 600 logging.conf`.** The file holds an application token, and
      GNUWorld says so once at `WARN` on `core.config` when it does not:
      `<file> holds a token and is readable by others (mode 0644); chmod 600
@@ -952,7 +960,7 @@ this kind of sink's `defaultThreshold()`.
    | file, JSON | everything: every field, unredacted |
    | file/console, text | the sentence; control characters escaped as `\xNN`, every other byte of `0x80`+ passed through as text — read an untrusted log with `less` or `cat -v`, not a terminal left to interpret whatever is in it |
    | IRC | the sentence, every control character removed |
-   | notifier | the sentence, and nothing else |
+   | notifier | the sentence, and nothing else; control characters but the newline removed, every field of the request percent-encoded |
 
 The most important of these are repeated as comments in
 `bin/logging.example.conf`, next to the settings they are about.
@@ -1151,17 +1159,19 @@ checking for prometheus-cpp-core prometheus-cpp-pull... yes
 === make -j6
 warnings in the whole build: 0
 === make check
-# TOTAL: 13
-# PASS:  13
-=== test_pushover_delivery, on its own
-pushover_delivery: all checks passed
+# TOTAL: 14
+# PASS:  14
+=== test_pushover_delivery, 20 times
+20 of 20 runs passed
 === A second configuration: --with-log4cplus
 the log4cplus configuration built, 0 warnings in all
 ```
 
 What it does: builds a Debian image with every optional dependency
 (`test/docker/full-deps/Dockerfile` — prometheus-cpp is built from source
-there, because Debian ships no C++ Prometheus client at all), then streams
+there, because Debian ships no C++ Prometheus client at all, and its tarball
+is checked against a SHA-256 pinned beside the version, so a moved tag fails
+the image build rather than getting built), then streams
 the **working tree's tracked files** into a container through a tar on stdin,
 so uncommitted edits are included and no build product of the host is.
 Inside: `autogen.sh`, the full `configure`, an assertion that libcurl and
@@ -1172,17 +1182,28 @@ that; nothing is mounted and nothing it writes reaches the host. A new file
 has to be `git add`ed to be streamed in.
 
 `test_pushover_delivery` (`test/pushover_delivery.cc`) is the one test that
-really puts a notification on a wire: a python3 endpoint records every POST
-body and answers Pushover's own success JSON, `/fail` answers 500, `/slow`
-answers half a second late. It asserts one POST per user key with the token,
-the title and the sentence in it; that a record of `core.notifier` is not
-posted; that `rate = 2/min` posts two of ten records; that a failing endpoint
-produces one `core.notifier` ERROR and no crash; that destroying a sink with
-fifty requests queued costs no time at all; and that no log record of the
-whole run carries the token or a user key. It is built only where libcurl is
-(`COND_LIBCURL`), and without `PUSHOVER_TEST_URL` in the environment it says
-so and passes, so `make check` on an ordinary machine needs no endpoint and
-no network.
+really puts a notification on a wire: a python3 endpoint records every request
+twice — the raw body and the form fields decoded out of it — and answers
+Pushover's own success JSON, `/fail` answers 500, `/slow` answers half a
+second late. It asserts one POST per user key with the token, the title and
+the sentence in it; that **no sentence can add, remove or alter a field** — a
+channel name of `#x&user=ATTACKERKEY&priority=2&html=1` arrives as one `user`,
+one `priority`, no `html` and a message equal to the sentence byte for byte;
+that a two-line message keeps its newline; that a pager with no level hears an
+`ERROR` and not a `WARN`, and one with `level = INFO` hears an `INFO`; that a
+record of `core.notifier` is not posted; that `rate = 2/min` posts two of ten
+records; that a failing endpoint produces one `core.notifier` ERROR and no
+crash; that two sinks used from two threads at once deliver all their pages;
+that destroying a sink with fifty requests queued costs no time at all; and
+that no log record of the whole run carries the token or a user key. It is
+built only where libcurl is (`COND_LIBCURL`), and without `PUSHOVER_TEST_URL`
+in the environment it says so and passes, so `make check` on an ordinary
+machine needs no endpoint and no network. The run script runs it twenty times:
+a race between two sinks' worker threads does not show up in one.
+
+`test_pushover_text` (`test/pushover_text.cc`) covers the same sink's two text
+helpers — the UTF-8-safe cut and the control-character clean-up — and needs no
+libcurl, so it runs under `make check` everywhere.
 
 ## Limitations
 

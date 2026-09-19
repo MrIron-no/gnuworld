@@ -7,6 +7,8 @@ macro and returns the number of failures.
 test_pushover_delivery is the one exception to "libgnuworld alone": it links
 libnotifier and libcurl as well, and it is built only where libcurl is (see
 test/docker/full-deps/run.sh, which is the build that has one).
+test_pushover_text links libnotifier too, but needs no libcurl at all: the two
+helpers it covers are defined outside pushover.cc's HAVE_LIBCURL on purpose.
 
 test_logger_render
 -------------------
@@ -74,6 +76,15 @@ setting and nothing else's, and - in several broken files, with a
 recognisable token in each - that NO error message ever quotes an option's
 value.
 
+Three more cases are about what configure() does with a sink rather than with
+the file: that a kind of sink whose defaultThreshold() is WARN is attached at
+WARN where the file names no level and at whatever the file DID name where it
+names one, while a file sink with no level is still TRACE; that a factory error
+beginning "sink.<id>." is quoted as it stands while one about another sink whose
+id merely begins the same way is prefixed; and that
+warnIfSecretsAreReadable() warns for a conf file of mode 0640 or 0604 and says
+nothing for 0600 or 0610, never quoting the token.
+
 test_logger_ratelimit
 -----------------------
 LogRateLimit.h, the token bucket a channel sink and a pager hold: that a
@@ -86,14 +97,33 @@ that parse() takes "10/min", "1/hour", "5 / sec" and "3/MIN" and refuses
 that four threads hammering admit() at one instant get exactly the capacity
 between them.
 
+test_pushover_text
+--------------------
+The two text helpers of libnotifier/pushover.h, which are pure text and need no
+libcurl: truncateUtf8(), which cuts a title or a message to Pushover's byte
+limit and walks back over continuation bytes so the cut never lands inside a
+UTF-8 character (a two, three and four byte character straddling it, a string of
+nothing but continuation bytes, an empty string, a limit smaller than the
+ellipsis, and every limit at all over a mixed string asserted to stay within
+itself and to be whole UTF-8); and withoutControlCharacters(), which keeps the
+newline of a multi-line record and takes out the rest of C0 and DEL while passing
+every byte of 0x80 and up through untouched.
+
 test_pushover_delivery
 ------------------------
 What a pushover sink of logging.conf really puts on the wire, against a local
-HTTP endpoint (test/docker/full-deps/endpoint.py) that records every POST
-body: one request per user key carrying the token, the title "[<logger>]
-WARNING" and the sentence; a record of core.notifier NOT posted (the loop
-guard); "rate = 2/min" posting two of ten records; a failing endpoint (/fail,
-500) producing exactly one core.notifier ERROR and no crash; destroying a
+HTTP endpoint (test/docker/full-deps/endpoint.py) that records every request
+twice - the raw body, and the form fields decoded out of it: one request per user
+key carrying the token, the title "[<logger>] WARNING" and the sentence; that a
+sentence about a channel called "#x&user=ATTACKERKEY&priority=2&html=1 100% = ..."
+arrives as exactly one "user" (the configured one), one "priority", no "html" at
+all and a message equal to that sentence byte for byte; a two-line message
+arriving with its newline as %0A; a title built from a logger name holding "&"
+and "=" escaped; a pager with no level hearing an ERROR and not a WARN, and one
+with "level = INFO" hearing an INFO; a record of core.notifier NOT posted (the
+loop guard); "rate = 2/min" posting two of ten records; a failing endpoint
+(/fail, 500) producing exactly one core.notifier ERROR and no crash; two pushover
+sinks used from two threads at once delivering all of their pages; destroying a
 sink with fifty requests queued behind a slow one (/slow) costing no time and
 sending nothing afterwards; and no log record of the whole run carrying the
 token or a user key. The sink is always built the real way, by
@@ -101,7 +131,8 @@ parseLogConfig() and LogManager::configure() from a file this test writes.
 
 Without PUSHOVER_TEST_URL and PUSHOVER_TEST_CAPTURE in the environment it
 says so and passes, so "make check" needs no endpoint and no network;
-test/docker/full-deps/run.sh is what sets both.
+test/docker/full-deps/run.sh is what sets both, and it runs this program twenty
+times, because a race between two sinks' worker threads does not show up in one.
 
 test_elog_shim
 ----------------
