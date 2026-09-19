@@ -150,7 +150,8 @@ delivery_status=$?
 
 [ $delivery_status -eq 0 ] || fail 'test_pushover_delivery'
 
-printf 'the endpoint was posted %s bodies in all\n' "$(wc -l < "$CAPTURE")"
+printf 'the capture file holds %s bodies at the end (the test empties it between cases)\n' \
+    "$(wc -l < "$CAPTURE")"
 
 # Whatever it received had to carry the token, and no log file may
 if ! grep -q 'token=SECRET' "$CAPTURE"; then
