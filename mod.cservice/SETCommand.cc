@@ -133,7 +133,6 @@ bool SETCommand::Exec(iClient* theClient, const string& Message) {
             return true;
         }
 
-        /* AUTOHIDE needs a P11+ uplink; otherwise treat it as unknown */
         if (option == "AUTOHIDE") {
             if (value == "ON") {
                 theUser->setFlag(sqlUser::F_AUTOHIDE);
