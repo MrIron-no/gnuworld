@@ -26,6 +26,7 @@
 #include "ChannelUser.h"
 #include "LogExtractors.h"
 #include "LogRecord.h"
+#include "client.h"
 #include "iClient.h"
 #include "iServer.h"
 #include "ip.h"
@@ -60,6 +61,21 @@ LogObject logObjectFor(const iClient* client) {
     }
 
     object.fields.emplace_back("is_oper", client->isOper());
+
+    return object;
+}
+
+LogObject logObjectFor(const xClient* client) {
+    if (nullptr == client)
+        return nullObject();
+
+    LogObject object;
+
+    object.display = client->getNickName();
+
+    object.fields.emplace_back("nick", std::string(client->getNickName()));
+    object.fields.emplace_back("userhost", client->getUserName() + '@' + client->getHostName());
+    object.fields.emplace_back("numeric", std::string(client->getCharYYXXX()));
 
     return object;
 }
@@ -112,6 +128,7 @@ LogObject logObjectFor(const ChannelUser* theUser) {
 
 void registerCoreLogExtractors() {
     Logger::registerExtractor<iClient>(nullptr, [](const iClient* c) { return logObjectFor(c); });
+    Logger::registerExtractor<xClient>(nullptr, [](const xClient* c) { return logObjectFor(c); });
     Logger::registerExtractor<iServer>(nullptr, [](const iServer* s) { return logObjectFor(s); });
     Logger::registerExtractor<Channel>(nullptr, [](const Channel* c) { return logObjectFor(c); });
     Logger::registerExtractor<ChannelUser>(nullptr,

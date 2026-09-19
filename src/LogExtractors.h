@@ -32,6 +32,7 @@ class Channel;
 class ChannelUser;
 class iClient;
 class iServer;
+class xClient;
 
 /**
  * Registers the extractors of the core objects with the logging system, under
@@ -45,6 +46,12 @@ void registerCoreLogExtractors();
  * then account and account_id for a client that is logged in, then is_oper.
  */
 LogObject logObjectFor(const iClient*);
+
+/**
+ * One of our own clients.  The display form is the nick; the fields are nick,
+ * userhost and numeric.
+ */
+LogObject logObjectFor(const xClient*);
 
 /**
  * The display form is the server name; the fields are name, numeric, uplink

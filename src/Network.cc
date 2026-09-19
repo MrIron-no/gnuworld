@@ -51,22 +51,6 @@ GNUWORLD_CORE_LOGGER(State);
 
 namespace gnuworld {
 
-namespace {
-
-/**
- * A client of ours the way the old log stream wrote one.  There is no log
- * extractor for an xClient, and the user@host and the numeric are what one
- * wants to read when a table refuses it.
- */
-std::string describeClient(const xClient* theClient) {
-    return std::format("{}!{}@{} Numeric: {}, int YY/XXX/YYXXX: {}/{}/{}", theClient->getNickName(),
-                       theClient->getUserName(), theClient->getHostName(),
-                       theClient->getCharYYXXX(), theClient->getIntYY(), theClient->getIntXXX(),
-                       theClient->getIntYYXXX());
-}
-
-} // namespace
-
 using std::list;
 using std::make_pair;
 using std::map;
@@ -122,7 +106,9 @@ bool xNetwork::addClient(xClient* newClient) {
     newClient->setIntXXX(intXXX);
 
     if (!localClients.insert(make_pair(newClient->getIntYYXXX(), newClient)).second) {
-        LOG(ERROR, "Unable to insert new client into localClients: {}", describeClient(newClient));
+        LOG_MSG(ERROR, "Unable to insert new client into localClients: {client}")
+            .with("client", newClient)
+            .log();
         newClient->setIntXXX(0);
         return false;
     }
@@ -389,13 +375,15 @@ xClient* xNetwork::removeLocalClient(xClient* theClient) {
     localClientIterator cItr = localClients.find(theClient->getIntYYXXX());
     if (cItr == localClient_end()) {
         // client not found
-        LOG(WARN, "Unable to find local client: {}", describeClient(theClient));
+        LOG_MSG(WARN, "Unable to find local client: {client}").with("client", theClient).log();
         return 0;
     }
     localClients.erase(cItr);
 
     if (!freeClientNumeric(theClient->getIntYYXXX())) {
-        LOG(ERROR, "Failed to free client numeric for client: {}", describeClient(theClient));
+        LOG_MSG(ERROR, "Failed to free client numeric for client: {client}")
+            .with("client", theClient)
+            .log();
         return 0;
     }
 
