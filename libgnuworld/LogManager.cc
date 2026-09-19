@@ -509,8 +509,7 @@ bool LogManager::configure(const LogConfig& config, std::vector<string>& errors)
          * configuration under its own mutex in one go.  A logger the file does
          * not mention is given nothing, which is how a line dropped from the
          * file stops applying; what the code asked for - its sinks, its
-         * defaults, the levels of the legacy module keys, its additivity - is
-         * not this function's to touch */
+         * defaults, its additivity - is not this function's to touch */
         for (const std::pair<const string, Logger*>& entry : registry.loggers) {
             const std::map<Logger*, LoggerChange>::iterator change = changes.find(entry.second);
 
