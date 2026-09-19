@@ -99,10 +99,6 @@ bool cservice::UnRegisterCommand(const string& commName) {
 }
 
 void cservice::OnAttach() {
-    /* There is an uplink now, which is what a sink writing to the debug channel
-     * needs: the legacy chan_verbosity key can only be honoured from here */
-    applyLegacyLogging();
-
     for (commandMapType::iterator ptr = commandMap.begin(); ptr != commandMap.end(); ++ptr) {
         ptr->second->setServer(MyUplink);
     }
@@ -344,9 +340,13 @@ cservice::cservice(const string& args)
     loadConfigVariables();
     loadConfigData();
 
-    /* Initiate pushover.  These records are logged before applyLegacyLogging()
-     * has put this module's own sinks on the logger, so they go to whatever the
-     * root carries - which is what every other core record does at this point */
+    /* A conf file of an install from before logging.conf may still carry the
+     * logging keys this module used to have; they are read no more */
+    warnOfRemovedLoggingKeys();
+
+    /* Initiate pushover.  Where the records of this module go is logging.conf's
+     * business, but a notifier is not a sink that file can name: this module
+     * attaches its own, as it always has. */
     if (pushoverEnable) {
         LOG(INFO, "Enabling Pushover notifications for {} user keys...", pushoverUserKeys.size());
 
@@ -378,10 +378,6 @@ cservice::cservice(const string& args)
         }
     }
 #endif
-
-    /* And now that every sink of this module exists, what its own logging keys
-     * ask for - the notifiers above have a say in the level they set */
-    applyLegacyLogging();
 
     /* Load our translation tables. */
     loadTranslationTable();
@@ -423,25 +419,10 @@ cservice::cservice(const string& args)
 
 cservice::~cservice() {
     /* The logger is the registry's and is shared with the next instance of this
-     * module: what this one's configuration keys left on it goes with it */
-    if (legacyIrcSink)
-        logger->removeSink(legacyIrcSink);
-    if (legacyConsoleSink)
-        logger->removeSink(legacyConsoleSink);
-    if (legacyFileSink) {
-        logger->removeSink(legacyFileSink);
-
-        if (nullptr != commandsLogger)
-            commandsLogger->removeSink(legacyFileSink);
-    }
-
-    legacyIrcSink.reset();
-    legacyConsoleSink.reset();
-    legacyFileSink.reset();
-
-    /* The notifiers too.  They know nothing of this client any more, but
-     * pushover still sends through this instance's ThreadWorker, and a record of
-     * the next instance of the module must not reach a notifier of this one */
+     * module: what this one attached to it goes with it.  The notifiers know
+     * nothing of this client any more, but pushover still sends through this
+     * instance's ThreadWorker, and a record of the next instance of the module
+     * must not reach a notifier of this one */
     if (pushover) {
         logger->removeSink(pushover);
         pushover.reset();
@@ -454,15 +435,9 @@ cservice::~cservice() {
     }
 #endif
 
-    logger->setLegacyLevel(std::nullopt);
-    logger->child("sql")->setLegacyLevel(std::nullopt);
-    logger->setAdditive(true);
-
-    if (nullptr != commandsLogger) {
-        commandsLogger->setLegacyLevel(std::nullopt);
-        commandsLogger->setAdditive(true);
-        commandsLogger = nullptr;
-    }
+    /* The command log's logger is the registry's too: this instance only ever
+     * held a pointer to it, and lets go of it here */
+    commandsLogger = nullptr;
 
     delete cserviceConfig;
     cserviceConfig = 0;
@@ -7220,148 +7195,29 @@ void cservice::loadConfigVariables(bool rehash) {
     UsersExpireDBDays *= daySeconds;
 }
 
-namespace {
-
 /**
- * One legacy verbosity as a level: the value is a number out of a configuration
- * file, so anything past the most verbose level there is asks for that one.
+ * Says once, when this module starts, that a conf file still carrying the five
+ * logging keys cservice used to have is carrying them for nothing.
+ *
+ * Find, not Require: the keys are not read any more, so a conf file without them
+ * is what is expected and no reason to say anything at all.
  */
-Verbosity legacyLevelOf(unsigned int verbosity) {
-    return verbosity > static_cast<unsigned int>(TRACE) ? TRACE : static_cast<Verbosity>(verbosity);
-}
+void cservice::warnOfRemovedLoggingKeys() {
+    static const char* const removedKeys[] = {"log_verbosity", "chan_verbosity",
+                                              "console_verbosity", "log_sql", "console_sql"};
 
-} // namespace
+    for (const char* const key : removedKeys) {
+        if (cserviceConfig->end() == cserviceConfig->Find(key))
+            continue;
 
-/**
- * Honours this module's own logging keys, for as long as nothing better says
- * where its records go.
- *
- * With a logger.cservice line in logging.conf there is nothing to do but undo:
- * the sinks these keys attached are taken off, the level they asked for is
- * dropped, and the module's records walk up to the root like everybody else's.
- *
- * Without one, the keys are the whole of this module's logging, as they were
- * before logging.conf existed: a JSON log file beside the configuration file,
- * the console and the debug channel, each with the verbosity that was asked for,
- * and no walk up to the root at all - the records went to these three and
- * nowhere else.  The level of the logger is the most any output wants, notifiers
- * included, because that is when the old logger built a record.
- *
- * Every threshold is written again on each call: a rehash may have changed any
- * of them, and the channel sink is only possible once there is an uplink.
- */
-void cservice::applyLegacyLogging() {
-    const bool configured = LogManager::isConfigured("cservice");
-
-    if (configured) {
-        if (legacyIrcSink) {
-            logger->removeSink(legacyIrcSink);
-            legacyIrcSink.reset();
-        }
-        if (legacyConsoleSink) {
-            logger->removeSink(legacyConsoleSink);
-            legacyConsoleSink.reset();
-        }
-        if (legacyFileSink) {
-            logger->removeSink(legacyFileSink);
-            commandsLogger->removeSink(legacyFileSink);
-            legacyFileSink.reset();
-        }
-
-        logger->setLegacyLevel(std::nullopt);
-        logger->setAdditive(true);
-        logger->child("sql")->setLegacyLevel(std::nullopt);
-
-        /* With nothing of this module's own left on it, the command log is an
-         * ordinary sub-logger of "cservice": it goes where the file says, and
-         * its sentence names the command and the nick, which is safe to show */
-        commandsLogger->setLegacyLevel(std::nullopt);
-        commandsLogger->setAdditive(true);
-
-        if (legacyLoggingAnnounced != configured)
-            LOG(INFO, "log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql "
-                      "are ignored because logging.conf configures logger.cservice");
-
-        legacyLoggingAnnounced = configured;
+        LOG(WARN,
+            "{}: log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql are no "
+            "longer used; configure logger.cservice in logging.conf (see "
+            "bin/logging.example.conf)",
+            getConfigFileName());
 
         return;
     }
-
-    /* The log file is the configuration file name up to its first '.', plus
-     * ".log", which is where this module has always written */
-    if (!legacyFileSink) {
-        const string::size_type dot = getConfigFileName().find('.');
-        const string path =
-            (string::npos == dot ? getConfigFileName() : getConfigFileName().substr(0, dot)) +
-            ".log";
-
-        legacyFileSink = std::make_shared<FileSink>(path, true);
-        logger->addSink(legacyFileSink);
-
-        /* The command log went to this file and to nowhere else, so the sink
-         * follows the file here and the attachment follows every sink: the
-         * logger is the registry's, and this is the one place a sink of it is
-         * made, so nothing attaches it twice */
-        commandsLogger->addSink(legacyFileSink, TRACE);
-    }
-
-    if (!legacyConsoleSink) {
-        legacyConsoleSink = std::make_shared<ConsoleSink>(ConsoleSink::Colour::Auto, true);
-        logger->addSink(legacyConsoleSink);
-    }
-
-    // Only once the module is attached: a channel sink needs somewhere to write
-    if (!legacyIrcSink && nullptr != MyUplink) {
-        legacyIrcSink = std::make_shared<IrcLogSink>(MyUplink, debugChan, true);
-        logger->addSink(legacyIrcSink);
-    }
-
-    logger->setSinkThreshold(legacyFileSink, legacyLevelOf(logVerbosity));
-    logger->setSinkThreshold(legacyConsoleSink, legacyLevelOf(consoleVerbosity));
-
-    if (legacyIrcSink) {
-        logger->setSinkThreshold(legacyIrcSink, legacyLevelOf(chanVerbosity));
-        legacyIrcSink->setChannel(debugChan);
-    }
-
-    /* What any of the outputs wants is what the logger builds a record for: the
-     * three keys, and the notifiers, which are attached without a key of their
-     * own - prometheus takes everything it is given */
-    Verbosity wanted = legacyLevelOf(logVerbosity);
-
-    if (legacyLevelOf(consoleVerbosity) > wanted)
-        wanted = legacyLevelOf(consoleVerbosity);
-
-    if (legacyIrcSink && legacyLevelOf(chanVerbosity) > wanted)
-        wanted = legacyLevelOf(chanVerbosity);
-
-    if (pushover && legacyLevelOf(pushoverVerbosity) > wanted)
-        wanted = legacyLevelOf(pushoverVerbosity);
-
-    if (prometheus)
-        wanted = TRACE;
-
-    logger->setAdditive(false);
-    logger->setLegacyLevel(wanted);
-
-    /* A statement is a DEBUG record of cservice.sql, which logs errors only
-     * unless one of the two SQL keys asks for the statements as well */
-    logger->child("sql")->setLegacyLevel((logSQL || consoleSQL) ? DEBUG : ERROR);
-
-    /* And the command log, which is the log file's alone: not additive, so a
-     * record of it never walks up to the console or to the debug channel this
-     * module's own logger carries */
-    commandsLogger->setSinkThreshold(legacyFileSink, TRACE);
-    commandsLogger->setAdditive(false);
-    commandsLogger->setLegacyLevel(INFO);
-
-    if (legacyLoggingAnnounced != configured)
-        LOG(INFO,
-            "cservice logging keys in {} are deprecated; configure logger.cservice in "
-            "logging.conf",
-            getConfigFileName());
-
-    legacyLoggingAnnounced = configured;
 }
 
 void cservice::rehashConfigVariables() {
@@ -7416,10 +7272,6 @@ void cservice::rehashConfigVariables() {
             pushover.reset();
         }
     }
-
-    /* The logging keys again, last: logging.conf may have been read anew as
-     * well, and the notifiers above are what the level has to reckon with */
-    applyLegacyLogging();
 }
 
 cservice::AuthResult cservice::authenticateUser(AuthStruct& auth) {

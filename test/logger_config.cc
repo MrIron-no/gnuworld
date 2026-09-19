@@ -390,12 +390,14 @@ void testExampleFile() {
 
     CHECK(errors.empty());
 
-    // The three sinks it has, sorted by id, and nothing commented out
-    CHECK(3 == config.sinks.size());
-    if (3 == config.sinks.size()) {
+    // The five sinks it has, sorted by id, and nothing commented out
+    CHECK(5 == config.sinks.size());
+    if (5 == config.sinks.size()) {
         CHECK_EQ(config.sinks[0].id, "console");
-        CHECK_EQ(config.sinks[1].id, "debuglog");
-        CHECK_EQ(config.sinks[2].id, "main");
+        CHECK_EQ(config.sinks[1].id, "cservice");
+        CHECK_EQ(config.sinks[2].id, "debugchan");
+        CHECK_EQ(config.sinks[3].id, "debuglog");
+        CHECK_EQ(config.sinks[4].id, "main");
     }
 
     const SinkSpec* const console = findSink(config, "console");
@@ -442,6 +444,54 @@ void testExampleFile() {
     CHECK(nullptr != core);
     if (nullptr != core)
         CHECK(core->level && INFO == *core->level);
+
+    /* The cservice section, which is active and not an example: its own JSON
+     * file, the debug channel and the console, and nothing of it walking up to
+     * the sinks of the root */
+    const SinkSpec* const cservice = findSink(config, "cservice");
+    CHECK(nullptr != cservice);
+    if (nullptr != cservice) {
+        CHECK_EQ(cservice->type, "file");
+        CHECK_EQ(cservice->path, "cservice.log");
+        CHECK(cservice->json);
+    }
+
+    const SinkSpec* const debugchan = findSink(config, "debugchan");
+    CHECK(nullptr != debugchan);
+    if (nullptr != debugchan) {
+        CHECK_EQ(debugchan->type, "irc");
+        CHECK_EQ(debugchan->channel, "#coder-com");
+
+        // At INFO, so that a DEBUG record - a SQL statement - never reaches it
+        CHECK(INFO == debugchan->level);
+    }
+
+    const LoggerSpec* const cserviceLogger = findLogger(config, "cservice");
+    CHECK(nullptr != cserviceLogger);
+    if (nullptr != cserviceLogger) {
+        CHECK(cserviceLogger->level && DEBUG == *cserviceLogger->level);
+        CHECK(cserviceLogger->additive && !*cserviceLogger->additive);
+        CHECK(3 == cserviceLogger->sinks.size());
+        if (3 == cserviceLogger->sinks.size()) {
+            CHECK_EQ(cserviceLogger->sinks[0], "cservice");
+            CHECK_EQ(cserviceLogger->sinks[1], "debugchan");
+            CHECK_EQ(cserviceLogger->sinks[2], "console");
+        }
+    }
+
+    // The command log, to the file alone: its sentence is noise on a channel
+    const LoggerSpec* const commands = findLogger(config, "cservice.commands");
+    CHECK(nullptr != commands);
+    if (nullptr != commands) {
+        CHECK(commands->level && INFO == *commands->level);
+        CHECK(commands->additive && !*commands->additive);
+        CHECK(1 == commands->sinks.size());
+        if (1 == commands->sinks.size())
+            CHECK_EQ(commands->sinks[0], "cservice");
+    }
+
+    // And the statements, which the file ships commented out
+    CHECK(nullptr == findLogger(config, "cservice.sql"));
 }
 
 /**

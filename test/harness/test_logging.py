@@ -549,49 +549,253 @@ async def test_irc_sink_delivers_a_notice_with_highlighted_value(docker_stack, f
 
 
 # --------------------------------------------------------------------------
-# 10. cservice fallback mode (Postgres): its own JSON file, the deprecation
-#     line once, log_sql on/off.
+# 10. cservice is configured in logging.conf like every other logger: with no
+#     line of its own its records walk up to the root, the five logging keys
+#     it used to have are read no more, and the section bin/logging.example.conf
+#     ships is what reproduces the outputs those keys used to give.
 # --------------------------------------------------------------------------
 
 
+# bin/logging.example.conf's cservice section, verbatim.  _cservice_section()
+# checks each line is still in that file, so a change there is a failure here
+# rather than a test quietly checking something the example no longer says.
+CSERVICE_EXAMPLE_SECTION = """\
+sink.cservice.type     = file
+sink.cservice.path     = cservice.log
+sink.cservice.format   = json
+sink.debugchan.type    = irc
+sink.debugchan.channel = #coder-com
+sink.debugchan.level   = INFO
+logger.cservice              = DEBUG, cservice, debugchan, console
+additivity.cservice          = no
+logger.cservice.commands     = INFO, cservice
+additivity.cservice.commands = no
+"""
+
+# The five keys an install from before logging.conf still has in cservice.conf
+CSERVICE_REMOVED_KEYS = (
+    "log_verbosity = 5\n"
+    "chan_verbosity = 4\n"
+    "console_verbosity = 5\n"
+    "log_sql = yes\n"
+    "console_sql = yes\n"
+)
+
+
+def _cservice_section(conf_root: str) -> str:
+    """The section above with its one file path made absolute, which is all a
+    test changes about it: a bare "cservice.log" would land in the conf dir
+    anyway (gnuworld runs there), but the test would then have to guess so."""
+    example = (
+        Path(__file__).resolve().parents[2] / "bin" / "logging.example.conf"
+    ).read_text(encoding="utf-8")
+    for line in CSERVICE_EXAMPLE_SECTION.splitlines():
+        assert line in example, f"bin/logging.example.conf no longer has {line!r}"
+
+    return CSERVICE_EXAMPLE_SECTION.replace(
+        "= cservice.log", f"= {conf_root}/cservice.log",
+    )
+
+
+def _cservice_logging_conf(tmp_path, *, sql_debug: bool = False) -> tuple[str, Path, Path]:
+    """A logging.conf with a JSON sink on the root, a console sink, and the
+    cservice section bin/logging.example.conf ships - which is how cservice is
+    configured now that it has no logging keys of its own.
+
+    Returns the file's text, the path of cservice's own log, and the path of
+    the root's.
+    """
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    main_log = f"{root}/main.log"
+    text = (
+        "sink.mainlog.type = file\n"
+        f"sink.mainlog.path = {main_log}\n"
+        "sink.mainlog.format = json\n"
+        "sink.console.type = console\n"
+        "logger.root = INFO, mainlog\n"
+        + _cservice_section(root)
+        + ("logger.cservice.sql = DEBUG\n" if sql_debug else "")
+    )
+    return text, Path(f"{root}/cservice.log"), Path(main_log)
+
+
 @pytest.mark.asyncio
-async def test_cservice_fallback_mode_writes_its_own_json_log(docker_stack, fake_hub_p11, tmp_path):
-    async with link_cservice_logging(docker_stack, fake_hub_p11, tmp_path) as (hub, proc, conf_dir):
-        await asyncio.sleep(0.5)
+async def test_cservice_without_a_logger_line_reaches_the_root_sinks(
+    docker_stack, fake_hub_p11, tmp_path
+):
+    """No "logger.cservice" line: cservice writes no log of its own, and its
+    records go to the sinks of the root like every other module's."""
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    log_path = f"{root}/main.log"
+    logging_conf = (
+        "sink.mainlog.type = file\n"
+        f"sink.mainlog.path = {log_path}\n"
+        "sink.mainlog.format = json\n"
+        "logger.root = INFO, mainlog\n"
+    )
 
-    cservice_log = conf_dir / "cservice.log"
-    assert cservice_log.is_file(), sorted(p.name for p in conf_dir.iterdir())
-    records = _read_json_lines(cservice_log)
-    assert records
-    assert all({"timestamp", "level", "logger", "message"}.issubset(r.keys()) for r in records)
-    assert any(r.get("logger") == "cservice" for r in records)
-
-    deprecated = [
-        r for r in records
-        if "cservice logging keys in" in r.get("message", "")
-        and "are deprecated" in r.get("message", "")
-    ]
-    assert len(deprecated) == 1, deprecated
-
-    # Defaults (log_sql = no): no DEBUG query record on cservice.sql
-    assert not any(
-        r.get("logger") == "cservice.sql" and "query" in r for r in records
-    ), [r for r in records if r.get("logger") == "cservice.sql"]
-
-
-@pytest.mark.asyncio
-async def test_cservice_fallback_mode_with_log_sql_yes_logs_queries(docker_stack, fake_hub_p11, tmp_path):
     async with link_cservice_logging(
-        docker_stack, fake_hub_p11, tmp_path, cservice_overrides={"log_sql": "yes"},
+        docker_stack, fake_hub_p11, tmp_path, logging_conf=logging_conf,
     ) as (hub, proc, conf_dir):
         await asyncio.sleep(0.5)
 
-    records = _read_json_lines(conf_dir / "cservice.log")
+    assert not (conf_dir / "cservice.log").exists(), sorted(p.name for p in conf_dir.iterdir())
+
+    records = _read_json_lines(Path(log_path))
+    assert any(r.get("logger") == "cservice" for r in records), \
+        sorted({r.get("logger") for r in records})
+
+
+@pytest.mark.asyncio
+async def test_cservice_writes_no_log_of_its_own_without_a_logging_conf(
+    docker_stack, fake_hub_p11, tmp_path
+):
+    """And with no logging.conf at all: still no cservice.log, and the records
+    reach the one sink the built-in default is left with under the harness's
+    own -D, the console."""
+    async with link_cservice_logging(docker_stack, fake_hub_p11, tmp_path) as (
+        hub, proc, conf_dir,
+    ):
+        await asyncio.sleep(0.5)
+        console = list(proc.stdout_lines)
+
+    assert not (conf_dir / "cservice.log").exists(), sorted(p.name for p in conf_dir.iterdir())
+    assert any(
+        CONSOLE_LINE.match(line) and re.search(r"\s+cservice\s+Channel join complete", line)
+        for line in console
+    ), [line for line in console if CONSOLE_LINE.match(line)][-20:]
+
+
+@pytest.mark.asyncio
+async def test_cservice_conf_with_the_removed_logging_keys_warns_once(
+    docker_stack, fake_hub_p11, tmp_path
+):
+    """A cservice.conf that still carries the five keys starts normally, says
+    once that they are not read, and is not read for them: log_sql = yes asks
+    for every statement and gets none."""
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    log_path = f"{root}/main.log"
+    logging_conf = (
+        "sink.mainlog.type = file\n"
+        f"sink.mainlog.path = {log_path}\n"
+        "sink.mainlog.format = json\n"
+        "logger.root = INFO, mainlog\n"
+    )
+
+    async with link_cservice_logging(
+        docker_stack, fake_hub_p11, tmp_path,
+        logging_conf=logging_conf, cservice_extra=CSERVICE_REMOVED_KEYS,
+    ) as (hub, proc, conf_dir):
+        await asyncio.sleep(0.5)
+
+    records = _read_json_lines(Path(log_path))
+    warnings = [
+        r for r in records
+        if r.get("level") == "WARNING"
+        and "are no longer used" in r.get("message", "")
+        and "configure logger.cservice in logging.conf" in r.get("message", "")
+    ]
+    assert len(warnings) == 1, warnings
+    assert warnings[0].get("logger") == "cservice", warnings[0]
+    assert warnings[0]["message"].startswith(f"{root}/cservice.conf: log_verbosity"), warnings[0]
+
+    # Not read: no log of cservice's own, and no statement logged either
+    assert not (conf_dir / "cservice.log").exists()
+    assert not [
+        r for r in records
+        if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cservice_example_section_gives_it_a_file_and_the_debug_channel(
+    docker_stack, fake_hub_p11, tmp_path
+):
+    """bin/logging.example.conf's cservice section: its own JSON file, INFO and
+    worse on the debug channel, the command log in the file only, and - by
+    "additivity.cservice = no" - nothing of cservice in the root's own file."""
+    hub = fake_hub_p11
+    channel = "#coder-com"  # cservice.example.conf's debug_channel
+    ts = 1_700_000_004
+    burst = [f"{hub.server_numnick} B {channel} {ts} +tn"]
+    logging_conf, cservice_log, main_log = _cservice_logging_conf(tmp_path)
+
+    async with link_cservice_logging(
+        docker_stack, hub, tmp_path, logging_conf=logging_conf, burst=burst,
+    ) as (hub, proc, conf_dir):
+        # An INFO record of "cservice" itself, on the channel, as a notice
+        notice = await _wait_for_notice(hub, channel, timeout=30.0,
+                                        contains="Channel join complete")
+        assert notice.startswith("[cservice] "), notice
+
+        # One command, which is a record of "cservice.commands"
+        await cs.login(hub)
+        await asyncio.sleep(0.5)
+
+        texts = [t for t in (_notice_text(line, channel) for line in hub.received)
+                 if t is not None]
+
+    records = _read_json_lines(cservice_log)
+    assert records, sorted(p.name for p in conf_dir.iterdir())
+    assert all({"timestamp", "level", "logger", "message"}.issubset(r.keys()) for r in records)
+    assert any(r.get("logger") == "cservice" for r in records)
+
+    logins = [
+        r for r in records
+        if r.get("logger") == "cservice.commands" and r.get("command") == "LOGIN"
+    ]
+    assert logins, sorted({r.get("logger") for r in records})
+    assert logins[0].get("message") == "LOGIN by adminone", logins[0]
+
+    # The command log is the file's alone: its sentence is noise on a channel
+    assert not [t for t in texts if t.startswith("[cservice.commands]")], texts
+    assert not [t for t in texts if "LOGIN by" in t], texts
+
+    # additivity.cservice = no: none of it walks up to the sinks of the root
+    main_records = _read_json_lines(main_log)
+    assert main_records
+    assert not [
+        r for r in main_records if str(r.get("logger", "")).startswith("cservice")
+    ], [r for r in main_records if str(r.get("logger", "")).startswith("cservice")]
+
+    # And with no "logger.cservice.sql" line, the statements are not logged
+    assert not [
+        r for r in records
+        if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cservice_sql_debug_logs_every_statement_but_not_to_the_channel(
+    docker_stack, fake_hub_p11, tmp_path
+):
+    """"logger.cservice.sql = DEBUG" logs every statement in full, into
+    cservice.log - and the debug channel's own INFO level is what keeps those
+    DEBUG records off a channel."""
+    hub = fake_hub_p11
+    channel = "#coder-com"
+    ts = 1_700_000_005
+    burst = [f"{hub.server_numnick} B {channel} {ts} +tn"]
+    logging_conf, cservice_log, _main_log = _cservice_logging_conf(tmp_path, sql_debug=True)
+
+    async with link_cservice_logging(
+        docker_stack, hub, tmp_path, logging_conf=logging_conf, burst=burst,
+    ) as (hub, proc, conf_dir):
+        await _wait_for_notice(hub, channel, timeout=30.0, contains="Channel join complete")
+        await asyncio.sleep(0.5)
+
+        texts = [t for t in (_notice_text(line, channel) for line in hub.received)
+                 if t is not None]
+
+    records = _read_json_lines(cservice_log)
     queries = [
         r for r in records
         if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG" and "query" in r
     ]
-    assert queries, records
+    assert queries, sorted({r.get("logger") for r in records})
+
+    # Not one of them on the channel: a statement is never for a channel
+    assert not [t for t in texts if t.startswith("[cservice.sql]")], texts
 
 
 # --------------------------------------------------------------------------
@@ -610,12 +814,13 @@ async def test_cservice_command_log_keeps_its_arguments_out_of_the_channel(
     ts = 1_700_000_003
     argument = "nobody-42@scan.example.invalid"
     burst = [f"{hub.server_numnick} B {channel} {ts} +tn"]
+    logging_conf, cservice_log, _main_log = _cservice_logging_conf(tmp_path)
 
     async with link_cservice_logging(
-        docker_stack, hub, tmp_path, burst=burst,
+        docker_stack, hub, tmp_path, logging_conf=logging_conf, burst=burst,
     ) as (hub, proc, conf_dir):
-        # The channel sink of the deprecated fallback mode is live: a record of
-        # "cservice" itself does reach the debug channel at chan_verbosity = 4
+        # The channel sink is live: a record of "cservice" itself does reach the
+        # debug channel, which is what the command log must not do
         await _wait_for_notice(hub, channel, timeout=30.0, contains="Channel join complete")
 
         admin = await cs.login(hub)
@@ -627,7 +832,7 @@ async def test_cservice_command_log_keeps_its_arguments_out_of_the_channel(
         texts = [_notice_text(line, channel) for line in hub.received]
         console = list(proc.stdout_lines)
 
-    records = _read_json_lines(conf_dir / "cservice.log")
+    records = _read_json_lines(cservice_log)
 
     commands = [r for r in records if r.get("logger") == "cservice.commands"]
     assert commands, sorted({r.get("logger") for r in records})
@@ -650,7 +855,8 @@ async def test_cservice_command_log_keeps_its_arguments_out_of_the_channel(
 
 
 # --------------------------------------------------------------------------
-# 11. cservice configured mode: logging.conf configures logger.cservice.
+# 11. A "logger.cservice" line with a sink of its own routes the module's
+#     records there, at the level that line asks for.
 # --------------------------------------------------------------------------
 
 
@@ -670,6 +876,7 @@ async def test_cservice_configured_mode_uses_logging_conf(docker_stack, fake_hub
     async with link_cservice_logging(
         docker_stack, fake_hub_p11, tmp_path, logging_conf=logging_conf,
     ) as (hub, proc, conf_dir):
+        await cs.login(hub)
         await asyncio.sleep(0.5)
 
     assert not (conf_dir / "cservice.log").exists()
@@ -677,11 +884,10 @@ async def test_cservice_configured_mode_uses_logging_conf(docker_stack, fake_hub
     records = _read_json_lines(Path(log_path))
     assert any(r.get("logger") == "cservice" for r in records)
 
-    ignored = [
-        r for r in records
-        if "are ignored because logging.conf configures logger.cservice" in r.get("message", "")
-    ]
-    assert len(ignored) == 1, ignored
+    # The sub-loggers of cservice have no line of their own here: they inherit
+    # that level, and are additive, so the command log lands in the same file
+    assert any(r.get("logger") == "cservice.commands" for r in records), \
+        sorted({r.get("logger") for r in records})
 
 
 # --------------------------------------------------------------------------
@@ -751,12 +957,14 @@ async def test_a_statement_carrying_a_credential_is_kept_out_of_the_logs(
     """sqlUser::commit() writes the password, the TOTP key and the SCRAM record
     of a user.  Its statement is executed with logQuery = false, so neither the
     DEBUG record of a successful one nor the ERROR record of a failed one shows
-    it - even with log_sql = yes, which logs every other statement."""
+    it - even under "logger.cservice.sql = DEBUG", which logs every other
+    statement in full."""
     # doc/cservice.addme.sql: what "Admin" has in the password column
     password_hash = "xEDi1V791f7bddc526de7e3b0602d0b2993ce21d"
+    logging_conf, cservice_log, _main_log = _cservice_logging_conf(tmp_path, sql_debug=True)
 
     async with link_cservice_logging(
-        docker_stack, fake_hub_p11, tmp_path, cservice_overrides={"log_sql": "yes"},
+        docker_stack, fake_hub_p11, tmp_path, logging_conf=logging_conf,
     ) as (hub, proc, conf_dir):
         # The nick is what the trigger above looks at: this client's commits fail
         admin = await cs.login(hub, nick="sqlfail")
@@ -765,10 +973,10 @@ async def test_a_statement_carrying_a_credential_is_kept_out_of_the_logs(
 
         await asyncio.sleep(0.5)
 
-    text = (conf_dir / "cservice.log").read_text(encoding="utf-8", errors="replace")
-    records = _read_json_lines(conf_dir / "cservice.log")
+    text = cservice_log.read_text(encoding="utf-8", errors="replace")
+    records = _read_json_lines(cservice_log)
 
-    # log_sql = yes, so the statements that carry nothing secret are all there
+    # Every statement is logged, so the ones that carry nothing secret are there
     logged = [r for r in records if r.get("logger") == "cservice.sql" and r.get("level") == "DEBUG"]
     assert logged, sorted({r.get("logger") for r in records})
 
@@ -785,10 +993,16 @@ async def test_a_statement_carrying_a_credential_is_kept_out_of_the_logs(
 async def test_forced_sql_error_in_cservice(
     docker_stack, fake_hub_p11, tmp_path, broken_webnotices_table
 ):
-    async with link_cservice_logging(docker_stack, fake_hub_p11, tmp_path) as (hub, proc, conf_dir):
+    """A failed statement is an ERROR record of "cservice.sql" whatever the
+    logger is configured at: its code default reports errors and nothing else."""
+    logging_conf, cservice_log, _main_log = _cservice_logging_conf(tmp_path)
+
+    async with link_cservice_logging(
+        docker_stack, fake_hub_p11, tmp_path, logging_conf=logging_conf,
+    ) as (hub, proc, conf_dir):
         await asyncio.sleep(1.0)
 
-    records = _read_json_lines(conf_dir / "cservice.log")
+    records = _read_json_lines(cservice_log)
     errors = [r for r in records if r.get("logger") == "cservice.sql" and r.get("level") == "ERROR"]
     assert errors, records
     assert any(

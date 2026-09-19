@@ -38,8 +38,6 @@
 #include "logger.h"
 #include "LogManager.h"
 #include "LogSink.h"
-#include "LogSinks.h"
-#include "IrcLogSink.h"
 #include "client.h"
 #include "iClient.h"
 #include "iServer.h"
@@ -992,54 +990,31 @@ class cservice : public xClient {
 
   private:
     /**
-     * Puts this module's own logging keys on its logger, or takes them off again.
+     * Says once, when this module starts, that a conf file still carrying the
+     * logging keys cservice used to have is carrying them for nothing.
      *
      * log_verbosity, chan_verbosity, console_verbosity, log_sql and console_sql
-     * are what cservice was configured with before logging.conf existed, and are
-     * honoured for as long as that file says nothing about logger.cservice: this
-     * attaches the log file, the console and the debug channel the old keys ask
-     * for, keeps the module's records to them, and stops doing all of it as soon
-     * as the file does speak of this logger.
-     *
-     * Called once the notifier sinks of this instance are attached - their
-     * thresholds have a say in the level, as they had in the logger this one
-     * replaces - and again when the module is attached to a server, which is the
-     * first moment a channel sink is possible, and on every rehash.
+     * were what cservice was configured with before logging.conf existed; they
+     * are not read any more, and where this module's records go is a matter of
+     * logger.cservice in logging.conf like every other logger's.  An existing
+     * conf file keeps working with them in it, which is why this is a warning
+     * and not an error.
      */
-    void applyLegacyLogging();
-
-    /**
-     * The sinks the keys above asked for, held so that a rehash can change their
-     * thresholds and so that they go when this instance does.  The logger is the
-     * registry's and outlives the module; these are this module's own.
-     */
-    std::shared_ptr<LogSink> legacyFileSink;
-    std::shared_ptr<LogSink> legacyConsoleSink;
-    std::shared_ptr<IrcLogSink> legacyIrcSink;
+    void warnOfRemovedLoggingKeys();
 
     /**
      * The logger of the command log, "cservice.commands", looked up once and
      * held: one record per command a user sends X.
      *
-     * It is a logger of its own because the old command log went to this
-     * module's log file and to nowhere else - not to the console and above all
-     * not to the debug channel, which has readers the arguments of a HELLO or
-     * a SCANHOST are none of the business of.  In fallback mode
-     * applyLegacyLogging() reproduces that exactly; under a logging.conf it is
-     * an ordinary sub-logger of "cservice", which an operator routes or
-     * silences with a line of his own.
+     * It is a logger of its own because a command log has readers the arguments
+     * of a HELLO or a SCANHOST are none of the business of: its sentence names
+     * the command and the nick only, and "logger.cservice.commands" is what an
+     * operator routes or silences it with.
      *
      * It belongs to the registry and outlives this client, like the module's
      * own logger.
      */
     Logger* commandsLogger = nullptr;
-
-    /**
-     * Whether the last applyLegacyLogging() found logging.conf in charge of this
-     * module's logger, so that the line saying which keys are heard is logged
-     * when that answer changes and not on every rehash.
-     */
-    std::optional<bool> legacyLoggingAnnounced;
 };
 
 } // namespace gnuworld

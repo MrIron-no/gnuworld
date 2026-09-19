@@ -240,11 +240,18 @@ async def link_cservice_logging(
     burst: list[str] | None = None,
     logging_conf: str | None = None,
     cservice_overrides: dict[str, str] | None = None,
+    cservice_extra: str | None = None,
 ):
     """gnuworld with mod.cservice (X) and stealth mod.debug on a P11 link, like
     cservice_linked, but lets a test supply the hub's net burst (to create a
-    channel cservice's debug_channel names before the IRC sink needs it), an
-    optional logging.conf, and extra cservice.conf key overrides.
+    channel an irc sink of logging.conf names before it needs it), an optional
+    logging.conf, extra cservice.conf key overrides, and extra cservice.conf
+    lines.
+
+    ``cservice_extra`` is appended to cservice.conf verbatim, for keys that are
+    NOT in bin/cservice.example.conf at all - which override_conf_keys, needing
+    every key to be there already, cannot add: the five logging keys cservice
+    no longer reads are the case that wants it.
 
     Yields (hub, proc, conf_dir).
     """
@@ -256,6 +263,9 @@ async def link_cservice_logging(
     GnuworldProc.write_cservice_config(conf_dir / "cservice.conf")
     if cservice_overrides:
         override_conf_keys(conf_dir / "cservice.conf", cservice_overrides)
+    if cservice_extra:
+        with (conf_dir / "cservice.conf").open("a", encoding="utf-8") as fh:
+            fh.write("\n" + cservice_extra.rstrip("\n") + "\n")
     GnuworldProc.write_debug_config(conf_dir / "debug.conf")
     if logging_conf is not None:
         (conf_dir / "logging.conf").write_text(logging_conf, encoding="utf-8")
