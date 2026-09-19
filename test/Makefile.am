@@ -24,7 +24,8 @@ noinst_PROGRAMS = test_burst \
 	test_logger_basic \
 	test_logger_hierarchy \
 	test_logger_config \
-	test_elog_shim
+	test_elog_shim \
+	test_logger_adversarial
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
@@ -160,8 +161,17 @@ test_elog_shim_SOURCES = test/elog_shim.cc
 test_elog_shim_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_elog_shim_LDADD = libgnuworld.la $(threadLib)
 
+# Adversarial and integration-adjacent tests written from the spec: hostile
+# field values and templates through the full render/format pipeline, the
+# coloured name column's exact boundaries, a null pointer of an unregistered
+# type, and concurrent logging under a churning configuration.  libgnuworld
+# alone, like every other test_logger_* program.
+test_logger_adversarial_SOURCES = test/logger_adversarial.cc
+test_logger_adversarial_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_adversarial_LDADD = libgnuworld.la $(threadLib)
+
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
 TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
 	test_logger_format test_logger_sinks test_logger_basic test_logger_hierarchy \
-	test_logger_config test_elog_shim
+	test_logger_config test_elog_shim test_logger_adversarial
