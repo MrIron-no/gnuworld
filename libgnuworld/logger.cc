@@ -180,10 +180,37 @@ void Logger::setAdditive(bool newAdditive) {
     additive = newAdditive;
 }
 
+void Logger::setConfigAdditive(std::optional<bool> newAdditive) {
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    configAdditive = newAdditive;
+}
+
 bool Logger::isAdditive() const {
     const std::lock_guard<std::mutex> guard(logMutex);
 
-    return additive;
+    return isAdditiveLocked();
+}
+
+/**
+ * Hands back the level, the sinks and the additivity a configuration file left
+ * here, so that the next one starts from what the code alone asked for.
+ *
+ * The sinks are moved rather than dropped: the caller is the registry, holding
+ * its own lock, and letting go of the last reference to a sink closes a file.
+ */
+void Logger::clearConfigState(std::vector<std::shared_ptr<LogSink>>& released) {
+    const std::lock_guard<std::mutex> guard(logMutex);
+
+    configLevel = std::nullopt;
+    configAdditive = std::nullopt;
+
+    released.reserve(released.size() + configSinks.size());
+
+    for (SinkEntry& entry : configSinks)
+        released.push_back(std::move(entry.first));
+
+    configSinks.clear();
 }
 
 /**
@@ -357,7 +384,7 @@ void Logger::log(LogRecord&& record) {
             }
 
             step->appendTargetsLocked(targets, this == step);
-            walkOn = step->additive;
+            walkOn = step->isAdditiveLocked();
         }
 
         if (!walkOn)

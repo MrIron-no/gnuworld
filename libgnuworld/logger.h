@@ -190,9 +190,17 @@ class Logger {
 
     /**
      * Whether a record of this logger also reaches the sinks of its ancestors.
-     * True unless it is set otherwise.
+     * True unless it is set otherwise.  This is what the code asks for, which
+     * the configuration file overrides while it says anything about it.
      */
     void setAdditive(bool);
+
+    /**
+     * What an "additivity.<name>" line of the configuration file asked for, or
+     * nothing when the file says nothing about this logger, in which case the
+     * answer of the code stands again.
+     */
+    void setConfigAdditive(std::optional<bool>);
 
     /// Whether the records of this logger walk up to the sinks of its parent
     bool isAdditive() const;
@@ -640,6 +648,20 @@ class Logger {
     /// The extractor of this type, or an empty one when there is none
     static Extractor findExtractor(std::type_index);
 
+    /**
+     * Hands back everything a configuration file left here - the level, the
+     * sinks and the additivity - so that the next configuration starts from what
+     * the code alone asked for.
+     *
+     * The sinks are moved into released rather than let go of here: the caller
+     * is the registry, which holds its own lock, and a sink that is destroyed
+     * closes a file.  The registry lets go of them once it has let go of that.
+     */
+    void clearConfigState(std::vector<std::shared_ptr<LogSink>>& released);
+
+    /// Whether records walk up to the parent, with this logger's mutex held
+    bool isAdditiveLocked() const { return configAdditive.value_or(additive); }
+
     /// Registers or replaces the extractor of one type
     static void setExtractor(std::type_index, const void* owner, Extractor);
 
@@ -683,13 +705,19 @@ class Logger {
     Logger* const parent;
 
     /**
-     * The three levels this logger may have, highest precedence first, and
-     * whether its records also reach the sinks of its ancestors.
+     * The three levels this logger may have, highest precedence first.
      */
     std::optional<Verbosity> configLevel;
     std::optional<Verbosity> legacyLevel;
     std::optional<Verbosity> codeDefault;
+
+    /**
+     * Whether the records of this logger walk up to its ancestors: what the code
+     * asked for, and over it what the configuration file did, so that reading
+     * the file again gives the code's answer back.
+     */
     bool additive = true;
+    std::optional<bool> configAdditive;
 
     /**
      * The destinations: what a configuration file asked for, which is replaced

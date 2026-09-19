@@ -24,8 +24,10 @@
 #ifndef __LOGMANAGER_H
 #define __LOGMANAGER_H
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "LogRecord.h"
 
@@ -33,6 +35,9 @@ namespace gnuworld {
 
 class Logger;
 class LogSink;
+
+struct LogConfig;
+struct SinkSpec;
 
 /**
  * The loggers of the process, by name, under one unnamed root.
@@ -108,6 +113,62 @@ class LogManager {
      */
     static std::shared_ptr<LogSink> bootstrapConsoleSink();
 
+    /**
+     * How a type name of logging.conf becomes a sink.  The specification holds
+     * every setting the file may carry, of which a factory reads the ones its
+     * own kind of sink has; a factory that cannot make its sink says why in
+     * error and returns nothing, which makes the whole configuration fail.
+     */
+    using SinkFactory =
+        std::function<std::shared_ptr<LogSink>(const SinkSpec&, std::string& error)>;
+
+    /**
+     * Teaches the configuration a kind of sink: "file" and "console" are known
+     * from the outset, "irc" is registered by core, which is the only layer that
+     * knows what a channel is, and a notifier registers its own.  The type name
+     * is matched without regard to case; registering one again replaces it.
+     */
+    static void registerSinkType(const std::string& type, SinkFactory);
+
+    /**
+     * Applies a whole configuration, or none of it.
+     *
+     * Every sink is built first: if any of them cannot be made - an unknown
+     * type, a file that will not open - nothing at all changes, the reasons are
+     * in errors, and this returns false.  Only once they all exist does the
+     * configuration take effect: every logger of the process loses the level,
+     * the sinks and the additivity a previous configuration gave it, the specs
+     * are applied to the loggers they name, and the root loses the console sink
+     * it had while nothing was configured.
+     *
+     * What the code did is left alone: sinks attached with Logger::addSink, the
+     * defaults of child(name, level), the levels of the legacy module keys and
+     * an additivity the code asked for all survive.
+     */
+    static bool configure(const LogConfig&, std::vector<std::string>& errors);
+
+    /**
+     * Whether the configuration in force has a "logger.<name>" line of its own
+     * for this logger.  A line that only speaks of its additivity does not
+     * count, and the root answers to both of its names.
+     */
+    static bool isConfigured(const std::string& name);
+
+    /**
+     * Reads a logging.conf and applies it.  A file that cannot be read or that
+     * cannot be applied leaves the configuration in force exactly as it was and
+     * is reported, one record per problem, at ERROR on "core.config".
+     */
+    static bool loadFile(const std::string& fileName);
+
+    /**
+     * Adds a human-readable log file to the root, for a process that has no
+     * logging.conf to tell it where to write.  This is a sink of the code, so a
+     * configuration that is read later does not take it away; asking twice for
+     * the same path changes nothing.
+     */
+    static void bootstrapFile(const std::string& path);
+
   private:
     /// Everything the registry knows, which is never destroyed
     struct State;
@@ -126,6 +187,9 @@ class LogManager {
 
     /// Tells the text sinks how wide the logger name column has to be
     static void updateNameWidthLocked(State&);
+
+    /// The factory of this type name, or an empty one when none is registered
+    static SinkFactory findSinkFactory(const std::string& type);
 }; // class LogManager
 
 } // namespace gnuworld

@@ -19,13 +19,17 @@
  */
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "LogConfig.h"
 #include "LogRecord.h"
 #include "LogSink.h"
 #include "LogSinks.h"
@@ -45,6 +49,39 @@ const std::size_t maximumNameWidth = 20;
 /// The width the name of the root takes, which it prints as
 const std::size_t rootNameWidth = 4;
 
+/// A type name as the registry of the sink kinds keys it: without its case
+string lowerType(const string& type) {
+    string folded;
+    folded.reserve(type.size());
+
+    for (const char c : type)
+        folded += static_cast<char>((c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c);
+
+    return folded;
+}
+
+/**
+ * The kind of sink that writes lines to a file, which is the one every
+ * configuration is likely to name.  A file that will not open is the reason the
+ * whole configuration is refused: a log nobody can read is not a log.
+ */
+std::shared_ptr<LogSink> makeFileSink(const SinkSpec& spec, string& error) {
+    const std::shared_ptr<FileSink> sink = std::make_shared<FileSink>(spec.path, spec.json);
+
+    if (!sink->isOpen()) {
+        error = "cannot open " + spec.path;
+
+        return nullptr;
+    }
+
+    return sink;
+}
+
+/// The kind of sink that writes to the terminal the process was started from
+std::shared_ptr<LogSink> makeConsoleSink(const SinkSpec& spec, string&) {
+    return std::make_shared<ConsoleSink>(spec.colour, spec.highlight);
+}
+
 } // namespace
 
 /**
@@ -57,6 +94,15 @@ struct LogManager::State {
     Logger* rootLogger = nullptr;
     std::shared_ptr<LogSink> bootstrapConsole;
     string loadingModule;
+
+    /// The kinds of sink a configuration may name, by type name without its case
+    std::map<string, SinkFactory> sinkFactories;
+
+    /// The loggers the configuration in force has a "logger.<name>" line for
+    std::set<string> configuredLoggers;
+
+    /// The paths bootstrapFile() has already given the root a log file for
+    std::set<string> bootstrapFiles;
 };
 
 /**
@@ -73,6 +119,12 @@ LogManager::State* LogManager::createState() {
     // a message logged while the process starts up has to be seen somewhere
     fresh->bootstrapConsole = std::make_shared<ConsoleSink>(ConsoleSink::Colour::Auto, true);
     fresh->rootLogger->addSink(fresh->bootstrapConsole, TRACE);
+
+    /* The two kinds of sink that need nothing but the standard library are known
+     * from the outset.  A channel sink is core's to register, because only core
+     * knows what a channel is, and a notifier registers its own */
+    fresh->sinkFactories[string("file")] = &makeFileSink;
+    fresh->sinkFactories[string("console")] = &makeConsoleSink;
 
     LogSinks::setNameWidth(rootNameWidth);
 
@@ -276,6 +328,201 @@ std::shared_ptr<LogSink> LogManager::bootstrapConsoleSink() {
     const std::lock_guard<std::mutex> guard(registry.lock);
 
     return registry.bootstrapConsole;
+}
+
+/**
+ * Teaches the configuration a kind of sink.
+ *
+ * The factory that was there, if any, is handed out of the lock and let go of
+ * afterwards: a factory may hold a sink of its own, and letting go of the last
+ * reference to a sink closes a file, which is not something to do while the
+ * registry is locked.
+ */
+void LogManager::registerSinkType(const string& type, SinkFactory factory) {
+    SinkFactory replaced;
+
+    {
+        State& registry = state();
+
+        const std::lock_guard<std::mutex> guard(registry.lock);
+
+        SinkFactory& slot = registry.sinkFactories[lowerType(type)];
+
+        replaced.swap(slot);
+        slot = std::move(factory);
+    }
+
+    // And whatever the factory that was there held goes here, unlocked
+    replaced = SinkFactory();
+}
+
+LogManager::SinkFactory LogManager::findSinkFactory(const string& type) {
+    State& registry = state();
+
+    const std::lock_guard<std::mutex> guard(registry.lock);
+
+    const std::map<string, SinkFactory>::const_iterator known =
+        registry.sinkFactories.find(lowerType(type));
+
+    return registry.sinkFactories.end() == known ? SinkFactory() : known->second;
+}
+
+/**
+ * Applies a whole configuration, or none of it.
+ *
+ * Every sink is built before anything is changed, because a sink is the part
+ * that can fail: a type nothing has registered, a file that will not open.  If
+ * any of them cannot be made, what was built is thrown away, the reasons are in
+ * errors and the configuration in force is untouched.
+ *
+ * The swap that follows happens under the registry's lock, so that no record is
+ * dispatched half way between two configurations.  Nothing is called on a sink
+ * while that lock is held: the sinks of the configuration before this one are
+ * carried out of it and let go of afterwards, where closing their files is no
+ * concern of anyone waiting for the registry.
+ */
+bool LogManager::configure(const LogConfig& config, std::vector<string>& errors) {
+    errors.clear();
+
+    std::map<string, std::shared_ptr<LogSink>> built;
+    std::map<string, Verbosity> thresholds;
+
+    for (const SinkSpec& spec : config.sinks) {
+        const SinkFactory factory = findSinkFactory(spec.type);
+
+        if (nullptr == factory) {
+            errors.push_back("sink." + spec.id + ".type: unknown sink type '" + spec.type + "'");
+            continue;
+        }
+
+        string why;
+        const std::shared_ptr<LogSink> sink = factory(spec, why);
+
+        if (nullptr == sink) {
+            errors.push_back("sink." + spec.id + ": " +
+                             (why.empty() ? string("the sink could not be made") : why));
+            continue;
+        }
+
+        built[spec.id] = sink;
+        thresholds[spec.id] = spec.level;
+    }
+
+    if (!errors.empty()) {
+        // Nothing at all changes; what was built is let go of here, unlocked
+        built.clear();
+
+        return false;
+    }
+
+    std::vector<std::shared_ptr<LogSink>> replaced;
+
+    {
+        State& registry = state();
+
+        const std::lock_guard<std::mutex> guard(registry.lock);
+
+        /* Whatever a configuration before this one left on a logger goes, so
+         * that a line dropped from the file is a line that no longer applies.
+         * What the code asked for - its sinks, its defaults, the levels of the
+         * legacy module keys, its additivity - is not this function's to touch */
+        for (const std::pair<const string, Logger*>& entry : registry.loggers)
+            entry.second->clearConfigState(replaced);
+
+        registry.configuredLoggers.clear();
+
+        for (const LoggerSpec& spec : config.loggers) {
+            const string name = normaliseName(spec.name);
+            Logger* const logger = getLocked(registry, name);
+
+            logger->setConfigLevel(spec.level);
+            logger->setConfigAdditive(spec.additive);
+
+            for (const string& id : spec.sinks) {
+                const std::map<string, std::shared_ptr<LogSink>>::const_iterator sink =
+                    built.find(id);
+
+                // parseLogConfig() refuses a file naming a sink it has not, so
+                // this only skips a LogConfig somebody built by hand
+                if (built.end() == sink)
+                    continue;
+
+                const std::map<string, Verbosity>::const_iterator threshold = thresholds.find(id);
+
+                logger->addConfigSink(sink->second,
+                                      thresholds.end() == threshold ? TRACE : threshold->second);
+            }
+
+            /* A level line is what makes a logger a configured one; a line that
+             * only speaks of its additivity says nothing about where it logs */
+            if (spec.level)
+                registry.configuredLoggers.insert(name);
+        }
+
+        /* With a configuration in force the root no longer needs the console it
+         * was given so that whatever start-up logged would be seen */
+        if (nullptr != registry.bootstrapConsole)
+            registry.rootLogger->removeSink(registry.bootstrapConsole);
+    }
+
+    // The sinks of the configuration before this one go here, outside the lock
+    replaced.clear();
+
+    return true;
+}
+
+bool LogManager::isConfigured(const string& name) {
+    State& registry = state();
+    const string normalised = normaliseName(name);
+
+    const std::lock_guard<std::mutex> guard(registry.lock);
+
+    return registry.configuredLoggers.end() != registry.configuredLoggers.find(normalised);
+}
+
+/**
+ * Reads a logging.conf and applies it.
+ *
+ * Whatever went wrong is logged once configure() has returned and no lock of the
+ * registry is held any more: reporting a problem is itself logging, and logging
+ * writes to sinks.
+ */
+bool LogManager::loadFile(const string& fileName) {
+    LogConfig config;
+    std::vector<string> errors;
+
+    bool applied = parseLogConfig(fileName, config, errors);
+
+    if (applied)
+        applied = configure(config, errors);
+
+    if (!applied) {
+        Logger* const reporter = get("core.config");
+
+        for (const string& error : errors)
+            LOG_TO(reporter, ERROR, "logging.conf: {}", error);
+    }
+
+    return applied;
+}
+
+/**
+ * Gives the root a human-readable log file, for a process with no logging.conf
+ * to say where records go.  This is a sink of the code, so a configuration read
+ * later leaves it where it is; the same path twice is the same sink once.
+ */
+void LogManager::bootstrapFile(const string& path) {
+    {
+        State& registry = state();
+
+        const std::lock_guard<std::mutex> guard(registry.lock);
+
+        if (!registry.bootstrapFiles.insert(path).second)
+            return;
+    }
+
+    // Opening the file, and attaching it, with no lock of the registry held
+    root()->addSink(std::make_shared<FileSink>(path, false), TRACE);
 }
 
 } // namespace gnuworld
