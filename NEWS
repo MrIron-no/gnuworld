@@ -1,4 +1,26 @@
 
+2026-09-19: A channel records who set each ban and when
+
+A Channel used to keep nothing but the mask of a ban.  It now keeps, beside
+the mask, who set the ban and when - Channel::getBanInfo() - and mod.debug's
+CHANINFO reports both, one ban per line:
+
+  Ban list (2):
+    *!*@bad.host  set by alice  at 2026-09-19 17:43:47 (0 days, 00:00:00 ago)
+    *!*@old.host  set by OldOp  at 2026-09-19 16:43:56 (0 days, 00:59:51 ago)
+
+CHANINFO used to pack the masks into comma-separated lines, so a script that
+reads its output needs adjusting.  Nothing else changes: the ban list itself,
+what its iterators yield and xClient::OnChannelModeB() are as they were.
+
+P10 carries neither a setter nor a time with a ban, so what is recorded is
+what gnuworld saw, which is how ircu records a ban too: for a live MODE +b
+the source's nick (a server's name for an OPMODE, a server MODE or a ban of
+our own) and the time the line arrived; for a burst ban what the burst says,
+since a P11 BURST sends each ban as a "mask timestamp setter" triplet, and
+otherwise the bursting server and the time it arrived.  A ban gnuworld cannot
+place a name on is shown as "set by (unknown)".
+
 2026-09-19: ThreadWorker is the background-thread primitive
 
 libgnuworld's gThread class is removed; ThreadWorker (threadworker.h) is the

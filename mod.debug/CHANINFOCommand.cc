@@ -17,6 +17,8 @@
  * USA.
  */
 
+#include <ctime>
+#include <format>
 #include <string>
 
 #include "Network.h"
@@ -106,20 +108,24 @@ void CHANINFOCommand::Exec(const iClient* theClient, const std::string& Message)
         return;
     }
 
+    // One notice per ban, so that each has room for who set it and when.
+    // A channel with many bans is many notices; a mask and a setter are both
+    // bounded by the network's name lengths, so a line stays well inside the
+    // 400 bytes a notice used to be packed up to.
     bot->Notice(theClient, "Ban list ({}):", theChan->banList_size());
-    std::string banLine;
     for (auto banItr = theChan->banList_begin(); banItr != theChan->banList_end(); ++banItr) {
-        if (!banLine.empty() && (banLine.size() + banItr->size()) > 400) {
-            bot->Notice(theClient, "  {}", banLine);
-            banLine.clear();
-        }
-        if (!banLine.empty()) {
-            banLine += ", ";
-        }
-        banLine += *banItr;
-    }
-    if (!banLine.empty()) {
-        bot->Notice(theClient, "  {}", banLine);
+        // The core records both for every ban it holds.  A path that could
+        // not know who set one leaves the name empty; no details at all
+        // would be a bug in the bookkeeping, not a ban nobody set.
+        const Channel::BanInfo* banInfo = theChan->getBanInfo(*banItr);
+        const std::string setBy =
+            (banInfo != nullptr && !banInfo->setBy.empty()) ? banInfo->setBy : "(unknown)";
+        const std::string setAt = (banInfo != nullptr && banInfo->setAt != 0)
+                                      ? std::format("{} ({} ago)", prettyTime(banInfo->setAt),
+                                                    prettyDuration(banInfo->setAt))
+                                      : "(unknown)";
+
+        bot->Notice(theClient, "  {}  set by {}  at {}", *banItr, setBy, setAt);
     }
 }
 

@@ -6,10 +6,28 @@ some server-to-server traffic, rather than on the traffic itself.
 
 from __future__ import annotations
 
+import calendar
 import re
+import time
 from dataclasses import dataclass, field
 
 from p10 import p10_token
+
+# "  *!*@bad.host  set by SomeNick  at 2026-09-19 19:09:14 (0 days, 00:03:00 ago)",
+# or "... at (unknown)" for a ban whose details the core does not have.
+BAN_LINE = re.compile(r"^  (?P<mask>\S+)  set by (?P<setby>.+?)  at (?P<at>.+)$")
+
+
+def _ban_time(at: str) -> int | None:
+    """The epoch seconds of a ban line's "at" field, or None if it has none.
+
+    mod.debug prints the absolute part with misc.h's prettyTime(), which is
+    UTC ("%F %H:%M:%S"), followed by prettyDuration() in brackets.
+    """
+    m = re.match(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", at)
+    if not m:
+        return None
+    return calendar.timegm(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
 
 
 @dataclass
@@ -24,6 +42,10 @@ class ChanInfo:
     topic: str = ""
     members: dict[str, str] = field(default_factory=dict)  # nick -> none | hide | +v | +o | +o+v
     bans: set[str] = field(default_factory=set)
+    # One entry per ban: the nick or server name CHANINFO names, "(unknown)"
+    # where it has none, and when the ban was set (UTC epoch seconds).
+    ban_setters: dict[str, str] = field(default_factory=dict)
+    ban_times: dict[str, int] = field(default_factory=dict)
 
 
 async def chaninfo(hub, asker: str, channel: str, timeout: float = 10.0) -> ChanInfo:
@@ -62,8 +84,13 @@ async def chaninfo(hub, asker: str, channel: str, timeout: float = 10.0) -> Chan
             return True
         elif m := re.match(r"Ban list \((\d+)\):", text):
             state["bans_expected"] = int(m.group(1))
-        elif state["bans_expected"] >= 0 and text.startswith("  "):
-            info.bans.update(mask.strip() for mask in text.split(","))
+        elif state["bans_expected"] >= 0 and (m := BAN_LINE.match(text)):
+            # One notice per ban: the mask, who set it and when
+            mask = m.group("mask")
+            info.bans.add(mask)
+            info.ban_setters[mask] = m.group("setby")
+            if (when := _ban_time(m.group("at"))) is not None:
+                info.ban_times[mask] = when
             return len(info.bans) >= state["bans_expected"]
         return False
 
