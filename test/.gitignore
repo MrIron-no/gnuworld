@@ -7,7 +7,6 @@ test_mtrie_load
 test_mtrie
 test_match
 test_kick_transaction
-test_gThread
 test_econfig
 test_burst
 test_bot

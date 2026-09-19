@@ -28,7 +28,6 @@
 #include "client.h"
 #include "server.h"
 #include "iClient.h"
-#include "dbThread.h"
 #include "ScannerModule.h"
 
 namespace gnuworld {
@@ -39,9 +38,11 @@ namespace gnuworld {
  */
 class scanner : public xClient {
 
-    /// The database interface thread, this thread performs all db
-    /// related processing, including the db communications
-    dbThread theThread;
+    /* A db thread member used to be declared here, and was never started, so
+     * no thread of this module's own has ever run.  Background work here, when
+     * it gets any, belongs on a ThreadWorker (#include "threadworker.h",
+     * submitJob()), which is the background-thread primitive the core uses.
+     */
 
   public:
     /**

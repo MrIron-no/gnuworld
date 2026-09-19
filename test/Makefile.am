@@ -8,7 +8,6 @@ noinst_PROGRAMS = test_burst \
 	test_mtrie \
 	test_stringtokenizer \
 	test_econfig \
-	test_gThread \
 	test_signal \
 	test_match \
 	test_bot \
@@ -97,10 +96,6 @@ test_stringtokenizer_trailing_LDADD = libgnuworld.la
 test_regex_SOURCES = test/test_regex.cc
 test_regex_LDADD = libgnuworld.la -lpcre
 
-test_gThread_SOURCES = test/gThread.cc
-test_gThread_LDADD = libgnuworld.la $(threadLib)
-test_gThread_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
-
 test_signal_SOURCES = test/signal.cc
 test_signal_LDADD = libgnuworld.la $(threadLib)
 test_signal_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
@@ -109,7 +104,6 @@ EXTRA_DIST += \
 	test/testbot.h \
 	test/README.burst \
 	test/README.econfig \
-	test/README.gthread \
 	test/README.match \
 	test/README.mtrie \
 	test/README.signal \

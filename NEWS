@@ -1,4 +1,10 @@
 
+2026-09-19: ThreadWorker is the background-thread primitive
+
+libgnuworld's gThread class is removed; ThreadWorker (threadworker.h) is the
+background-thread primitive.  mod.scanner's dbThread, an empty subclass that
+was never started, went with it.
+
 2026-09-19: One hierarchical logger, in libgnuworld
 
 GNUWorld's three loggers - the old elog stream, mod.cservice's own
