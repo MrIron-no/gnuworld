@@ -74,6 +74,7 @@
 #include "logger.h"
 #include "pushover.h"
 #include "StringTokenizer.h"
+#include "version.h"
 #include "xparameters.h"
 #include "moduleLoader.h"
 #include "ServerTimerHandlers.h"
@@ -1759,6 +1760,11 @@ void xServer::setupLogging(bool reload) {
                        .debugLogFileGiven = elogFileGiven,
                        .debugLogFile = elogFileName,
                        .reload = reload});
+
+    // Which build wrote this log
+    if (!reload) {
+        LOG(INFO, "{}", versionString());
+    }
 }
 
 void xServer::startLogging(bool logrotate) {
