@@ -564,21 +564,17 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
             draft.spec.level = level;
             draft.levelKey = shownKey;
 
+            // Kept beside the list: half a million distinct ids must not be
+            // compared with each other one by one
+            std::set<string> listed;
+
             for (std::size_t at = 1; at < parts.size(); ++at) {
                 if (parts[at].empty()) {
                     addListError(shownKey + ": an empty sink id in the list");
                     continue;
                 }
 
-                bool already = false;
-
-                for (const string& known : draft.spec.sinks)
-                    if (known == parts[at]) {
-                        already = true;
-                        break;
-                    }
-
-                if (already) {
+                if (!listed.insert(parts[at]).second) {
                     addListError(shownKey + ": the sink \"" + shown(parts[at]) +
                                  "\" is listed twice");
                     continue;

@@ -138,6 +138,9 @@ class IrcLogSink : public LogSink, public std::enable_shared_from_this<IrcLogSin
     bool highlight;
     std::deque<LogRecord> queue;
     std::size_t droppedCount;
+
+    /// How many of those a flush has already said were dropped
+    std::size_t reportedCount = 0;
 };
 
 } // namespace gnuworld

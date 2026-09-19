@@ -72,19 +72,6 @@ static std::vector<IrcLogSink*>& registry() {
     return *sinks;
 }
 
-/**
- * How many dropped records of each sink have already been reported, so that
- * one flush says what that flush lost and no flush says it twice.  It is kept
- * beside the registry, under the registry's lock, rather than in the sink: the
- * count of a sink that is gone goes with it, in the destructor below.
- */
-static std::map<const IrcLogSink*, std::size_t>& reportedDrops() {
-    static std::map<const IrcLogSink*, std::size_t>* const counts =
-        new std::map<const IrcLogSink*, std::size_t>();
-
-    return *counts;
-}
-
 IrcLogSink::IrcLogSink(xServer* server, std::string channel, bool highlight)
     : server(server), channel(std::move(channel)), highlight(highlight), droppedCount(0) {
     const std::lock_guard<std::mutex> guard(registryLock());
@@ -98,7 +85,6 @@ IrcLogSink::~IrcLogSink() {
     std::vector<IrcLogSink*>& sinks = registry();
 
     sinks.erase(std::remove(sinks.begin(), sinks.end(), this), sinks.end());
-    reportedDrops().erase(this);
 }
 
 void IrcLogSink::setMainThread() {
@@ -139,16 +125,10 @@ void IrcLogSink::flush() {
 
         pending.swap(queue);
 
-        lost = droppedCount;
-    }
-
-    {
-        const std::lock_guard<std::mutex> guard(registryLock());
-
-        std::size_t& reported = reportedDrops()[this];
-
-        lost -= reported;
-        reported += lost;
+        // What this flush has to own up to: one flush says what it lost, and
+        // no flush says it twice
+        lost = droppedCount - reportedCount;
+        reportedCount = droppedCount;
     }
 
     // The lock is gone: nothing of this sink is held while notices are sent
