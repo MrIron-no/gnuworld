@@ -112,22 +112,6 @@ bool escapeValue(CURL* curl, const std::string& value, std::string& escaped) {
 }
 
 /**
- * The fields as an application/x-www-form-urlencoded body.
- *
- * EVERY value is percent-encoded, which is the whole point of this function.  A
- * notification's title and message are a rendered log sentence, and a log
- * sentence holds whatever a remote server or an IRC user put into it: a channel
- * name may legally contain "&", "=", "%", "#" and "+", so a value written into
- * the body as it stands is a value that can end its own field and begin another
- * one - a second "user" redirecting the page, with this deployment's own token,
- * to somebody else's account, or an "html", a "url", a "sound" nobody
- * configured.  The NAMES are literals of this file and never come from anywhere
- * else, so only the values need encoding.
- *
- * Throws when libcurl cannot encode a value: a body with one unescaped field in
- * it is worse than a notification that was not sent.
- */
-/**
  * A libcurl easy handle and the header list of its one request, freed however
  * this request is left.
  *
@@ -165,6 +149,22 @@ class Request {
     struct curl_slist* headers = nullptr;
 };
 
+/**
+ * The fields as an application/x-www-form-urlencoded body.
+ *
+ * EVERY value is percent-encoded, which is the whole point of this function.  A
+ * notification's title and message are a rendered log sentence, and a log
+ * sentence holds whatever a remote server or an IRC user put into it: a channel
+ * name may legally contain "&", "=", "%", "#" and "+", so a value written into
+ * the body as it stands is a value that can end its own field and begin another
+ * one - a second "user" redirecting the page, with this deployment's own token,
+ * to somebody else's account, or an "html", a "url", a "sound" nobody
+ * configured.  The NAMES are literals of this file and never come from anywhere
+ * else, so only the values need encoding.
+ *
+ * Throws when libcurl cannot encode a value: a body with one unescaped field in
+ * it is worse than a notification that was not sent.
+ */
 std::string formBody(CURL* curl, const std::vector<formFieldType>& fields) {
     std::ostringstream body;
 
