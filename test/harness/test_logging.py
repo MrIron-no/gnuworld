@@ -53,9 +53,14 @@ def _notice_text(line: str, channel: str) -> str | None:
     return parts[3][1:] if parts[3].startswith(":") else parts[3]
 
 
-async def _wait_for_notice(hub, channel: str, timeout: float = 10.0, after: int = 0) -> str:
+async def _wait_for_notice(hub, channel: str, timeout: float = 10.0, after: int = 0,
+                           contains: str = "") -> str:
+    """The next NOTICE to ``channel`` whose text contains ``contains``.  A test
+    names the record it is about: other records may reach the channel first
+    (a SIGHUP, for one, is itself logged before the reload it causes)."""
     def pred(line: str) -> bool:
-        return _notice_text(line, channel) is not None
+        text = _notice_text(line, channel)
+        return text is not None and contains in text
 
     line = await hub.wait_for(pred, timeout=timeout, after=after)
     return _notice_text(line, channel)
@@ -512,7 +517,8 @@ async def test_irc_sink_delivers_a_notice_with_highlighted_value(docker_stack, f
         # "Reloaded <path>" on "core" - a record with a substituted value
         idx = len(hub.received)
         await send_gnuworld_signal(proc, signal.SIGHUP)
-        notice = await _wait_for_notice(hub, channel, timeout=15.0, after=idx)
+        notice = await _wait_for_notice(hub, channel, timeout=15.0, after=idx,
+                                        contains="Reloaded")
 
         assert notice.startswith("[core] "), notice
         assert "\x02" in notice, "the substituted file name was not bolded"
@@ -523,7 +529,8 @@ async def test_irc_sink_delivers_a_notice_with_highlighted_value(docker_stack, f
         override_conf_keys(conf_dir / "logging.conf", {"sink.chan.highlight": "no"})
         idx2 = len(hub.received)
         await send_gnuworld_signal(proc, signal.SIGHUP)
-        notice2 = await _wait_for_notice(hub, channel, timeout=15.0, after=idx2)
+        notice2 = await _wait_for_notice(hub, channel, timeout=15.0, after=idx2,
+                                         contains="Reloaded")
 
         assert notice2.startswith("[core] "), notice2
         assert "\x02" not in notice2
@@ -758,7 +765,8 @@ async def test_reconnect_cycle_with_irc_sink_survives(docker_stack, fake_hub, tm
         # sink bound to the new server object
         idx = len(hub.received)
         await send_gnuworld_signal(proc, signal.SIGHUP)
-        notice = await _wait_for_notice(hub, channel, timeout=15.0, after=idx)
+        notice = await _wait_for_notice(hub, channel, timeout=15.0, after=idx,
+                                        contains="Reloaded")
         assert notice.startswith("[core] ")
 
 
