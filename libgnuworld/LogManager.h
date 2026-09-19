@@ -160,8 +160,8 @@ class LogManager {
      * child already on the new configuration and a parent still on the old.
      *
      * What the code did is left alone: sinks attached with Logger::addSink, the
-     * defaults of child(name, level), the levels of the legacy module keys and
-     * an additivity the code asked for all survive.
+     * defaults of child(name, level) and an additivity the code asked for all
+     * survive.
      */
     static bool configure(const LogConfig&, std::vector<std::string>& errors);
 

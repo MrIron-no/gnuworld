@@ -128,8 +128,6 @@ Verbosity Logger::effectiveLevel() const {
 
             if (step->configLevel)
                 own = step->configLevel;
-            else if (step->legacyLevel)
-                own = step->legacyLevel;
             else if (step->codeDefault)
                 own = step->codeDefault;
         }
@@ -150,12 +148,6 @@ void Logger::setConfigLevel(std::optional<Verbosity> newLevel) {
     const std::lock_guard<std::mutex> guard(logMutex);
 
     configLevel = newLevel;
-}
-
-void Logger::setLegacyLevel(std::optional<Verbosity> newLevel) {
-    const std::lock_guard<std::mutex> guard(logMutex);
-
-    legacyLevel = newLevel;
 }
 
 void Logger::setCodeDefault(Verbosity newLevel) {

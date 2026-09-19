@@ -140,12 +140,12 @@ class Logger {
     Logger* getParent() const { return parent; }
 
     /**
-     * The level this logger logs at: its own configured level, else the level
-     * its legacy module keys asked for, else the default its code supplied,
-     * else whatever its parent logs at, and INFO when nothing at all was said.
+     * The level this logger logs at: its own configured level, else the default
+     * its code supplied, else whatever its parent logs at, and INFO when nothing
+     * at all was said.
      *
-     * The legacy level and the code default are properties of this logger only:
-     * a child inherits the effective level of its parent, not the reason for it.
+     * The code default is a property of this logger only: a child inherits the
+     * effective level of its parent, not the reason for it.
      */
     Verbosity effectiveLevel() const;
 
@@ -167,12 +167,6 @@ class Logger {
      * nothing about this logger: the highest precedence there is.
      */
     void setConfigLevel(std::optional<Verbosity>);
-
-    /**
-     * The level the legacy per-module configuration keys asked for, which a
-     * configured level beats and which beats the default of the code.
-     */
-    void setLegacyLevel(std::optional<Verbosity>);
 
     /**
      * The level this logger has unless something above says otherwise, as in
@@ -206,7 +200,7 @@ class Logger {
 
     /**
      * The same, giving the child the level it logs at unless a configuration
-     * file or a legacy key says otherwise.
+     * file says otherwise.
      */
     Logger* child(const std::string& sub, Verbosity codeDefault);
 
@@ -613,10 +607,9 @@ class Logger {
     Logger* const parent;
 
     /**
-     * The three levels this logger may have, highest precedence first.
+     * The two levels this logger may have, highest precedence first.
      */
     std::optional<Verbosity> configLevel;
-    std::optional<Verbosity> legacyLevel;
     std::optional<Verbosity> codeDefault;
 
     /**

@@ -151,9 +151,8 @@ void testInheritance() {
 }
 
 /**
- * The precedence list: a configured level beats a legacy one, a legacy one
- * beats the default the code asked for, and all three beat what the parent
- * says.  The code default is only ever set once.
+ * The precedence list: a configured level beats the default the code asked for,
+ * and both beat what the parent says.  The code default is only ever set once.
  */
 void testCodeDefault() {
     LogManager::get("cd")->setLevel(DEBUG);
@@ -175,19 +174,17 @@ void testCodeDefault() {
     sql->setConfigLevel(std::nullopt);
     CHECK(ERROR == sql->effectiveLevel());
 
-    // The legacy module keys sit between the two
-    sql->setLegacyLevel(WARN);
-    CHECK(WARN == sql->effectiveLevel());
+    /* And a logger with no level of its own at all, configured or code-supplied,
+     * is the one that hears its parent: "cd.sql" never does */
+    Logger* const plain = LogManager::get("cd")->child("plain");
 
-    sql->setConfigLevel(TRACE);
-    CHECK(TRACE == sql->effectiveLevel());
+    CHECK(DEBUG == plain->effectiveLevel());
 
-    sql->setConfigLevel(std::nullopt);
-    CHECK(WARN == sql->effectiveLevel());
+    plain->setConfigLevel(WARN);
+    CHECK(WARN == plain->effectiveLevel());
 
-    // With nothing of its own left, the parent speaks again
-    sql->setLegacyLevel(std::nullopt);
-    CHECK(ERROR == sql->effectiveLevel());
+    plain->setConfigLevel(std::nullopt);
+    CHECK(DEBUG == plain->effectiveLevel());
 }
 
 /**
@@ -277,8 +274,8 @@ void testLogFiltersByEffectiveLevel() {
 /**
  * The logger a dbHandle logs its statements to: a child asked for with a code
  * default of its own is quieter than the module it belongs to, its records reach
- * the module's sinks by additivity, and the legacy keys of a module may make it
- * speak of every statement again -- until the configuration file says otherwise.
+ * the module's sinks by additivity, and a "logger.<module>.sql" line of the
+ * configuration file is what makes it speak of every statement.
  */
 void testSqlChildLevel() {
     Logger* const module = LogManager::get("dbmod");
@@ -305,22 +302,20 @@ void testSqlChildLevel() {
         CHECK_EQ(onModule->records[0].message, "SQL Error: no such table");
     }
 
-    // log_sql = yes of a module's own configuration file
-    sql->setLegacyLevel(DEBUG);
+    // "logger.dbmod.sql = DEBUG" is what asks for every statement
+    sql->setConfigLevel(DEBUG);
     CHECK(DEBUG == sql->effectiveLevel());
 
     sql->log(recordOf(DEBUG, "select 2"));
     CHECK(2 == onModule->size());
 
-    // And a logger.<module>.sql line beats what that file asked for
-    sql->setConfigLevel(ERROR);
+    // And the code default is back as soon as that line is dropped again
+    sql->setConfigLevel(std::nullopt);
     CHECK(ERROR == sql->effectiveLevel());
 
     sql->log(recordOf(DEBUG, "select 3"));
     CHECK(2 == onModule->size());
 
-    sql->setConfigLevel(std::nullopt);
-    sql->setLegacyLevel(std::nullopt);
     module->setConfigLevel(std::nullopt);
     module->removeSink(onModule);
 }
