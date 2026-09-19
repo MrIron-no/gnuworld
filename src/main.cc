@@ -34,6 +34,7 @@
 #include <cstring>
 
 #include "gnuworld_config.h"
+#include "version.h"
 
 /*
 #ifdef HAVE_GETOPT_H
@@ -89,7 +90,7 @@ void usage(const string& progName) {
 /// Output the GNUWorld/GNU welcome message
 void gnu() {
     clog << endl;
-    clog << "GNUWorld version " << VERSION << endl;
+    clog << versionString() << endl;
     clog << "Copyright (C) 2002 Free Software Foundation, Inc." << endl;
     clog << "GNUWorld comes with NO WARRANTY," << endl;
     clog << "to the extent permitted by law." << endl;

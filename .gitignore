@@ -59,3 +59,4 @@ CLAUDE.md
 /test_*
 *.trs
 /test-suite.log
+/libgnuworld/gitversion.h

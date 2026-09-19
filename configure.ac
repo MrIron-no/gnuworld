@@ -5,7 +5,7 @@ echo Configuring GNUWorld...
 echo
 
 AC_REVISION($Revision: 1.42 $)
-AC_INIT([gnuworld],[3.0])
+AC_INIT([gnuworld],[4.0])
 AC_CONFIG_MACRO_DIRS([m4])
 AC_CONFIG_SRCDIR([src/main.cc])
 AC_CONFIG_HEADERS([include/defs.h])

@@ -8,6 +8,8 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = libltdl $(NEW_MODS)
 lib_LTLIBRARIES =
 noinst_LTLIBRARIES =
+BUILT_SOURCES =
+CLEANFILES =
 
 pkgdata_DATA = bin/server_command_map
 

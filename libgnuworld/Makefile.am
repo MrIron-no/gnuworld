@@ -20,7 +20,24 @@ libgnuworld_la_SOURCES = \
 	libgnuworld/match.cc \
 	libgnuworld/md5hash.cc \
 	libgnuworld/threadworker.cc \
+	libgnuworld/version.cc \
 	libgnuworld/misc.cc
+
+# What this build was made from.  GNUWorld is not released, it is pulled from
+# git, so the revision is what says which code is running: "git describe" is
+# asked on every make - a configure-time answer would be stale after the next
+# "git pull && make" - and the header is written only when the answer changed,
+# so that nothing is rebuilt for nothing.  Outside a checkout it is "unknown".
+BUILT_SOURCES += libgnuworld/gitversion.h
+CLEANFILES += libgnuworld/gitversion.h
+libgnuworld/gitversion.h: FORCE
+	@rev=`cd $(top_srcdir) && git describe --always --dirty --abbrev=10 2>/dev/null` || rev=; \
+	date=`cd $(top_srcdir) && git log -1 --format=%cs 2>/dev/null` || date=; \
+	printf '#define GNUWORLD_GIT_REVISION "%s"\n#define GNUWORLD_GIT_DATE "%s"\n' \
+		"$${rev:-unknown}" "$$date" > $@.tmp; \
+	if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv $@.tmp $@; fi
+FORCE:
+libgnuworld/libgnuworld_la-version.lo: libgnuworld/gitversion.h
 
 if COND_PGSQL
 libgnuworld_la_SOURCES += libgnuworld/MigrationChecker.cc
@@ -58,6 +75,7 @@ EXTRA_DIST += \
 	libgnuworld/match_table.h \
 	libgnuworld/md5hash.h \
 	libgnuworld/threadworker.h \
+	libgnuworld/version.h \
 	libgnuworld/misc.h \
 	libgnuworld/MTrie.h \
 	libgnuworld/MTrie.cc \

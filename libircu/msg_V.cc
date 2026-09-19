@@ -25,6 +25,7 @@
 #include "gnuworld_config.h"
 #include "server.h"
 #include "ServerCommandHandler.h"
+#include "version.h"
 #include "xparameters.h"
 #include "logger.h"
 
@@ -74,7 +75,7 @@ bool msg_V::Execute(const xParameters& Param) {
      * 'the rest' - Reply.
      */
     stringstream versionReply;
-    versionReply << theServer->getCharYY() << " 351 " << Param[0] << " :" __DATE__ " " __TIME__
+    versionReply << theServer->getCharYY() << " 351 " << Param[0] << " :" << versionString()
                  << " GNUworld Services Core";
 
     theServer->Write(versionReply);
