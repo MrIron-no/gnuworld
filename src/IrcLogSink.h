@@ -99,6 +99,16 @@ class IrcLogSink : public LogSink, public std::enable_shared_from_this<IrcLogSin
      */
     static void flushAll();
 
+    /**
+     * Makes every sink that writes through this server forget it, so that a
+     * record that arrives afterwards is dropped like one for a server that is
+     * not connected.  The server calls this when it is destroyed: main() makes
+     * a new one to reconnect, and a sink the configuration attached outlives
+     * the server it was made for until the new one configures logging again.
+     * Main thread only, like everything that touches the server.
+     */
+    static void forgetServer(const xServer* server);
+
     /// The channel notices go to, which a rehash may change
     void setChannel(std::string);
 

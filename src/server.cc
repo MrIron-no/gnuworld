@@ -159,6 +159,10 @@ void xServer::initializeSystem() {
  * Deallocate this xServer instance.
  */
 xServer::~xServer() {
+    // A channel sink of the logging configuration outlives this server: it must
+    // not write through it any more
+    IrcLogSink::forgetServer(this);
+
     // All deallocations are performed in doShutdown()
     elog.closeFile();
     if (logSocket) {

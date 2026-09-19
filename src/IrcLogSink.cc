@@ -127,6 +127,17 @@ void IrcLogSink::flush() {
         deliver(record);
 }
 
+void IrcLogSink::forgetServer(const xServer* gone) {
+    const std::lock_guard<std::mutex> guard(registryLock());
+
+    for (IrcLogSink* const sink : registry()) {
+        const std::lock_guard<std::mutex> sinkGuard(sink->lock);
+
+        if (sink->server == gone)
+            sink->server = nullptr;
+    }
+}
+
 void IrcLogSink::flushAll() {
     std::vector<std::shared_ptr<IrcLogSink>> sinks;
 
@@ -156,16 +167,18 @@ void IrcLogSink::flushAll() {
 void IrcLogSink::deliver(const LogRecord& record) {
     std::string theChannel;
     bool theHighlight = false;
+    xServer* theServer = nullptr;
 
     {
         const std::lock_guard<std::mutex> guard(lock);
 
         theChannel = channel;
         theHighlight = highlight;
+        theServer = server;
     }
 
     // Nowhere to put the record: the logging system says nothing about it
-    if (nullptr == server || !server->isConnected() || theChannel.empty())
+    if (nullptr == theServer || !theServer->isConnected() || theChannel.empty())
         return;
 
     if (nullptr == Network)
@@ -181,7 +194,7 @@ void IrcLogSink::deliver(const LogRecord& record) {
         // text, and picking the CheckedFormat overload would read it as syntax
         const std::string notice = formatIrcLine(record, line.first, line.second, theHighlight);
 
-        server->serverNotice(theChan, notice);
+        theServer->serverNotice(theChan, notice);
     }
 }
 
