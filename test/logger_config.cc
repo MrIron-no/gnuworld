@@ -509,6 +509,71 @@ void testLineEndingsAndByteOrderMark() {
  * all: a control character of a value is written as an escape, never passed on
  * into a log line, a terminal or a channel.
  */
+/**
+ * Three things the second look at the parser found: a byte order mark must not
+ * hide the line that is really wrong, a sink a logger line asks for is quoted
+ * like everything else, and the registry spells the root the way the file does.
+ */
+void testSecondLook() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    // The mark is there, but the third line is what is wrong: say so
+    const std::string marked = std::string("\xEF\xBB\xBF") +
+                               "sink.a.type = console\nlogger.x = INFO, a\nnot a config line\n";
+
+    CHECK(!parseLogConfig(writeConf("bom-typo.conf", marked), config, errors));
+    CHECK(1 == errors.size());
+    CHECK(anyErrorNames(errors, "not a config line"));
+    CHECK(anyErrorNames(errors, "line 3"));
+    CHECK(!anyErrorNames(errors, "byte order mark"));
+
+    // A mark in front of a comment, and nothing else wrong: the mark is the news
+    errors.clear();
+    CHECK(!parseLogConfig(writeConf("bom-comment.conf", std::string("\xEF\xBB\xBF") +
+                                                            "# a comment\nsink.a.type = console\n"),
+                          config, errors));
+    CHECK(1 == errors.size());
+    CHECK(anyErrorNames(errors, "byte order mark"));
+
+    // An unknown sink is quoted with its control characters written out
+    errors.clear();
+    CHECK(!parseLogConfig(writeConf("unknown-sink.conf", std::string("logger.x = INFO, ba\x01"
+                                                                     "d\n")),
+                          config, errors));
+    CHECK(anyErrorNames(errors, "unknown sink"));
+    CHECK(anyErrorNames(errors, "\\x01"));
+
+    for (const std::string& error : errors)
+        for (const char c : error) {
+            const unsigned char byte = static_cast<unsigned char>(c);
+
+            CHECK(byte >= 0x20 && 0x7f != byte);
+        }
+
+    // The root, however it is spelt, for the registry as for the file
+    CHECK(LogManager::normaliseName("root.").empty());
+    CHECK(LogManager::normaliseName(".root").empty());
+    CHECK(LogManager::normaliseName("..").empty());
+    CHECK("a.root" == LogManager::normaliseName("a.root"));
+    CHECK("ROOT" == LogManager::normaliseName("ROOT"));
+    CHECK(LogManager::root() == LogManager::get("root."));
+    CHECK(LogManager::root() == LogManager::get(".root"));
+
+    errors.clear();
+    CHECK(parseLogConfig(writeConf("root-dot.conf", "logger.root. = DEBUG\n"), config, errors));
+    CHECK(1 == config.loggers.size() && config.loggers[0].name.empty());
+
+    errors.clear();
+    CHECK(
+        !parseLogConfig(writeConf("root-twice.conf", "logger.root = INFO\nlogger.root. = DEBUG\n"),
+                        config, errors));
+
+    errors.clear();
+    CHECK(!parseLogConfig(writeConf("dots.conf", "logger... = INFO\n"), config, errors));
+    CHECK(anyErrorNames(errors, "empty logger name"));
+}
+
 void testControlCharactersInErrors() {
     LogConfig config;
     std::vector<std::string> errors;
@@ -1459,6 +1524,7 @@ int main() {
     testWhitespaceAndCase();
     testLineEndingsAndByteOrderMark();
     testControlCharactersInErrors();
+    testSecondLook();
     testErrors();
     testLoggerNames();
     testDuplicateFileSinkPaths();

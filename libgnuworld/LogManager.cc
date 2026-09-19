@@ -156,12 +156,9 @@ LogManager::State& LogManager::state() {
 
 /**
  * The name without its empty segments, and with "root" for the root: "a..b",
- * ".a.b" and "a.b." all name the logger "a.b", "" and "root" the root itself.
+ * ".a.b" and "a.b." all name the logger "a.b"; "", "root" and "root." the root.
  */
 string LogManager::normaliseName(const string& name) {
-    if ("root" == name)
-        return string();
-
     string normalised;
     string::size_type at = 0;
 
@@ -181,6 +178,11 @@ string LogManager::normaliseName(const string& name) {
 
         at = dot + 1;
     }
+
+    // Asked only once the empty segments are gone, so that "root." and ".root"
+    // are the root as well: a name means one logger however it is spelt
+    if ("root" == normalised)
+        normalised.clear();
 
     return normalised;
 }

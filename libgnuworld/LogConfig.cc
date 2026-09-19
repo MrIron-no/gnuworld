@@ -44,9 +44,6 @@ const string sinkPrefix("sink.");
 const string loggerPrefix("logger.");
 const string additivityPrefix("additivity.");
 
-/// The name the root logger is written under in the file
-const string rootName("root");
-
 /**
  * What is not part of a key or a value at either end of it.
  *
@@ -153,13 +150,11 @@ bool parseBoolean(const string& value, bool& out) {
 bool loggerName(const string& written, string& name) {
     name = LogManager::normaliseName(written);
 
+    // The registry gives the empty name to the root, however "root" was spelt
+    // ("root", "root.", ".root"), and to a name that is nothing but dots - which
+    // names no logger at all and is the one thing refused here
     if (name.empty())
-        return rootName == written;
-
-    // "root." names the root as surely as "root" does: LogManager::get() gives
-    // the same logger for either of them
-    if (rootName == name)
-        name.clear();
+        return string::npos != written.find_first_not_of('.');
 
     return true;
 }
@@ -197,6 +192,10 @@ string findMalformedLine(const string& fileName) {
 
     while (std::getline(in, line)) {
         ++number;
+
+        // A mark in front of the first line is not what is wrong with that line
+        if (1 == number)
+            line = withoutByteOrderMark(line);
 
         const string trimmed = trim(line);
 
@@ -297,20 +296,20 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
     EConfig file(fileName);
 
     if (file.hasError()) {
-        /* A mark in front of the first key is taken off that key below, but a
-         * mark in front of a comment - or in front of a line that is wrong for
-         * a reason of its own - is one EConfig stumbles over, and then the mark
-         * is the one thing worth saying: naming the line would only puzzle */
-        if (fileStartsWithByteOrderMark(fileName)) {
-            errors.push_back(fileName +
-                             ": starts with a UTF-8 byte order mark; save it without one");
-
-            return false;
-        }
-
+        /* A line that is wrong for a reason of its own is named first, mark or
+         * no mark.  A mark in front of the first key is taken off that key
+         * below; a mark in front of a comment is one EConfig stumbles over
+         * although nothing else is wrong with the file, and then the mark is
+         * the thing to say */
         const string where = findMalformedLine(fileName);
 
-        errors.push_back(where.empty() ? ("cannot read " + fileName) : where);
+        if (!where.empty())
+            errors.push_back(where);
+        else if (fileStartsWithByteOrderMark(fileName))
+            errors.push_back(fileName +
+                             ": starts with a UTF-8 byte order mark; save it without one");
+        else
+            errors.push_back("cannot read " + fileName);
 
         return false;
     }
@@ -552,7 +551,8 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
     for (const std::pair<const string, LoggerDraft>& entry : loggers)
         for (const string& id : entry.second.spec.sinks)
             if (sinks.end() == sinks.find(id))
-                errors.push_back(entry.second.levelKey + ": unknown sink \"" + id + "\"");
+                errors.push_back(entry.second.levelKey + ": unknown sink \"" + escapeControl(id) +
+                                 "\"");
 
     if (!errors.empty()) {
         // The file is taken as a whole or not at all
