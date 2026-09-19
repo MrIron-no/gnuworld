@@ -24,6 +24,7 @@
 #ifndef __LOGCONFIG_H
 #define __LOGCONFIG_H
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,6 +42,11 @@ namespace gnuworld {
  * are not libgnuworld's to know: core registers the one that writes to a
  * channel, a notifier registers its own, and the registry of LogManager is what
  * turns a type name into a sink.
+ *
+ * And because the kinds are not known here, neither are all of their settings:
+ * a type this file's parser has never heard of carries whatever settings its own
+ * factory understands in options, which the parser collects without reading
+ * (see parseLogConfig).
  */
 struct SinkSpec {
     std::string id, type, path, channel;
@@ -48,6 +54,31 @@ struct SinkSpec {
     Verbosity level = TRACE;
     ConsoleSink::Colour colour = ConsoleSink::Colour::Auto;
     bool highlight = true;
+
+    /**
+     * The rate an irc sink sends at, as the file wrote it ("5/min"), empty when
+     * the file said nothing, which is no limit at all.  Read with
+     * LogRateLimit::parse(), which is what the parser checked it with.
+     */
+    std::string rate;
+
+    /**
+     * Whether the file gave this sink a level of its own.  A kind of sink whose
+     * own default is not TRACE - a pager, which nobody wants every record of -
+     * needs to tell "the file asked for TRACE" from "the file said nothing".
+     */
+    bool levelGiven = false;
+
+    /**
+     * The settings of a kind of sink this parser does not know, keys in lower
+     * case and values trimmed, for that kind's factory to validate.  Empty for
+     * every built-in kind, whose settings are the fields above.
+     *
+     * A value here may be a secret - a pushover sink's token is one - so
+     * nothing ever quotes one of these values into an error message or a log
+     * record: a message about one of these settings names its KEY.
+     */
+    std::map<std::string, std::string> options;
 };
 
 /**
@@ -83,6 +114,16 @@ struct LogConfig {
  * at all leaves out empty and returns false, so that a configuration is never
  * half applied.  A file that is not there is such a problem, not a crash: this
  * never terminates the process and never throws.
+ *
+ * Which settings a sink may have depends on its type, and the type may be
+ * written after them, so the settings of a sink are read once the whole file is:
+ * for a built-in type (file, console, irc) a setting none of them has is an
+ * error, as it always was; for any other type everything but the common
+ * settings (type, level, highlight) is collected into SinkSpec::options for the
+ * factory of that type to validate.
+ *
+ * An error about such an option names its key and never its value: an option's
+ * value may be a token.
  *
  * The file is read the way every editor writes it: the '\r' of a Windows line
  * ending is not part of a value, and a byte order mark in front of the first key

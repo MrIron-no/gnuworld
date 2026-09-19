@@ -17,6 +17,7 @@
  * USA.
  *
  */
+#include <chrono>
 #include <cstddef>
 #include <fstream>
 #include <map>
@@ -28,6 +29,7 @@
 
 #include "EConfig.h"
 #include "LogManager.h"
+#include "LogRateLimit.h"
 #include "LogRecord.h"
 #include "LogSinks.h"
 
@@ -317,11 +319,33 @@ string findMalformedLine(const string& fileName) {
     return string();
 }
 
+/// The kinds of sink this parser knows the settings of
+bool builtInType(const string& type) {
+    return "file" == type || "console" == type || "irc" == type;
+}
+
+/**
+ * One setting of a sink whose meaning waits for the sink's type: "path" is a
+ * file's, "rate" an irc sink's, and anything at all is a setting of a kind this
+ * parser does not know.  The type line may come after any of them, so what they
+ * are is decided once the whole file has been read.
+ *
+ * written is the setting as the file spelt it, which is what a message about an
+ * unknown one quotes; the value is never quoted anywhere, because a setting of a
+ * kind this parser does not know may be a token.
+ */
+struct PendingSetting {
+    string setting, written, value, shownKey;
+};
+
 /// One sink of the file while it is being read, and what has been said about it
 struct SinkDraft {
     SinkSpec spec;
     bool haveType = false;
     std::set<string> settings;
+
+    /// The settings above that only the type gives a meaning to, as written
+    std::vector<PendingSetting> pending;
 };
 
 /// One logger of the file while it is being read
@@ -471,40 +495,14 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
 
                 draft.spec.type = lower(value);
                 draft.haveType = true;
-            } else if ("path" == setting) {
-                draft.spec.path = value;
-            } else if ("channel" == setting) {
-                draft.spec.channel = value;
-            } else if ("format" == setting) {
-                const string format = lower(value);
-
-                /* A console and a channel are always read by a human, so this
-                 * says nothing to them - but it still has to be a format */
-                if ("json" == format)
-                    draft.spec.json = true;
-                else if ("text" == format)
-                    draft.spec.json = false;
-                else
-                    errors.push_back(shownKey + ": \"" + shown(value) +
-                                     "\" is not a format, expected json or text");
             } else if ("level" == setting) {
                 Verbosity level = TRACE;
 
-                if (parseLevel(value, level))
+                if (parseLevel(value, level)) {
                     draft.spec.level = level;
-                else
+                    draft.spec.levelGiven = true;
+                } else
                     errors.push_back(shownKey + ": \"" + shown(value) + "\" is not a level");
-            } else if ("colour" == setting) {
-                const string colour = lower(value);
-                bool wanted = true;
-
-                if ("auto" == colour)
-                    draft.spec.colour = ConsoleSink::Colour::Auto;
-                else if (parseBoolean(colour, wanted))
-                    draft.spec.colour = wanted ? ConsoleSink::Colour::Yes : ConsoleSink::Colour::No;
-                else
-                    errors.push_back(shownKey + ": \"" + shown(value) +
-                                     "\" is not a colour, expected auto, yes or no");
             } else if ("highlight" == setting) {
                 bool wanted = true;
 
@@ -513,7 +511,11 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
                 else
                     errors.push_back(shownKey + ": \"" + shown(value) + "\" is not a yes or a no");
             } else {
-                errors.push_back(shownKey + ": unknown sink setting \"" + shown(written) + "\"");
+                /* Every other setting belongs to one kind of sink, or to a kind
+                 * this parser has never heard of, and only the type line says
+                 * which - a line that may be written below this one.  Kept as it
+                 * stands and read once the file has been */
+                draft.pending.push_back(PendingSetting{setting, written, value, shownKey});
             }
 
             continue;
@@ -633,6 +635,71 @@ bool parseLogConfig(const string& fileName, LogConfig& out, std::vector<string>&
      * paths are compared as they stand - resolving one is the business of
      * whoever opens it, not of this */
     std::map<string, string> filePaths;
+
+    /* What the settings of each sink mean, now that every type line of the file
+     * has been read.  A kind this parser knows is read here, exactly as it
+     * always was; a kind it does not know has its settings collected for the
+     * factory that kind is registered by, which is the only thing that knows
+     * them - and which is asked for them by LogManager::configure() */
+    for (std::pair<const string, SinkDraft>& entry : sinks) {
+        SinkDraft& draft = entry.second;
+
+        /* A sink with no type at all is an error of its own below; its settings
+         * are read as a built-in kind's so that it is named the way it was
+         * before there were any other kinds */
+        const bool asBuiltIn = !draft.haveType || builtInType(draft.spec.type);
+
+        for (const PendingSetting& pending : draft.pending) {
+            if (!asBuiltIn) {
+                // Nothing of this is read here, the value least of all
+                draft.spec.options[pending.setting] = pending.value;
+                continue;
+            }
+
+            if ("path" == pending.setting) {
+                draft.spec.path = pending.value;
+            } else if ("channel" == pending.setting) {
+                draft.spec.channel = pending.value;
+            } else if ("format" == pending.setting) {
+                const string format = lower(pending.value);
+
+                /* A console and a channel are always read by a human, so this
+                 * says nothing to them - but it still has to be a format */
+                if ("json" == format)
+                    draft.spec.json = true;
+                else if ("text" == format)
+                    draft.spec.json = false;
+                else
+                    addListError(pending.shownKey + ": \"" + shown(pending.value) +
+                                 "\" is not a format, expected json or text");
+            } else if ("colour" == pending.setting) {
+                const string colour = lower(pending.value);
+                bool wanted = true;
+
+                if ("auto" == colour)
+                    draft.spec.colour = ConsoleSink::Colour::Auto;
+                else if (parseBoolean(colour, wanted))
+                    draft.spec.colour = wanted ? ConsoleSink::Colour::Yes : ConsoleSink::Colour::No;
+                else
+                    addListError(pending.shownKey + ": \"" + shown(pending.value) +
+                                 "\" is not a colour, expected auto, yes or no");
+            } else if ("rate" == pending.setting) {
+                std::size_t count = 0;
+                std::chrono::seconds per(0);
+
+                if ("irc" != draft.spec.type)
+                    addListError(pending.shownKey + ": only an irc sink has a rate");
+                else if (LogRateLimit::parse(pending.value, count, per))
+                    draft.spec.rate = pending.value;
+                else
+                    addListError(pending.shownKey + ": \"" + shown(pending.value) +
+                                 "\" is not a rate, expected <N>/min, <N>/hour or <N>/sec");
+            } else {
+                addListError(pending.shownKey + ": unknown sink setting \"" +
+                             shown(pending.written) + "\"");
+            }
+        }
+    }
 
     // What a sink of each kind cannot do without
     for (const std::pair<const string, SinkDraft>& entry : sinks) {

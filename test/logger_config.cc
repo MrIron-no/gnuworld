@@ -19,6 +19,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -1363,6 +1364,301 @@ void testBuildBeforeSwap() {
     CHECK(4 == readFileLines(keepLog).size());
 }
 
+/* ------------------------------------------------------------------ *
+ * The settings of a kind of sink the parser does not know
+ * ------------------------------------------------------------------ */
+
+/// A recognisable token, which no error message may ever quote
+const std::string secretToken("SECRET-aTokenNobodyMayQuote-0123456789");
+
+/// The value of this option of this sink, empty when there is none
+std::string option(const LogConfig& config, const std::string& id, const std::string& key) {
+    const SinkSpec* const spec = findSink(config, id);
+
+    if (nullptr == spec)
+        return std::string();
+
+    const std::map<std::string, std::string>::const_iterator known = spec->options.find(key);
+
+    return spec->options.end() == known ? std::string() : known->second;
+}
+
+/**
+ * A type the parser knows nothing about carries settings the parser knows
+ * nothing about: they are collected, keyed in lower case and trimmed, for
+ * whatever factory the type is registered by to make sense of.  The common
+ * settings are still the parser's own and are not among them.
+ */
+void testOptionsOfAnUnknownType() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("options.conf", "sink.p.type = pushover\n"
+                                                   "sink.p.TOKEN =   " +
+                                                       secretToken +
+                                                       "   \n"
+                                                       "sink.p.userkey = key1, key2\n"
+                                                       "sink.p.rate = 5/min\n"
+                                                       "sink.p.url = http://127.0.0.1:1/x\n"
+                                                       "sink.p.level = WARN\n"
+                                                       "sink.p.highlight = no\n"
+                                                       "logger.cfg20.a = INFO, p\n"),
+                         config, errors));
+
+    for (const std::string& error : errors)
+        std::cerr << "  options.conf: " << error << '\n';
+
+    CHECK(errors.empty());
+
+    const SinkSpec* const spec = findSink(config, "p");
+
+    CHECK(nullptr != spec);
+
+    if (nullptr != spec) {
+        CHECK_EQ(spec->type, "pushover");
+
+        // The common settings are read as they are for every other kind
+        CHECK(WARN == spec->level);
+        CHECK(!spec->highlight);
+
+        // And are not among the options the factory is handed
+        CHECK(spec->options.end() == spec->options.find("level"));
+        CHECK(spec->options.end() == spec->options.find("highlight"));
+        CHECK(spec->options.end() == spec->options.find("type"));
+
+        CHECK(4 == spec->options.size());
+    }
+
+    // The key is lower-cased, the value trimmed and otherwise left alone
+    CHECK_EQ(option(config, "p", "token"), secretToken);
+    CHECK_EQ(option(config, "p", "userkey"), "key1, key2");
+    CHECK_EQ(option(config, "p", "rate"), "5/min");
+    CHECK_EQ(option(config, "p", "url"), "http://127.0.0.1:1/x");
+}
+
+/**
+ * The kinds of sink the parser does know are unchanged: a setting none of them
+ * has is the parse error it always was, and the whole file goes with it.
+ */
+void testOptionsAreNotForBuiltInTypes() {
+    const char* const builtIn[] = {"file", "console", "irc"};
+
+    for (const char* const type : builtIn) {
+        LogConfig config;
+        std::vector<std::string> errors;
+
+        const std::string body = std::string("sink.b.type = ") + type +
+                                 "\n"
+                                 "sink.b.path = " +
+                                 scratchPath("built-in.log") +
+                                 "\n"
+                                 "sink.b.channel = #chan\n"
+                                 "sink.b.token = " +
+                                 secretToken +
+                                 "\n"
+                                 "sink.b.userkey = key1\n"
+                                 "sink.b.url = http://127.0.0.1:1/x\n";
+
+        CHECK(!parseLogConfig(writeConf("builtin-options.conf", body), config, errors));
+        CHECK(anyErrorNames(errors, "sink.b.token"));
+        CHECK(anyErrorNames(errors, "sink.b.userkey"));
+        CHECK(anyErrorNames(errors, "sink.b.url"));
+
+        // Whatever is said about them, the token itself is not in it
+        for (const std::string& error : errors)
+            CHECK(!contains(error, secretToken));
+    }
+}
+
+/// One option written twice is the duplicate it would be for any other setting
+void testDuplicateOptionKey() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(!parseLogConfig(writeConf("dup-option.conf", "sink.p.type = pushover\n"
+                                                       "sink.p.token = " +
+                                                           secretToken +
+                                                           "\n"
+                                                           "sink.p.TOKEN = " +
+                                                           secretToken +
+                                                           "-other\n"
+                                                           "logger.cfg20.b = INFO, p\n"),
+                          config, errors));
+
+    CHECK(anyErrorNames(errors, "given twice"));
+
+    for (const std::string& error : errors)
+        CHECK(!contains(error, secretToken));
+}
+
+/**
+ * Nothing about an option's VALUE is ever quoted back: a value may be a token,
+ * and an error message about one is read by whoever can read the log, which is
+ * not always whoever may hold the token.
+ */
+void testNoErrorQuotesAnOptionValue() {
+    const std::string paths[] = {
+        // The type comes after the options, which is where they are collected
+        "sink.p.token = " + secretToken +
+            "\nsink.p.type = pushover\nlogger.cfg20.c = nonsense, p\n",
+        /* A type nothing registered parses: it is the factory's business, not
+         * this parser's, and what it says about the token is asserted where
+         * that error is made (see testUnregisteredTypeChangesNothing) */
+        // No type at all: the sink is the error, the options are beside it
+        "sink.p.token = " + secretToken + "\nsink.p.userkey = " + secretToken + "\n",
+        // A sink id that is not one, carrying a token
+        "sink.not a sink.token = " + secretToken + "\n",
+        // A built-in kind, for which the option is an unknown setting
+        "sink.p.type = console\nsink.p.token = " + secretToken + "\n",
+        // The whole file is refused for a reason elsewhere, options and all
+        "sink.p.type = pushover\nsink.p.token = " + secretToken +
+            "\nsink.f.type = file\nlogger.cfg20.c = INFO, nosuchsink\n",
+    };
+
+    for (const std::string& body : paths) {
+        LogConfig config;
+        std::vector<std::string> errors;
+
+        CHECK(!parseLogConfig(writeConf("secret.conf", body), config, errors));
+        CHECK(!errors.empty());
+
+        for (const std::string& error : errors)
+            if (contains(error, secretToken)) {
+                ++failures;
+                std::cerr << __FILE__ << ':' << __LINE__
+                          << ": failed: an error quoted the token: " << error << '\n';
+            }
+    }
+}
+
+/**
+ * "rate" is a setting of an irc sink and of no other built-in kind, and what it
+ * says has to be a rate.
+ */
+void testIrcRateSetting() {
+    LogConfig config;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("irc-rate.conf", "sink.c.type = irc\n"
+                                                    "sink.c.channel = #chan\n"
+                                                    "sink.c.rate = 5/min\n"
+                                                    "logger.cfg21.a = INFO, c\n"),
+                         config, errors));
+    CHECK(errors.empty());
+
+    const SinkSpec* const spec = findSink(config, "c");
+
+    CHECK(nullptr != spec);
+
+    if (nullptr != spec) {
+        CHECK_EQ(spec->rate, "5/min");
+
+        // A setting of the parser's own, not one handed to a factory
+        CHECK(spec->options.empty());
+    }
+
+    // Written in any case and with any spacing, like every other value
+    LogConfig spaced;
+
+    CHECK(parseLogConfig(writeConf("irc-rate-spaced.conf", "sink.c.type = IRC\n"
+                                                           "sink.c.channel = #chan\n"
+                                                           "sink.c.RATE = 2 / Hour\n"),
+                         spaced, errors));
+    CHECK_EQ(findSink(spaced, "c")->rate, "2 / Hour");
+
+    // A rate that is not one is a parse error naming the key
+    const char* const refused[] = {"0/min", "10/day", "nonsense", "10"};
+
+    for (const char* const value : refused) {
+        LogConfig bad;
+
+        CHECK(!parseLogConfig(writeConf("irc-rate-bad.conf", std::string("sink.c.type = irc\n"
+                                                                         "sink.c.channel = #chan\n"
+                                                                         "sink.c.rate = ") +
+                                                                 value + "\n"),
+                              bad, errors));
+        CHECK(anyErrorNames(errors, "sink.c.rate"));
+    }
+
+    // And it is an irc setting: a file or a console sink has no rate
+    const char* const others[] = {"file", "console"};
+
+    for (const char* const type : others) {
+        LogConfig bad;
+
+        CHECK(!parseLogConfig(writeConf("other-rate.conf", std::string("sink.c.type = ") + type +
+                                                               "\n"
+                                                               "sink.c.path = " +
+                                                               scratchPath("other-rate.log") +
+                                                               "\n"
+                                                               "sink.c.rate = 5/min\n"),
+                              bad, errors));
+        CHECK(anyErrorNames(errors, "sink.c.rate"));
+    }
+
+    // No rate at all is the default, and means no limit
+    LogConfig none;
+
+    CHECK(parseLogConfig(writeConf("no-rate.conf", "sink.c.type = irc\n"
+                                                   "sink.c.channel = #chan\n"),
+                         none, errors));
+    CHECK(findSink(none, "c")->rate.empty());
+}
+
+/**
+ * A configuration naming a kind of sink nothing registered - a pushover sink in
+ * a build without one - is refused as a whole, names the type line, and changes
+ * nothing about the logging in force.
+ */
+void testUnregisteredTypeChangesNothing() {
+    const std::shared_ptr<CaptureSink> capture = std::make_shared<CaptureSink>();
+
+    Logger* const logger = LogManager::get("cfg22.a");
+
+    logger->addSink(capture, TRACE);
+
+    LogConfig before;
+    std::vector<std::string> errors;
+
+    CHECK(parseLogConfig(writeConf("before-push.conf", "sink.f.type = file\n"
+                                                       "sink.f.path = " +
+                                                           scratchPath("cfg22.log") +
+                                                           "\n"
+                                                           "logger.cfg22.a = INFO, f\n"),
+                         before, errors));
+    CHECK(LogManager::configure(before, errors));
+
+    emit(logger, INFO, "before");
+
+    CHECK(1 == capture->size());
+    CHECK(1 == readFileLines(scratchPath("cfg22.log")).size());
+
+    // No factory is registered for this type in this program
+    LogConfig config;
+
+    CHECK(parseLogConfig(writeConf("push-nofactory.conf", "sink.page.type = pushover\n"
+                                                          "sink.page.token = " +
+                                                              secretToken +
+                                                              "\n"
+                                                              "sink.page.userkey = key1\n"
+                                                              "logger.cfg22.a = INFO, page\n"),
+                         config, errors));
+
+    CHECK(!LogManager::configure(config, errors));
+    CHECK(anyErrorNames(errors, "sink.page.type"));
+
+    for (const std::string& error : errors)
+        CHECK(!contains(error, secretToken));
+
+    // And what was in force is still in force, sink for sink
+    emit(logger, INFO, "after");
+
+    CHECK(2 == capture->size());
+    CHECK(2 == readFileLines(scratchPath("cfg22.log")).size());
+
+    logger->removeSink(capture);
+}
+
 /**
  * A kind of sink is looked up without regard to the case of its name, a kind
  * registered again replaces the one that was there, and a sink no logger sends
@@ -1818,6 +2114,12 @@ int main() {
     testConfigAdditivityOverridesCode();
     testConfigAdditivityStopsDispatch();
     testBuildBeforeSwap();
+    testOptionsOfAnUnknownType();
+    testOptionsAreNotForBuiltInTypes();
+    testDuplicateOptionKey();
+    testNoErrorQuotesAnOptionValue();
+    testIrcRateSetting();
+    testUnregisteredTypeChangesNothing();
     testSinkTypeRegistry();
     testRootIsConfigured();
     testSinkThreshold();
