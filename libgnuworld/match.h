@@ -27,10 +27,14 @@
 #include "match_table.h"
 #include "ircd_chattr.h"
 #include "Numeric.h"
-#include "iClient.h"
 
 namespace gnuworld {
 using std::string;
+
+// Only ever a pointer here.  Including iClient.h would close a circle:
+// iClient.h needs Channel.h, which needs misc.h, which includes this file.
+class iClient;
+
 /*
  * Prototypes
  */

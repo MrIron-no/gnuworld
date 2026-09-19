@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "match.h"
+#include "iClient.h"
 #include "misc.h"
 #include "StringTokenizer.h"
 

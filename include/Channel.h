@@ -42,6 +42,7 @@
 #include "xparameters.h"
 #include "ELog.h"
 #include "gnuworld_config.h"
+#include "misc.h"
 
 #ifdef USE_THREAD
 #include <mutex>
@@ -864,21 +865,10 @@ class Channel {
     banListType banList;
 
     /**
-     * Compare two ban masks the way removeBan() compares them: case
-     * insensitively.  This is misc.h's noCaseCompare, on misc.h's
-     * strcasecmp, but written out here and defined in Channel.cc because
-     * Channel.h cannot include misc.h: misc.h includes match.h, which
-     * includes iClient.h, which needs this class declared.
-     */
-    struct banMaskCompare {
-        bool operator()(const std::string& lhs, const std::string& rhs) const;
-    };
-
-    /**
      * The type used to hold the details of each ban, keyed by its mask and
      * compared the way removeBan() compares masks: case insensitively.
      */
-    typedef std::map<std::string, BanInfo, banMaskCompare> banInfoListType;
+    typedef std::map<std::string, BanInfo, noCaseCompare> banInfoListType;
 
     /**
      * The details of each ban in banList, one entry per ban.  Every path

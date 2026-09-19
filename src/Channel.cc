@@ -41,7 +41,7 @@
 #include "server.h"
 #include "logger.h"
 
-GNUWORLD_MODULE_LOGGER("core.state");
+GNUWORLD_CORE_LOGGER(State);
 
 namespace gnuworld {
 using std::string;
@@ -251,10 +251,6 @@ bool Channel::revealUser(const iClient* theClient) {
     }
     theUser->reveal();
     return true;
-}
-
-bool Channel::banMaskCompare::operator()(const string& lhs, const string& rhs) const {
-    return strcasecmp(lhs, rhs) < 0;
 }
 
 void Channel::setBan(const string& newBan, const string& setBy, time_t setAt) {
