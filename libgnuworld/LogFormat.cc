@@ -56,6 +56,31 @@ std::string displayName(const std::string& logger) {
     return logger.empty() ? std::string("root") : logger;
 }
 
+/**
+ * Whether the two bytes at this position are the UTF-8 encoding of a C1
+ * control, U+0080 to U+009F.
+ *
+ * A terminal reads those as escapes of its own: U+009B is what ESC '[' means,
+ * so a field value carrying it paints a terminal exactly as "\x1b[" would.
+ * Every other byte of 0x80 and above is text, U+00A0 - the no-break space,
+ * whose second byte is 0xa0 - included.
+ */
+bool isC1Pair(const std::string& text, std::size_t at) {
+    if (at + 1 >= text.size() || 0xc2 != static_cast<unsigned char>(text[at]))
+        return false;
+
+    const unsigned char second = static_cast<unsigned char>(text[at + 1]);
+
+    return second >= 0x80 && second <= 0x9f;
+}
+
+/// Appends one byte written as "\xNN"
+void appendHexEscape(std::string& out, unsigned char byte) {
+    out += "\\x";
+    out += hexDigits[(byte >> 4) & 0x0f];
+    out += hexDigits[byte & 0x0f];
+}
+
 /* ------------------------------------------------------------------ *
  * JSON
  * ------------------------------------------------------------------ */
@@ -116,9 +141,10 @@ struct EscapedText {
     std::vector<LogSpan> spans;
 };
 
-/// Writes every C0 control character but the newline, and 0x7f, as "\xNN", so
-/// that a field value cannot inject a terminal escape.  Bytes of 0x80 and
-/// above are left alone: the terminal's encoding is not ours to guess.
+/// Writes every C0 control character but the newline, 0x7f, and the two bytes
+/// of a C1 control, as "\xNN", so that a field value cannot inject a terminal
+/// escape.  Every other byte of 0x80 and above is left alone: the terminal's
+/// encoding is not ours to guess.
 EscapedText escapeControls(const std::string& message, const std::vector<LogSpan>& spans) {
     EscapedText result;
     result.text.reserve(message.size());
@@ -130,14 +156,23 @@ EscapedText escapeControls(const std::string& message, const std::vector<LogSpan
         offset[i] = result.text.size();
 
         const unsigned char c = static_cast<unsigned char>(message[i]);
+
+        // Both bytes of the pair are escaped, and each keeps an offset of its
+        // own, so that a span beginning or ending between them still lands
+        if (isC1Pair(message, i)) {
+            appendHexEscape(result.text, c);
+            offset[i + 1] = result.text.size();
+            appendHexEscape(result.text, static_cast<unsigned char>(message[i + 1]));
+            ++i;
+            continue;
+        }
+
         if ('\n' == c || (c >= 0x20 && 0x7f != c)) {
             result.text += static_cast<char>(c);
             continue;
         }
 
-        result.text += "\\x";
-        result.text += hexDigits[(c >> 4) & 0x0f];
-        result.text += hexDigits[c & 0x0f];
+        appendHexEscape(result.text, c);
     }
     offset[message.size()] = result.text.size();
 
@@ -227,36 +262,50 @@ std::string wrapSpans(std::string_view text, const std::vector<LogSpan>& spans,
     return out;
 }
 
-/// Writes every C0 control character, the newline included, and 0x7f, as
-/// "\xNN".  The name and the function are single-line columns, so a newline
-/// has no meaning of its own there and is escaped along with the rest.
+/// Writes every C0 control character, the newline included, 0x7f, and the two
+/// bytes of a C1 control, as "\xNN".  The name and the function are
+/// single-line columns, so a newline has no meaning of its own there and is
+/// escaped along with the rest.
 std::string escapeField(const std::string& text) {
     std::string out;
     out.reserve(text.size());
 
-    for (const char ch : text) {
-        const unsigned char c = static_cast<unsigned char>(ch);
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+
+        if (isC1Pair(text, i)) {
+            appendHexEscape(out, c);
+            appendHexEscape(out, static_cast<unsigned char>(text[i + 1]));
+            ++i;
+            continue;
+        }
+
         if (c >= 0x20 && 0x7f != c) {
             out += static_cast<char>(c);
             continue;
         }
 
-        out += "\\x";
-        out += hexDigits[(c >> 4) & 0x0f];
-        out += hexDigits[c & 0x0f];
+        appendHexEscape(out, c);
     }
 
     return out;
 }
 
-/// The text with every C0 control character and 0x7f dropped, so that a name
-/// or a function cannot forge the colour and bold codes an IRC sink writes
+/// The text with every C0 control character, 0x7f and C1 control dropped, so
+/// that a name or a function cannot forge the colour and bold codes an IRC
+/// sink writes
 std::string stripControls(const std::string& text) {
     std::string out;
     out.reserve(text.size());
 
-    for (const char ch : text) {
-        const unsigned char c = static_cast<unsigned char>(ch);
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+
+        if (isC1Pair(text, i)) {
+            ++i;
+            continue;
+        }
+
         if (c >= 0x20 && 0x7f != c)
             out += static_cast<char>(c);
     }
@@ -488,6 +537,14 @@ std::vector<std::pair<std::string, std::vector<LogSpan>>> splitLines(const LogRe
 
         lineOf[i] = current;
         posOf[i] = lines[current].size();
+
+        // Both bytes of a C1 control go, and neither is kept
+        if (isC1Pair(message, i)) {
+            lineOf[i + 1] = current;
+            posOf[i + 1] = lines[current].size();
+            ++i;
+            continue;
+        }
 
         if ('\n' == c) {
             lines.emplace_back();

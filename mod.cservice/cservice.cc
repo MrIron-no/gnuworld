@@ -3548,7 +3548,9 @@ bool cservice::sqlRegisterChannel(iClient* theClient, sqlUser* mngrUsr, const st
         string errormsg =
             TokenStringsParams("FAILED to sqlRegister %s to non-existing manager user by %s",
                                chanName.c_str(), theUser->getUserName().c_str());
-        LOG(ERROR, errormsg);
+        // A channel name and a user name are in there: the text is an argument
+        // of the record, never the template that is read for substitutions
+        LOG(ERROR, "{}", errormsg);
         logPrivAdminMessage(errormsg.c_str());
         return false;
     }

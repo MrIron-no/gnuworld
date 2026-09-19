@@ -609,6 +609,80 @@ void testTextControlCharacters() {
     CHECK_EQ(line2.substr(shortTime), "  TRACE  core          a\\x02b\\x03c\\x0dd\\x7fe\\x09f");
 }
 
+/**
+ * The C1 controls, which a terminal reads as an escape of its own: 0x9b is
+ * what ESC '[' means, so a value carrying the two bytes of U+009B would paint
+ * a terminal exactly as "\x1b[" does.  They are escaped byte by byte, and the
+ * span that pointed at the value still points at the whole of it.
+ */
+void testTextC1Controls() {
+    const LogRecord record = rendered(WARN, "core", "", "value {v}",
+                                      {field("v", std::string("a\xc2\x9b"
+                                                              "31mb"))});
+    const std::string line = formatText(record, plainStyle(12));
+
+    CHECK_EQ(line.substr(shortTime), "  WARN   core          value a\\xc2\\x9b31mb");
+
+    // The highlight still wraps the value and nothing but the value
+    const std::string painted = formatText(record, TextStyle{false, true, true, 12});
+    CHECK(painted.find("\x1b[1m"
+                       "a\\xc2\\x9b31mb"
+                       "\x1b[22m") != std::string::npos);
+
+    /* Every other byte of 0x80 and above is text a terminal shows: an "é" and
+     * the no-break space of U+00A0, which is not a control at all */
+    const LogRecord text =
+        rendered(INFO, "core", "", "value {v}", {field("v", std::string("caf\xc3\xa9\xc2\xa0!"))});
+    CHECK_EQ(formatText(text, plainStyle(12)).substr(shortTime),
+             "  INFO   core          value caf\xc3\xa9\xc2\xa0!");
+
+    // A logger name and a function are cleaned the same way
+    const LogRecord fields = makeRecord(WARN,
+                                        "core.a\xc2\x9b"
+                                        "b",
+                                        "Foo::ba\xc2\x9c"
+                                        "r",
+                                        "watch out");
+    const std::string bare = formatText(fields, plainStyle(20));
+    CHECK(bare.find("core.a\\xc2\\x9bb") != std::string::npos);
+    CHECK(bare.find("(Foo::ba\\xc2\\x9cr)") != std::string::npos);
+}
+
+/// The IRC notice drops the C1 pair, as it drops every other control byte
+void testIrcC1Controls() {
+    const LogRecord record = rendered(ERROR, "core", "", "value {v}",
+                                      {field("v", std::string("a\xc2\x9b"
+                                                              "31mb"))});
+    const auto lines = splitLines(record);
+    CHECK(lines.size() == 1);
+    if (lines.size() != 1)
+        return;
+
+    CHECK_EQ(lines[0].first, "value a31mb");
+    CHECK(lines[0].second.size() == 1);
+    if (lines[0].second.size() == 1) {
+        const LogSpan& span = lines[0].second[0];
+        CHECK_EQ(lines[0].first.substr(span.begin, span.end - span.begin), "a31mb");
+    }
+
+    // And leaves the text bytes of 0x80 and above where they are
+    const LogRecord text = makeRecord(INFO, "core", "", "caf\xc3\xa9\xc2\xa0!");
+    const auto textLines = splitLines(text);
+    CHECK(textLines.size() == 1);
+    if (textLines.size() == 1)
+        CHECK_EQ(textLines[0].first, "caf\xc3\xa9\xc2\xa0!");
+
+    // The name and the function lose the pair as well
+    const LogRecord fields = makeRecord(WARN,
+                                        "co\xc2\x9b"
+                                        "re",
+                                        "Foo::ba\xc2\x9c"
+                                        "r",
+                                        "watch out");
+    CHECK_EQ(formatIrcLine(fields, "watch out", {}, false),
+             "\00307[core] [W] Foo::bar> watch out\003");
+}
+
 /* ------------------------------------------------------------------ *
  * Colour
  * ------------------------------------------------------------------ */
@@ -863,6 +937,8 @@ int main() {
     testTextNameWidth();
     testTextMultiline();
     testTextControlCharacters();
+    testTextC1Controls();
+    testIrcC1Controls();
     testTextColour();
     testTextColourLevels();
     testTextColourName();

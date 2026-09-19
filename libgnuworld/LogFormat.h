@@ -71,9 +71,11 @@ struct TextStyle {
  * Continuation lines of a multi-line message are indented to the message
  * column.
  *
- * Every C0 control character of the message other than the newline, and
- * 0x7f, is written as "\xNN", so that a field value cannot move the cursor
- * or set a colour of its own.  The name and the function are cleaned the same
+ * Every C0 control character of the message other than the newline, 0x7f,
+ * and each byte of a C1 control - U+0080 to U+009F, which a terminal reads as
+ * an escape of its own - is written as "\xNN", so that a field value cannot
+ * move the cursor or set a colour of its own.  Every other byte of 0x80 and
+ * above is text and passes.  The name and the function are cleaned the same
  * way before they are cut, padded and coloured, the newline included: those
  * two columns hold one line each.
  *
@@ -86,9 +88,10 @@ std::string formatText(const LogRecord&, const TextStyle&);
 
 /**
  * The lines of a record's message as an IRC sink wants them: split at the
- * newlines, every control character removed, the record's spans re-based on
- * each line (a span crossing a line break is clipped to both), and the lines
- * that are empty once cleaned dropped.
+ * newlines, every control character removed - the C1 range U+0080 to U+009F
+ * along with the C0 one - the record's spans re-based on each line (a span
+ * crossing a line break is clipped to both), and the lines that are empty
+ * once cleaned dropped.
  */
 std::vector<std::pair<std::string, std::vector<LogSpan>>> splitLines(const LogRecord&);
 
