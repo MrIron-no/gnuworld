@@ -50,7 +50,9 @@
 #include "Connection.h"
 #include "ConnectionHandler.h"
 #include "Buffer.h"
-#include "ELog.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core.net");
 
 namespace gnuworld {
 
@@ -59,6 +61,18 @@ using std::map;
 using std::nothrow;
 using std::string;
 using std::stringstream;
+
+/**
+ * A Connection as its operator<<() writes it, for a log message: a record
+ * carries a rendered sentence rather than a stream to write to.
+ */
+static string describe(const Connection& con) {
+    std::ostringstream out;
+
+    out << con;
+
+    return out.str();
+}
 
 ConnectionManager::ConnectionManager(const time_t defaultTimeoutDuration,
                                      const char defaultDelimiter)
@@ -141,8 +155,7 @@ Connection* ConnectionManager::Connect(ConnectionHandler* hPtr, const string& ho
             delete newConnection;
             newConnection = 0;
 
-            elog << "ConnectionManager::Connect> Unable "
-                 << "to find valid IP" << endl;
+            LOG(ERROR, "Unable to find valid IP");
 
             return 0;
         }
@@ -153,7 +166,7 @@ Connection* ConnectionManager::Connect(ConnectionHandler* hPtr, const string& ho
     if (-1 == sockFD) {
         delete newConnection;
 
-        elog << "Connect> openSocket() failed" << endl;
+        LOG(ERROR, "openSocket() failed");
 
         return 0;
     }
@@ -171,7 +184,7 @@ Connection* ConnectionManager::Connect(ConnectionHandler* hPtr, const string& ho
     if (tlsEnabled) {
         SSL* state = SSL_new(sslCtx);
         if (!state) {
-            elog << "Connect> Could not create SSL session" << endl;
+            LOG(ERROR, "Could not create SSL session");
             return 0;
         }
         newConnection->setTlsState(state);
@@ -211,8 +224,7 @@ Connection* ConnectionManager::Connect(ConnectionHandler* hPtr, const string& ho
             delete newConnection;
             newConnection = 0;
 
-            elog << "ConnectionManager::Connect> Error "
-                 << "detected in connect(): " << strerror(errno) << endl;
+            LOG(ERROR, "Error detected in connect(): {}", std::string(strerror(errno)));
 
             // No need to call OnConnectFail() here since
             // this method will return a NULL Connection
@@ -239,8 +251,7 @@ Connection* ConnectionManager::Connect(ConnectionHandler* hPtr, const string& ho
             // Close the socket
             closeSocket(newConnection->getSockFD());
 
-            elog << "ConnectionManager::Connect> Failed to "
-                 << "add new connection to handlerMap: " << *newConnection << endl;
+            LOG(ERROR, "Failed to add new connection to handlerMap: {}", describe(*newConnection));
 
             // Deallocate and set to 0 for return to caller
             delete newConnection;
@@ -259,7 +270,7 @@ Connection* ConnectionManager::Connect(ConnectionHandler* hPtr, const string& ho
         if (::getsockname(newConnection->getSockFD(), reinterpret_cast<struct sockaddr*>(&sockAddr),
                           &sockAddrLen) < 0) {
             // getsockname() failed
-            elog << "finishConnect> getsockname() failed: " << strerror(errno) << endl;
+            LOG(ERROR, "getsockname() failed: {}", std::string(strerror(errno)));
 
             closeSocket(newConnection->getSockFD());
             delete newConnection;
@@ -499,8 +510,7 @@ bool ConnectionManager::Disconnect(ConnectionHandler* hPtr, Connection* cPtr) {
         return false;
     }
 
-    elog << "ConnectionManager::Disconnect> Scheduling connection "
-         << "for removal: " << *cPtr << endl;
+    LOG(DEBUG, "Scheduling connection for removal: {}", describe(*cPtr));
 
     // Schedule the connection to be erased during the next call
     // to Poll()
@@ -518,7 +528,7 @@ bool ConnectionManager::Disconnect(ConnectionHandler* hPtr, Connection* cPtr) {
 
         int res = SSL_shutdown(cPtr->getTlsState());
         if (res > 0) {
-            elog << "ConnectionManager::Disconnect> TLS connection gracefully shut down." << endl;
+            LOG(INFO, "TLS connection gracefully shut down.");
         }
     }
 #endif
@@ -622,8 +632,14 @@ void ConnectionManager::Poll(const long seconds, const long milliseconds) {
 
     // Is there an error from select()?
     if (selectRet < 0) {
-        // Error in select()
-        elog << "ConnectionManager::Poll> Error in Poll(): " << strerror(errno) << endl;
+        // Read once, so that strerror() cannot be the one to have set it
+        const int lastErrno = errno;
+
+        /* Error in select() - except for EINTR, which is how a signal reaches
+         * this loop and not a failure of anything: one more turn of the loop
+         * is all it asks for */
+        LOG(EINTR == lastErrno ? TRACE : ERROR, "Error in Poll(): {}",
+            std::string(strerror(lastErrno)));
         return;
     }
 
@@ -805,10 +821,10 @@ void ConnectionManager::Poll(const long seconds, const long milliseconds) {
                 !connectionPtr->hasFlag(Connection::F_TLS_FATAL_ERROR)) {
                 int res = SSL_shutdown(connectionPtr->getTlsState());
                 if (res > 0) {
-                    elog << "ConnectionManager::Poll> TLS connection gracefully shut down." << endl;
+                    LOG(INFO, "TLS connection gracefully shut down.");
                 } else {
-                    elog << "ConnectionManager::Poll> TLS failed to shut down gracefully (" << res
-                         << "): " << ERR_error_string(ERR_get_error(), nullptr) << endl;
+                    LOG(WARN, "TLS failed to shut down gracefully ({}): {}", res,
+                        std::string(ERR_error_string(ERR_get_error(), nullptr)));
                 }
             }
 #endif
@@ -861,7 +877,7 @@ int ConnectionManager::openSocket() {
     // Was the socket creation successful?
     if (sockFD < 0) {
         // Nope
-        elog << "openSocket> socket() failed: " << strerror(errno) << endl;
+        LOG(ERROR, "socket() failed: {}", std::string(strerror(errno)));
         return -1;
     }
 
@@ -870,7 +886,7 @@ int ConnectionManager::openSocket() {
         // setSocketOptions() failed, the socket is now invalid.
         close(sockFD);
 
-        elog << "openSocket> Failed to set SO_LINGER: " << strerror(errno) << endl;
+        LOG(ERROR, "Failed to set SO_LINGER: {}", std::string(strerror(errno)));
 
         // Return error to the caller
         return -1;
@@ -972,8 +988,8 @@ bool ConnectionManager::handleRead(ConnectionHandler* hPtr, Connection* cPtr) {
                     return false;
 
                 default:
-                    elog << "ConnectionManager::handleRead> TLS read error: "
-                         << ERR_error_string(ERR_get_error(), nullptr) << endl;
+                    LOG(ERROR, "TLS read error: {}",
+                        std::string(ERR_error_string(ERR_get_error(), nullptr)));
                     cPtr->setFlag(Connection::F_TLS_FATAL_ERROR);
                     hPtr->OnDisconnect(cPtr);
                     return false;
@@ -1000,7 +1016,7 @@ bool ConnectionManager::handleRead(ConnectionHandler* hPtr, Connection* cPtr) {
 
     // Check for error on read()
     if (readResult <= 0) {
-        elog << "ConnectionManager::handleRead> Read error: " << strerror(errno) << endl;
+        LOG(ERROR, "Read error: {}", std::string(strerror(errno)));
 
         // Error on read, socket no longer valid
         // Notify handler
@@ -1084,8 +1100,8 @@ bool ConnectionManager::handleWrite(ConnectionHandler* hPtr, Connection* cPtr) {
                 hPtr->OnDisconnect(cPtr);
                 return false;
             default:
-                elog << "ConnectionManager::handleWrite> TLS write error: "
-                     << ERR_error_string(ERR_get_error(), nullptr) << endl;
+                LOG(ERROR, "TLS write error: {}",
+                    std::string(ERR_error_string(ERR_get_error(), nullptr)));
                 cPtr->setFlag(Connection::F_TLS_FATAL_ERROR);
                 hPtr->OnDisconnect(cPtr);
                 return false;
@@ -1097,8 +1113,10 @@ bool ConnectionManager::handleWrite(ConnectionHandler* hPtr, Connection* cPtr) {
     if ((ENOBUFS == errno) || (EWOULDBLOCK == errno) || (EAGAIN == errno)) {
         // Nonblocking type error
         // Ignore it for now
-        elog << "ConnectionManager::handleWrite> errno: (" << errno << ") " << strerror(errno)
-             << endl;
+        // Read once, so that strerror() cannot be the one to have set it
+        const int lastErrno = errno;
+
+        LOG(TRACE, "errno: ({}) {}", lastErrno, std::string(strerror(lastErrno)));
         return true;
     }
 
@@ -1148,8 +1166,7 @@ bool ConnectionManager::handleFlush(ConnectionHandler* hPtr, Connection* cPtr) {
     // Retrieve the current flags
     int flags = ::fcntl(cPtr->getSockFD(), F_GETFL, 0);
     if (flags < 0) {
-        elog << "ConnectionManager::handleFlush> Unable to set "
-             << "blocking for connection: " << strerror(errno) << endl;
+        LOG(ERROR, "Unable to set blocking for connection: {}", std::string(strerror(errno)));
 
         // Terminal error
         hPtr->OnDisconnect(cPtr);
@@ -1161,8 +1178,7 @@ bool ConnectionManager::handleFlush(ConnectionHandler* hPtr, Connection* cPtr) {
 
     // Attempt to set new flag (blocking)
     if (::fcntl(cPtr->getSockFD(), F_SETFL, flags) < 0) {
-        elog << "ConnectionManger::handleFlush> Failed to set "
-             << "to blocking: " << strerror(errno) << endl;
+        LOG(ERROR, "Failed to set to blocking: {}", std::string(strerror(errno)));
 
         // Terminal error
         hPtr->OnDisconnect(cPtr);
@@ -1191,7 +1207,7 @@ bool ConnectionManager::handleFlush(ConnectionHandler* hPtr, Connection* cPtr) {
                     hPtr->OnDisconnect(cPtr);
                     return false;
                 default:
-                    elog << "ConnectionManager::HandleFlush> Fatal TLS error encountered." << endl;
+                    LOG(ERROR, "Fatal TLS error encountered.");
                     cPtr->setFlag(Connection::F_TLS_FATAL_ERROR);
                     hPtr->OnDisconnect(cPtr);
                     return false;
@@ -1203,7 +1219,7 @@ bool ConnectionManager::handleFlush(ConnectionHandler* hPtr, Connection* cPtr) {
         if ((ENOBUFS == errno) || (EWOULDBLOCK == errno) || (EAGAIN == errno)) {
             // Nonblocking type error
             // Ignore it for now
-            elog << "ConnectionManager::handleFlush> errno: " << strerror(errno) << endl;
+            LOG(TRACE, "errno: {}", std::string(strerror(errno)));
             return true;
         }
 
@@ -1236,8 +1252,7 @@ bool ConnectionManager::handleFlush(ConnectionHandler* hPtr, Connection* cPtr) {
     flags |= O_NONBLOCK;
 
     if (::fcntl(cPtr->getSockFD(), F_SETFL, flags) < 0) {
-        elog << "ConnectionManager::handleFlush> Failed to set to "
-             << "nonblocking: " << strerror(errno) << endl;
+        LOG(ERROR, "Failed to set to nonblocking: {}", std::string(strerror(errno)));
 
         // Terminal error
         hPtr->OnDisconnect(cPtr);
@@ -1371,8 +1386,7 @@ bool ConnectionManager::finishAccept(ConnectionHandler* hPtr, Connection* cPtr) 
         // Notify handler
         hPtr->OnConnectFail(newConnection);
 
-        elog << "ConnectionManager::finishAccept> Failed to set "
-             << "socket options for connection: " << *newConnection << endl;
+        LOG(ERROR, "Failed to set socket options for connection: {}", describe(*newConnection));
 
         // Close the socket associated with this connection
         closeSocket(newConnection->getSockFD());
@@ -1393,8 +1407,7 @@ bool ConnectionManager::finishAccept(ConnectionHandler* hPtr, Connection* cPtr) 
         // TODO: The handler expects errno to be set appropriately.
         hPtr->OnConnectFail(newConnection);
 
-        elog << "ConnectionManager::finishAccept> Failed to add "
-             << "new connection to table: " << *newConnection << endl;
+        LOG(ERROR, "Failed to add new connection to table: {}", describe(*newConnection));
 
         // Socket is valid, but something went wrong with the
         // insertion...make sure to close the socket.
@@ -1462,13 +1475,13 @@ Connection* ConnectionManager::Listen(ConnectionHandler* hPtr, const unsigned sh
     // Public method, check arguments
     assert(hPtr != 0);
 
-    elog << "ConnectionManager::Listen> Port: " << localPort << endl;
+    LOG(DEBUG, "Port: {}", localPort);
 
     // Attempt to open a socket
     // openSocket() will also call setSocketOptions()
     int listenFD = openSocket();
     if (listenFD < 0) {
-        elog << "ConnectionManager::Listen> Failed to open socket" << endl;
+        LOG(ERROR, "Failed to open socket");
         return 0;
     }
 
@@ -1479,8 +1492,7 @@ Connection* ConnectionManager::Listen(ConnectionHandler* hPtr, const unsigned sh
     if (::setsockopt(listenFD, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&optVal),
                      sizeof(optVal)) < 0) {
         // Failed to set SO_REUSEADDR
-        elog << "ConnectionManager::Listen> Failed to set "
-             << "SO_REUSEADDR: " << strerror(errno) << endl;
+        LOG(ERROR, "Failed to set SO_REUSEADDR: {}", std::string(strerror(errno)));
 
         // Close the socket
         closeSocket(listenFD);
@@ -1510,7 +1522,7 @@ Connection* ConnectionManager::Listen(ConnectionHandler* hPtr, const unsigned sh
     if (::bind(listenFD, reinterpret_cast<sockaddr*>(newConnection->getAddr()),
                static_cast<socklen_t>(sizeof(struct sockaddr))) < 0) {
         // bind() failed
-        elog << "ConnectionManager::Listen> bind() failed: " << strerror(errno) << endl;
+        LOG(ERROR, "bind() failed: {}", std::string(strerror(errno)));
 
         // Close the socket
         closeSocket(listenFD);
@@ -1526,7 +1538,7 @@ Connection* ConnectionManager::Listen(ConnectionHandler* hPtr, const unsigned sh
     // Attempt to establish listener on the given socket
     if (::listen(listenFD, 5) < 0) {
         // listen() failed
-        elog << "ConnectionManager::Listen> listen() failed: " << strerror(errno) << endl;
+        LOG(ERROR, "listen() failed: {}", std::string(strerror(errno)));
 
         // Close the socket
         closeSocket(listenFD);
@@ -1543,8 +1555,7 @@ Connection* ConnectionManager::Listen(ConnectionHandler* hPtr, const unsigned sh
     // the given handler
     if (!handlerMap[hPtr].insert(newConnection).second) {
         // Addition to handlerMap failed :(
-        elog << "ConnectionManager::Listen> Failed to add new "
-             << "connection to handlerMap: " << *newConnection << endl;
+        LOG(ERROR, "Failed to add new connection to handlerMap: {}", describe(*newConnection));
 
         // Close the socket
         closeSocket(listenFD);
@@ -1614,8 +1625,7 @@ Connection* ConnectionManager::ConnectToFile(ConnectionHandler* hPtr, const stri
     int fd = ::open(fileName.c_str(), O_CREAT);
     if (fd < 0) {
         // Failed to open the file
-        elog << "ConnectToFile> Unable to open file " << fileName << ": " << strerror(errno)
-             << endl;
+        LOG(ERROR, "Unable to open file {}: {}", fileName, std::string(strerror(errno)));
         return 0;
     }
 
@@ -1633,7 +1643,7 @@ Connection* ConnectionManager::ConnectToFile(ConnectionHandler* hPtr, const stri
     // Insert the new Connection into the Connection map
     bool insertOK = handlerMap[hPtr].insert(newConnect).second;
     if (!insertOK) {
-        elog << "ConnectToFile> Failed to insert new Connection" << endl;
+        LOG(ERROR, "Failed to insert new Connection");
 
         // Posting OnConnectFail() doesn't make sense here because
         // we haven't notified the handler of the Connection in
@@ -1679,14 +1689,14 @@ bool ConnectionManager::negotiateTLS(ConnectionHandler* hPtr, Connection* cPtr) 
         return true;
 
     if (::time(0) > (cPtr->connectTime + 5)) {
-        elog << "ConnectionManager::negotiateTLS> TLS handshake timed out" << endl;
+        LOG(ERROR, "TLS handshake timed out");
         hPtr->OnDisconnect(cPtr);
         return false;
     }
 
     int res = SSL_connect(cPtr->getTlsState());
     if (res == 1) {
-        elog << "ConnectionManager::negotiateTLS> TLS handshake completed successfully." << endl;
+        LOG(INFO, "TLS handshake completed successfully.");
         cPtr->clrNegotiatingTLS();
         return true;
     }
@@ -1700,14 +1710,14 @@ bool ConnectionManager::negotiateTLS(ConnectionHandler* hPtr, Connection* cPtr) 
 
     case SSL_ERROR_ZERO_RETURN:
         // Clean shutdown
-        elog << "ConnectionManager::negotiateTLS> TLS connection closed cleanly" << endl;
+        LOG(INFO, "TLS connection closed cleanly");
         hPtr->OnDisconnect(cPtr);
         return false;
 
     default:
         // Fatal error
-        elog << "ConnectionManager::negotiateTLS> TLS handshake failed: "
-             << ERR_error_string(ERR_get_error(), nullptr) << endl;
+        LOG(ERROR, "TLS handshake failed: {}",
+            std::string(ERR_error_string(ERR_get_error(), nullptr)));
         cPtr->setFlag(Connection::F_TLS_FATAL_ERROR);
         hPtr->OnDisconnect(cPtr);
         return false;

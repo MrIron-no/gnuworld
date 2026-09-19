@@ -36,7 +36,9 @@
 #include <cstring>
 
 #include "Signal.h"
-#include "ELog.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core");
 
 namespace gnuworld {
 using std::cout;
@@ -60,7 +62,7 @@ Signal::Signal() {
     // directly above, and because this class models the Singleton
     // pattern.
     if (!openPipes()) {
-        elog << "Signal> Failed to open FIFO pipes" << endl;
+        LOG(FATAL, "Failed to open FIFO pipes");
         // Failure to initialize pipes on startup is a critical
         // failure.
         ::exit(0);
@@ -124,7 +126,7 @@ bool Signal::openPipes() {
     ::pthread_mutex_unlock(&pipeMutex);
 
     if (pipeRet < 0) {
-        elog << "Signal::openPipes> pipe() failed: " << strerror(errno) << endl;
+        LOG(ERROR, "pipe() failed: {}", std::string(strerror(errno)));
 
         signalError = true;
         return false;
@@ -138,8 +140,7 @@ bool Signal::openPipes() {
         int flags = ::fcntl(rwFD[i], F_GETFL);
         if (flags < 0) {
             ::pthread_mutex_unlock(&pipeMutex);
-            elog << "Signal::openPipes> Failed to get flags "
-                 << "for pipe fd: " << strerror(errno) << endl;
+            LOG(ERROR, "Failed to get flags for pipe fd: {}", std::string(strerror(errno)));
 
             closePipes();
             return false;
@@ -151,8 +152,7 @@ bool Signal::openPipes() {
         // Set new flags
         if (::fcntl(rwFD[i], F_SETFL, flags) < 0) {
             ::pthread_mutex_unlock(&pipeMutex);
-            elog << "Signal::openPipes> Failed to set flags "
-                 << "on pipe fd: " << strerror(errno) << endl;
+            LOG(ERROR, "Failed to set flags on pipe fd: {}", std::string(strerror(errno)));
 
             closePipes();
             return false;
@@ -237,8 +237,7 @@ bool Signal::getSignal(int& theSignal) {
     }
 
     if (readResult != sizeof(int)) {
-        elog << "Signal::getSignal> Somehow read " << readResult
-             << " bytes, where sizeof(int) is: " << sizeof(int) << endl;
+        LOG(WARN, "Somehow read {} bytes, where sizeof(int) is: {}", readResult, sizeof(int));
     }
 
     // Signal detected, read() returned ok

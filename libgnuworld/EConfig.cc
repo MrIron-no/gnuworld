@@ -35,8 +35,10 @@
 
 #include "EConfig.h"
 #include "StringTokenizer.h"
-#include "ELog.h"
+#include "logger.h"
 #include "misc.h"
+
+GNUWORLD_MODULE_LOGGER("core.config");
 
 namespace gnuworld {
 
@@ -69,8 +71,7 @@ EConfig::iterator EConfig::Require(const string& key) {
         // Nope, this method is intended to "require" the config file
         // to have a certain key/value pair.  Since this is not the
         // case, print out an error and quit.
-        elog << "EConfig::Require> Configuration requires value "
-             << "for key \"" << key << "\"" << endl;
+        LOG(FATAL, "Configuration requires value for key \"{}\"", key);
         ::exit(0);
     }
 
@@ -87,7 +88,7 @@ bool EConfig::openConfigFile() {
 
     ifstream configFile(configFileName.c_str());
     if (!configFile.is_open()) {
-        elog << "EConfig> Unable to open file: " << configFileName << endl;
+        LOG(ERROR, "Unable to open file: {}", configFileName);
         setError();
         return false;
     }
@@ -122,7 +123,7 @@ bool EConfig::readFile(ifstream& configFile) {
 
         if (!removeSpaces(tmp)) {
             // Parse error
-            elog << "EConfig: Parse error at line: " << lineNumber << endl;
+            LOG(WARN, "Parse error at line: {}", lineNumber);
             return false;
         }
 
@@ -139,10 +140,9 @@ bool EConfig::readFile(ifstream& configFile) {
         StringTokenizer st(tmp, '=');
 
         if (st.size() < 2) {
-            elog << "EConfig: Improper number of fields "
-                 << "at line: " << lineNumber << std::endl;
-            elog << "EConfig: Perhaps you meant for an empty "
-                 << "value? Use: key = '' to specify empty values" << std::endl;
+            LOG(WARN, "Improper number of fields at line: {}", lineNumber);
+            LOG(WARN, "Perhaps you meant for an empty value? Use: key = '' to specify empty "
+                      "values");
             return false;
         }
 
@@ -233,8 +233,8 @@ bool EConfig::writeFile() {
     //	<< endl ;
 
     if (::rename(configFileName.c_str(), backupFileName.c_str()) < 0) {
-        elog << "EConfig::writeFile> Unable to rename " << configFileName << " to "
-             << backupFileName << " because: " << strerror(errno) << endl;
+        LOG(ERROR, "Unable to rename {} to {} because: {}", configFileName, backupFileName,
+            std::string(strerror(errno)));
 
         // Ok to leave the file open per class conditions.
         return false;
@@ -242,13 +242,12 @@ bool EConfig::writeFile() {
 
     std::ofstream configFile(configFileName.c_str());
     if (!configFile.is_open()) {
-        elog << "EConfig::writeFile> Unable to open file: " << configFileName
-             << ", because: " << strerror(errno) << endl;
+        LOG(ERROR, "Unable to open file: {}, because: {}", configFileName,
+            std::string(strerror(errno)));
 
         if (::rename(backupFileName.c_str(), configFileName.c_str()) < 0) {
-            elog << "EConfig::writeFile> Unable to restore "
-                 << "original file \"" << configFileName << "\" from backup \"" << backupFileName
-                 << "\" because: " << strerror(errno) << endl;
+            LOG(ERROR, "Unable to restore original file \"{}\" from backup \"{}\" because: {}",
+                configFileName, backupFileName, std::string(strerror(errno)));
         }
         return false;
     }
@@ -280,8 +279,8 @@ bool EConfig::writeFile() {
 
     // Writing of new file succeeded, remove the backup
     if (::unlink(backupFileName.c_str()) < 0) {
-        elog << "EConfig::writeFile> Unable to unlink "
-             << "backup file " << backupFileName << " because: " << strerror(errno) << endl;
+        LOG(WARN, "Unable to unlink backup file {} because: {}", backupFileName,
+            std::string(strerror(errno)));
 
         // This is not a critical failure
         // Allow the method to return true
@@ -300,8 +299,7 @@ bool EConfig::Delete(const string& key) {
 
 bool EConfig::Delete(iterator itr) {
     if (itr == valueMap.end()) {
-        elog << "EConfig::Delete> Attempting to delete "
-             << "valueMap.end()" << endl;
+        LOG(WARN, "Attempting to delete valueMap.end()");
         return false;
     }
     valueMap.erase(itr);
@@ -318,8 +316,8 @@ bool EConfig::Delete(iterator itr) {
     }
 
     if (!foundIt) {
-        elog << "EConfig::Delete> Unable to find lineList "
-             << "entry corresponding to iterator: " << itr->first << '/' << itr->second << endl;
+        LOG(WARN, "Unable to find lineList entry corresponding to iterator: {}/{}", itr->first,
+            itr->second);
     }
 
     return (foundIt ? writeFile() : false);
@@ -349,8 +347,8 @@ bool EConfig::Replace(iterator itr, const string& newValue) {
     }
 
     if (!foundIt) {
-        elog << "EConfig::Replace> Unable to find lineList "
-             << "entry corresponding to iterator: " << itr->first << '/' << itr->second << endl;
+        LOG(WARN, "Unable to find lineList entry corresponding to iterator: {}/{}", itr->first,
+            itr->second);
     }
 
     valueMap.insert(mapType::value_type(itr->first, newValue));

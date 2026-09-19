@@ -21,7 +21,10 @@
 #include <iostream>
 
 #include "threadworker.h"
+#include "logger.h"
 #include "misc.h"
+
+GNUWORLD_MODULE_LOGGER("core");
 
 namespace gnuworld {
 
@@ -53,9 +56,9 @@ void ThreadWorker::run() {
             // elog << "Starting job execution" << endl ;
             job();
         } catch (const std::exception& e) {
-            elog << "Exception in job execution: " << e.what() << std::endl;
+            LOG(ERROR, "Exception in job execution: {}", e.what());
         } catch (...) {
-            elog << "Unknown exception in job execution" << std::endl;
+            LOG(ERROR, "Unknown exception in job execution");
         }
     }
 }

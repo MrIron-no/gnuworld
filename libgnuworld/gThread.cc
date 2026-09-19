@@ -31,7 +31,9 @@
 #include <cassert>
 
 #include "gThread.h"
-#include "ELog.h"
+#include "logger.h"
+
+GNUWORLD_MODULE_LOGGER("core");
 
 namespace gnuworld {
 
@@ -58,7 +60,7 @@ gThread::gThread() {
     threadID = 0;
 
     if (::pthread_mutex_init(&waitMutex, 0) != 0) {
-        elog << "gThread> Unable to initialize waitMutex: " << strerror(errno) << endl;
+        LOG(FATAL, "Unable to initialize waitMutex: {}", std::string(strerror(errno)));
         ::exit(-1);
     }
 }
@@ -107,8 +109,8 @@ bool gThread::DestroyMutex(const string& mutexName) {
 
     bool retMe = true;
     if (::pthread_mutex_destroy(&(mItr->second)) != 0) {
-        elog << "gThread::DestroyMutex> Unable to destroy mutex: " << mutexName
-             << " because: " << strerror(errno) << endl;
+        LOG(ERROR, "Unable to destroy mutex: {} because: {}", mutexName,
+            std::string(strerror(errno)));
         retMe = false;
     }
 
@@ -121,8 +123,7 @@ bool gThread::DestroyMutex(const string& mutexName) {
 void gThread::DestroyAllMutexes() {
     for (mutexIterator mItr = mutexMap.begin(); mItr != mutexMap.end(); ++mItr) {
         if (::pthread_mutex_destroy(&(mItr->second)) != 0) {
-            elog << "gThread::DestroyAllMutexes> "
-                 << "pthread_mutex_destroy() failed: " << strerror(errno) << endl;
+            LOG(ERROR, "pthread_mutex_destroy() failed: {}", std::string(strerror(errno)));
         }
     }
     mutexMap.clear();
@@ -131,7 +132,7 @@ void gThread::DestroyAllMutexes() {
 void gThread::LockMutex(const string& mutexName) {
     mutexIterator mItr = mutexMap.find(mutexName);
     if (mItr == mutexMap.end()) {
-        elog << "gThread::LockMutex> Unable to locate mutex: " << mutexName << endl;
+        LOG(WARN, "Unable to locate mutex: {}", mutexName);
         return;
     }
 
@@ -141,7 +142,7 @@ void gThread::LockMutex(const string& mutexName) {
 void gThread::UnLockMutex(const string& mutexName) {
     mutexIterator mItr = mutexMap.find(mutexName);
     if (mItr == mutexMap.end()) {
-        elog << "gThread::UnLockMutex> Unable to locate mutex: " << mutexName << endl;
+        LOG(WARN, "Unable to locate mutex: {}", mutexName);
         return;
     }
 
@@ -150,7 +151,7 @@ void gThread::UnLockMutex(const string& mutexName) {
 
 bool gThread::Start() {
     if (::pthread_create(&threadID, 0, stub, reinterpret_cast<void*>(this)) != 0) {
-        elog << "gThread::Start> pthread_create() failed: " << strerror(errno) << endl;
+        LOG(ERROR, "pthread_create() failed: {}", std::string(strerror(errno)));
 
         threadID = 0;
         return false;
@@ -165,7 +166,7 @@ void gThread::Join() {
     }
 
     if (::pthread_join(threadID, 0) != 0) {
-        elog << "gThread::Join> join() failed: " << strerror(errno) << endl;
+        LOG(ERROR, "join() failed: {}", std::string(strerror(errno)));
     }
     isShutdownComplete = true;
 }

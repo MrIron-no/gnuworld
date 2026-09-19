@@ -18,7 +18,6 @@
 #include "MigrationChecker.h"
 #include "dbHandle.h"
 #include "logger.h"
-#include "ELog.h"
 
 namespace gnuworld {
 
@@ -29,22 +28,26 @@ MigrationChecker::MigrationChecker(const std::string& moduleName, dbHandle* db, 
 bool MigrationChecker::check() {
     if (!db) {
         std::string msg = "ERROR [MigrationChecker]: Database handle is null";
-        if (logger) logger->write(ERROR) << msg << std::endl;
+        if (logger)
+            logger->write(ERROR) << msg << std::endl;
         return false;
     }
 
     // Ensure the gnuworld_migrations table exists
     if (!ensureMigrationsTableExists()) {
-        if (logger) logger->write(ERROR) << "Failed to create/access gnuworld_migrations table" << std::endl;
+        if (logger)
+            logger->write(ERROR) << "Failed to create/access gnuworld_migrations table"
+                                 << std::endl;
         return false;
     }
 
     // Scan for migration files
     auto onDisk = scanMigrationFiles();
     if (onDisk.empty()) {
-        std::string msg = "*** [MigrationChecker]: Module '" + moduleName
-                          + "' has no migrations to check";
-        if (logger) logger->write(INFO) << msg << std::endl;
+        std::string msg =
+            "*** [MigrationChecker]: Module '" + moduleName + "' has no migrations to check";
+        if (logger)
+            logger->write(INFO) << msg << std::endl;
         return true;
     }
 
@@ -60,19 +63,22 @@ bool MigrationChecker::check() {
     }
 
     if (!unapplied.empty()) {
-        std::string msg = "*** [MigrationChecker]: Module '" + moduleName
-                          + "' has " + std::to_string(unapplied.size()) + " unapplied migration(s). Applying now...";
-        if (logger) logger->write(INFO) << msg << std::endl;
+        std::string msg = "*** [MigrationChecker]: Module '" + moduleName + "' has " +
+                          std::to_string(unapplied.size()) +
+                          " unapplied migration(s). Applying now...";
+        if (logger)
+            logger->write(INFO) << msg << std::endl;
 
         // Apply the unapplied migrations
         if (!applyMigrations(unapplied)) {
-            return false;  // Error already logged by applyMigrations
+            return false; // Error already logged by applyMigrations
         }
     }
 
-    std::string successMsg = "*** [MigrationChecker]: Module '" + moduleName
-                             + "' migrations verified - all applied";
-    if (logger) logger->write(INFO) << successMsg << std::endl;
+    std::string successMsg =
+        "*** [MigrationChecker]: Module '" + moduleName + "' migrations verified - all applied";
+    if (logger)
+        logger->write(INFO) << successMsg << std::endl;
     return true;
 }
 
@@ -87,14 +93,15 @@ bool MigrationChecker::ensureMigrationsTableExists() {
 
     if (!db->Exec(checkTableSQL, true)) {
         std::string msg = "ERROR [MigrationChecker]: Failed to check for gnuworld_migrations table";
-        if (logger) logger->write(ERROR) << msg << std::endl;
+        if (logger)
+            logger->write(ERROR) << msg << std::endl;
         return false;
     }
 
     // Check if table exists (GetValue returns "t" for true in PostgreSQL)
     std::string exists = db->GetValue(0, 0);
     if (exists == "t" || exists == "true") {
-        return true;  // Table already exists
+        return true; // Table already exists
     }
 
     // Table doesn't exist, create it
@@ -111,12 +118,14 @@ bool MigrationChecker::ensureMigrationsTableExists() {
     if (!db->Exec(createTableSQL)) {
         std::string msg = "ERROR [MigrationChecker]: Failed to create gnuworld_migrations table: " +
                           db->ErrorMessage();
-        if (logger) logger->write(ERROR) << msg << std::endl;
+        if (logger)
+            logger->write(ERROR) << msg << std::endl;
         return false;
     }
 
-    if (logger) logger->write(INFO) << "Created gnuworld_migrations table for module '"
-                                    << moduleName << "'" << std::endl;
+    if (logger)
+        logger->write(INFO) << "Created gnuworld_migrations table for module '" << moduleName << "'"
+                            << std::endl;
     return true;
 }
 
@@ -142,16 +151,15 @@ std::vector<std::string> MigrationChecker::scanMigrationFiles() {
         }
 
         // Sort numerically by the NNN prefix
-        std::sort(files.begin(), files.end(),
-                  [](const std::string& a, const std::string& b) {
-                      int aNum = std::stoi(a.substr(0, 3));
-                      int bNum = std::stoi(b.substr(0, 3));
-                      return aNum < bNum;
-                  });
+        std::sort(files.begin(), files.end(), [](const std::string& a, const std::string& b) {
+            int aNum = std::stoi(a.substr(0, 3));
+            int bNum = std::stoi(b.substr(0, 3));
+            return aNum < bNum;
+        });
 
     } catch (const std::exception& e) {
-        elog << "ERROR [MigrationChecker]: Failed to scan migrations directory '" << migrationsDir
-             << "': " << e.what() << std::endl;
+        LOG_TO(logger ? logger : ::gnuworld::LogManager::get("core"), ERROR,
+               "Failed to scan migrations directory '{}': {}", migrationsDir, e.what());
     }
 
     return files;
@@ -161,12 +169,13 @@ std::vector<std::string> MigrationChecker::getAppliedMigrations() {
     std::vector<std::string> applied;
 
     std::stringstream query;
-    query << "SELECT file FROM gnuworld_migrations WHERE module = '"
-          << moduleName << "' ORDER BY id;";
+    query << "SELECT file FROM gnuworld_migrations WHERE module = '" << moduleName
+          << "' ORDER BY id;";
 
     if (!db->Exec(query.str(), true)) {
-        if (logger) logger->write(WARN) << "Failed to query applied migrations for '"
-                                        << moduleName << "': " << db->ErrorMessage() << std::endl;
+        if (logger)
+            logger->write(WARN) << "Failed to query applied migrations for '" << moduleName
+                                << "': " << db->ErrorMessage() << std::endl;
         return applied;
     }
 
@@ -190,8 +199,10 @@ bool MigrationChecker::applyMigrations(const std::vector<std::string>& unapplied
         // Read the SQL file
         std::ifstream sqlFile(migrationPath);
         if (!sqlFile.is_open()) {
-            std::string msg = "ERROR [MigrationChecker]: Failed to open migration file '" + filename + "' at " + migrationPath.string();
-            if (logger) logger->write(ERROR) << msg << std::endl;
+            std::string msg = "ERROR [MigrationChecker]: Failed to open migration file '" +
+                              filename + "' at " + migrationPath.string();
+            if (logger)
+                logger->write(ERROR) << msg << std::endl;
             return false;
         }
 
@@ -202,18 +213,22 @@ bool MigrationChecker::applyMigrations(const std::vector<std::string>& unapplied
 
         // Execute the migration SQL
         if (!db->Exec(sqlContent.str())) {
-            std::string msg = "ERROR [MigrationChecker]: Failed to apply migration '" + filename + "' for module '" + moduleName + "': " + db->ErrorMessage();
-            if (logger) logger->write(ERROR) << msg << std::endl;
+            std::string msg = "ERROR [MigrationChecker]: Failed to apply migration '" + filename +
+                              "' for module '" + moduleName + "': " + db->ErrorMessage();
+            if (logger)
+                logger->write(ERROR) << msg << std::endl;
             return false;
         }
 
         // Record the migration as applied
         if (!recordMigration(filename)) {
-            return false;  // Error already logged by recordMigration
+            return false; // Error already logged by recordMigration
         }
 
-        std::string msg = "*** [MigrationChecker]: Successfully applied migration '" + filename + "' to module '" + moduleName + "'";
-        if (logger) logger->write(INFO) << msg << std::endl;
+        std::string msg = "*** [MigrationChecker]: Successfully applied migration '" + filename +
+                          "' to module '" + moduleName + "'";
+        if (logger)
+            logger->write(INFO) << msg << std::endl;
     }
 
     return true;
@@ -221,12 +236,14 @@ bool MigrationChecker::applyMigrations(const std::vector<std::string>& unapplied
 
 bool MigrationChecker::recordMigration(const std::string& filename) {
     std::stringstream insertQuery;
-    insertQuery << "INSERT INTO gnuworld_migrations (module, file) VALUES ('"
-                << moduleName << "', '" << filename << "');";
+    insertQuery << "INSERT INTO gnuworld_migrations (module, file) VALUES ('" << moduleName
+                << "', '" << filename << "');";
 
     if (!db->Exec(insertQuery.str())) {
-        std::string msg = "ERROR [MigrationChecker]: Failed to record migration '" + filename + "' in database: " + db->ErrorMessage();
-        if (logger) logger->write(ERROR) << msg << std::endl;
+        std::string msg = "ERROR [MigrationChecker]: Failed to record migration '" + filename +
+                          "' in database: " + db->ErrorMessage();
+        if (logger)
+            logger->write(ERROR) << msg << std::endl;
         return false;
     }
 

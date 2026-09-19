@@ -31,6 +31,7 @@
 #include <concepts>
 
 #include "ELog.h"
+#include "logger.h"
 #include "misc.h" // noCaseCompare
 
 namespace gnuworld {
@@ -273,13 +274,16 @@ class EConfig {
             else if constexpr (std::is_same_v<T, bool>)
                 msg << " (must be true/false, yes/no, on/off, or 1/0)";
 
-            elog << "EConfig::Require<>: " << msg.str() << std::endl;
+            /* FATAL only when the process is about to leave: a non-fatal ask
+             * throws instead, and its caller may well carry on */
+            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : ERROR, "{}",
+                   msg.str());
             if (fatal)
                 ::exit(1);
             throw std::runtime_error(msg.str());
         } catch (const std::out_of_range& e) {
             std::string msg = "Value out of range for key \"" + key + "\": " + e.what();
-            elog << "EConfig::Require<>: " << msg << std::endl;
+            LOG_TO(::gnuworld::LogManager::get("core.config"), fatal ? FATAL : ERROR, "{}", msg);
             if (fatal)
                 ::exit(1);
             throw std::runtime_error(msg);
@@ -298,7 +302,7 @@ class EConfig {
         } catch (const std::exception& e) {
             std::ostringstream err;
             err << "Failed to parse key \"" << key << "\". Keeping old value. Reason: " << e.what();
-            elog << "EConfig::TryRequire<>: " << err.str() << std::endl;
+            LOG_TO(::gnuworld::LogManager::get("core.config"), WARN, "{}", err.str());
             configErrors.push_back(err.str());
             setError();
             return fallback;

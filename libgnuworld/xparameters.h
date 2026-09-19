@@ -35,6 +35,8 @@
 #include <iostream>
 
 #include "ELog.h"
+#include "LogSinks.h"
+#include "logger.h"
 
 namespace gnuworld {
 
@@ -192,9 +194,10 @@ class xParameters {
 
     /// Say which parameter of which line was asked for, and abort.
     [[noreturn]] void outOfRange(const size_type& pos) const {
-        elog << "xParameters> PROTOCOL ERROR, parameter " << pos << " of a line that has "
-             << myVector.size() << ": " << *this << std::endl;
-        if (0 == elog.getStream()) {
+        LOG_TO(::gnuworld::LogManager::get("core.proto"), FATAL,
+               "PROTOCOL ERROR, parameter {} of a line that has {}: {}", pos, myVector.size(),
+               assemble(0));
+        if (!::gnuworld::ConsoleSink::enabled()) {
             std::cerr << "xParameters> PROTOCOL ERROR, parameter " << pos << " of a line that has "
                       << myVector.size() << std::endl;
         }
