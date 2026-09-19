@@ -103,7 +103,8 @@ class xClient : public TimerHandler, public NetworkTarget {
 
     /**
      * Kill will issue a KILL command to the network for
-     * the given iClient (network generic client).
+     * the given iClient (network generic client).  From a stealth module it
+     * is the server's kill either way.
      */
     virtual bool Kill(iClient*, const std::string&);
     virtual bool Kill(iClient*, const std::string&, bool);
@@ -749,7 +750,8 @@ class xClient : public TimerHandler, public NetworkTarget {
     virtual bool Notice(const Channel*, const std::string&);
 
     /**
-     * Have this bot send a global wallops message.
+     * Have this bot send a global wallops message.  From a stealth module
+     * it is the server's.
      */
     virtual bool Wallops(const std::string&);
 

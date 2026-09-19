@@ -564,6 +564,8 @@ async def link_debug(
         await hub.accept_and_handshake(timeout=90.0, burst=burst)
         await proc.wait_for_stdout("Connected", timeout=60.0)
         await proc.wait_for_stdout("Loaded stealth client, nickname: debug", timeout=30.0)
+        if gnutest_stealth:
+            await proc.wait_for_stdout("Loaded stealth client, nickname: gnutest", timeout=30.0)
         yield hub, proc
     finally:
         await proc.terminate()
