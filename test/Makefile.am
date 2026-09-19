@@ -23,7 +23,8 @@ noinst_PROGRAMS = test_burst \
 	test_logger_sinks \
 	test_logger_basic \
 	test_logger_hierarchy \
-	test_logger_config
+	test_logger_config \
+	test_elog_shim
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
@@ -148,8 +149,13 @@ test_logger_config_SOURCES = test/logger_config.cc
 test_logger_config_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_logger_config_LDADD = libgnuworld.la $(threadLib)
 
+# The deprecated elog in front of the logger, on libgnuworld alone.
+test_elog_shim_SOURCES = test/elog_shim.cc
+test_elog_shim_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_elog_shim_LDADD = libgnuworld.la $(threadLib)
+
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
 TESTS = test_channelmodes test_checkedformat test_numbers test_logger_render \
 	test_logger_format test_logger_sinks test_logger_basic test_logger_hierarchy \
-	test_logger_config
+	test_logger_config test_elog_shim

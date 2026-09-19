@@ -44,6 +44,7 @@
 #include "ELog.h"
 #include "IrcLogSink.h"
 #include "LogExtractors.h"
+#include "LogSinks.h"
 #include "server.h"
 #include "moduleLoader.h"
 #include "md5hash.h"
@@ -95,6 +96,15 @@ void gnu() {
 }
 
 int main(int argc, char** argv) {
+    /* Nothing reaches the terminal until startLogging() has read the command
+     * line and decided that it does.  The root logger has a console sink from
+     * the outset, so that a message logged while the logging system is being set
+     * up is seen somewhere, but the lines of this process before that point -
+     * a signal handler that could not open its pipes, for one - were silent
+     * without -c and stay silent: startLogging() turns the console on again
+     * when it was asked for */
+    ConsoleSink::setEnabled(false);
+
     // This is done to intialize the hasher
     md5 dummy;
 
