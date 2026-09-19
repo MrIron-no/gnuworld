@@ -5,7 +5,9 @@ lib_LTLIBRARIES += libgnuworldDB.la
 libgnuworldDB_la_SOURCES = \
 	db/gnuworldDB.cc \
 	db/pgsqlDB.cc
+# Core logs through the logger: the global elog is not declared here (see libgnuworld/ELog.h)
 libgnuworldDB_la_CXXFLAGS = \
+	-DGNUWORLD_NO_ELOG \
 	-I$(top_srcdir)/libgnuworld \
 	-I$(top_srcdir)/libnotifier \
 	-I$(top_srcdir)/include

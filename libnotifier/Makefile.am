@@ -9,7 +9,9 @@ if COND_PROMETHEUS
 libnotifier_la_SOURCES += libnotifier/prometheus.cc
 endif
 
+# Core logs through the logger: the global elog is not declared here (see libgnuworld/ELog.h)
 libnotifier_la_CXXFLAGS = \
+	-DGNUWORLD_NO_ELOG \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/libgnuworld \
 	-I$(top_srcdir)/libnotifier

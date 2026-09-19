@@ -44,5 +44,6 @@ libircu_la_SOURCES = \
 	libircu/msg_XR.cc \
 	libircu/msg_Y.cc
 
-libircu_la_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld -I${top_srcdir}/libnotifier
+# Core logs through the logger: the global elog is not declared here (see libgnuworld/ELog.h)
+libircu_la_CXXFLAGS = -DGNUWORLD_NO_ELOG -I${top_srcdir}/include -I${top_srcdir}/libgnuworld -I${top_srcdir}/libnotifier
 libircu_la_LDFLAGS = -module -export-dynamic

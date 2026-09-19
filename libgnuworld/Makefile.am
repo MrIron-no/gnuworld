@@ -29,7 +29,9 @@ endif
 
 libgnuworld_la_LDFLAGS = $(threadLib)
 
+# Core logs through the logger: the global elog is not declared here (see libgnuworld/ELog.h)
 libgnuworld_la_CXXFLAGS = \
+	-DGNUWORLD_NO_ELOG \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/libgnuworld \
 	-I$(top_srcdir)/libnotifier \

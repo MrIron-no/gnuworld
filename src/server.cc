@@ -65,7 +65,6 @@
 #include "iClient.h"
 #include "EConfig.h"
 #include "match.h"
-#include "ELog.h"
 #include "IrcLogSink.h"
 #include "LogConfig.h"
 #include "LogManager.h"
@@ -176,7 +175,6 @@ xServer::~xServer() {
     IrcLogSink::forgetServer(this);
 
     // All deallocations are performed in doShutdown()
-    elog.closeFile();
     if (logSocket) {
         socketFile.close();
     }
@@ -1960,12 +1958,6 @@ void xServer::startLogging(bool logrotate) {
     if (doDebug) {
         clog << "*** Running in debug mode..." << endl;
     }
-
-    /* The stream is not written to - the console sink of the logging system is,
-     * and setStream() is what turns that on and off - but core still asks
-     * whether one was set to decide whether a message needs a fallback of its
-     * own, so the verbose mode keeps setting it */
-    elog.setStream(verbose ? &clog : nullptr);
 
     if (verbose) {
         LOG(INFO, "Running in verbose mode...");

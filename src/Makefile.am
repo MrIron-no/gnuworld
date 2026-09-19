@@ -21,7 +21,9 @@ libgnuworldcore_la_SOURCES = \
 	src/server_events.cc \
 	src/server_glines.cc \
 	src/server_timers.cc
-libgnuworldcore_la_CXXFLAGS =   -I${top_srcdir}/include \
+# Core logs through the logger: the global elog is not declared here (see libgnuworld/ELog.h)
+libgnuworldcore_la_CXXFLAGS =   -DGNUWORLD_NO_ELOG \
+				-I${top_srcdir}/include \
 				-I${top_srcdir}/libgnuworld \
 				-I${top_srcdir}/libnotifier
 libgnuworldcore_la_LDFLAGS = -export-dynamic
@@ -34,6 +36,7 @@ EXTRA_DIST += \
 bin_PROGRAMS = gnuworld
 gnuworld_SOURCES = src/main.cc
 
-gnuworld_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+# Core logs through the logger: the global elog is not declared here (see libgnuworld/ELog.h)
+gnuworld_CXXFLAGS = -DGNUWORLD_NO_ELOG -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 gnuworld_LDFLAGS = -export-dynamic $(threadLib)
 gnuworld_LDADD = libgnuworld.la libgnuworldcore.la $(LIBLTDL)
