@@ -1062,10 +1062,20 @@ void xServer::BurstClient(iClient* fakeClient) {
                          std::to_string(fakeClient->getAccountID()) + ":" +
                          std::to_string(fakeClient->getAccountFlags());
 
-    Write("{} N {} {} {} {} {} {}{} {} {} :{}\n", fakeServer->getCharYY(),
-          fakeClient->getNickName(), hopCount, fakeClient->getNickTS(), fakeClient->getUserName(),
-          fakeClient->getRealInsecureHost(), fakeClient->getStringModes(), accountString,
-          xIP(fakeClient->getIP()).GetBase64IP(), fakeClient->getCharYYXXX(), description);
+    // <YY> N <nick> <hops> <nick-ts> <user> <host> <+modes>[ <account>] <base64-ip> <YYXXX>
+    // :<description>
+    Write("{} N {} {} {} {} {} {}{} {} {} :{}\n",
+          fakeServer->getCharYY(),                // <YY>
+          fakeClient->getNickName(),              // <nick>
+          hopCount,                               // <hops>
+          fakeClient->getNickTS(),                // <nick-ts>
+          fakeClient->getUserName(),              // <user>
+          fakeClient->getRealInsecureHost(),      // <host>
+          fakeClient->getStringModes(),           // <+modes>
+          accountString,                          // [ <account>], with its own leading space
+          xIP(fakeClient->getIP()).GetBase64IP(), // <base64-ip>
+          fakeClient->getCharYYXXX(),             // <YYXXX>
+          description);
 
     PostEvent(EVT_NICK, static_cast<void*>(fakeClient));
 }
