@@ -83,7 +83,7 @@ std::string withoutControlCharacters(const std::string& input);
  * A pager: one Pushover notification per log record it is given.
  *
  * This is a kind of sink logging.conf names, "sink.<id>.type = pushover", so it
- * may be attached to any logger - the root included - which is what the three
+ * may be attached to any logger - the root included - which is what the
  * protections below are for.
  *
  * A LEVEL OF ITS OWN.  defaultThreshold() says ERROR, not the TRACE every other
