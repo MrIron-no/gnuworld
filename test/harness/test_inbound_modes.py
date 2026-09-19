@@ -99,7 +99,6 @@ UNPARSEABLE = [
     ("{s} B #truncated {ts} +tl", "mode 'l' is missing its argument"),
     ("{s} B #keyed {ts} +tk", "mode 'k' is missing its argument"),
     ("{s} B #banned {ts} {u}:o :%*!*@a.example 1700000000", "not a multiple of 3"),
-    ("{s} B #banned {ts} {u}:o :%*!*@a.example soon {u}", "invalid ban timestamp: soon"),
     ("{s} CM {c} ovx", "unknown mode 'x'"),
     ("{s} CM {c} bd", "mode 'd' is local to a server"),
 ]

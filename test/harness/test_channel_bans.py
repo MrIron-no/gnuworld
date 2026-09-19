@@ -113,6 +113,25 @@ async def test_what_a_p11_triplet_says_is_shown_safely(docker_stack, fake_hub_p1
 
 
 @pytest.mark.asyncio
+async def test_a_p11_ban_time_that_is_no_number_is_a_warning(docker_stack, fake_hub_p11, tmp_path):
+    """The time of a ban is somebody's note, passed on by every server since:
+    one that cannot be read costs a warning, and neither the link nor the ban."""
+    ts = int(time.time()) - 3600
+
+    async with link_debug(fake_hub_p11, tmp_path) as (hub, proc):
+        asker = await _asker(hub)
+        before = int(time.time())
+        await _burst_channel(hub, ts, bans=f" :%{NARROW} soon OldOp")
+
+        info = await chaninfo(hub, asker, CHAN)
+        assert info.bans == {NARROW}
+        assert info.ban_setters == {NARROW: "OldOp"}
+        assert before - 2 <= info.ban_times[NARROW] <= int(time.time()) + 2  # when we learnt of it
+
+        await proc.wait_for_stdout("has a timestamp that is no number: soon", timeout=10.0)
+
+
+@pytest.mark.asyncio
 async def test_a_p10_burst_ban_is_the_bursting_servers(docker_stack, fake_hub, tmp_path):
     """A P10 burst is a flat list of masks: nobody to name but the sender."""
     ts = int(time.time()) - 3600

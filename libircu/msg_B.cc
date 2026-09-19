@@ -26,6 +26,7 @@
 
 #include <new>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <format>
@@ -448,16 +449,6 @@ void msg_B::parseBurstBans(Channel* theChan, const string& theBans, const string
                 std::format("the ban section has {} tokens, not a multiple of 3", st.size());
             theServer->ProtocolError("msg_B::parseBurstBans>", std::span(&problem, 1));
         }
-
-        for (StringTokenizer::size_type i = 0; i < st.size(); i += stride) {
-            // st[ i ]: mask, st[ i + 1 ]: time the ban was set,
-            // st[ i + 2 ]: who set it.
-            const string& banTS = st[i + 1];
-            if (banTS.empty() || banTS.find_first_not_of("0123456789") != string::npos) {
-                const std::string problem = "invalid ban timestamp: " + banTS;
-                theServer->ProtocolError("msg_B::parseBurstBans>", std::span(&problem, 1));
-            }
-        }
     }
 
     typedef xServer::banVectorType banVectorType;
@@ -473,10 +464,23 @@ void msg_B::parseBurstBans(Channel* theChan, const string& theBans, const string
     for (StringTokenizer::size_type i = 0; i < st.size(); i += stride) {
         banVector.push_back(banVectorType::value_type(true, st[i]));
         if (isP11) {
-            // st[ i ]: mask, st[ i + 1 ]: time the ban was set, validated
-            // above, st[ i + 2 ]: who set it.
-            banInfo.push_back(
-                Channel::BanInfo{st[i + 2], parseNumber<time_t>(st[i + 1]).value_or(0)});
+            // st[ i ]: mask, st[ i + 1 ]: time the ban was set,
+            // st[ i + 2 ]: who set it.
+            //
+            // The time is what some server once wrote down and every
+            // server since has passed on: one that is no number is worth
+            // a warning, not the link.  The ban is as good as any other,
+            // and is recorded as set now, which is when we learnt of it.
+            const string& banTS = st[i + 1];
+            std::optional<time_t> setAt;
+            if (!banTS.empty() && banTS.find_first_not_of("0123456789") == string::npos) {
+                setAt = parseNumber<time_t>(banTS);
+            }
+            if (!setAt) {
+                LOG(WARN, "Ban {} of {}, burst by {}, has a timestamp that is no number: {}", st[i],
+                    theChan->getName(), burstSource, banTS);
+            }
+            banInfo.push_back(Channel::BanInfo{st[i + 2], setAt.value_or(0)});
         } else {
             banInfo.push_back(Channel::BanInfo{burstSource, 0});
         }
