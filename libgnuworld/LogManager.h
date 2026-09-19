@@ -180,6 +180,21 @@ class LogManager {
     static bool loadFile(const std::string& fileName);
 
     /**
+     * Says once, at WARN on "core.config", that this file holds a secret and
+     * that the file system lets somebody else read it.
+     *
+     * A sink option named "token" is a credential - a pushover sink's
+     * application token is one - and a configuration file carrying one is a
+     * file that has no business being group or world readable.  This only ever
+     * says so: a log configuration is data, and nothing about it stops this
+     * process or takes its logging away.
+     *
+     * Called by whoever knows the file's name: loadFile() does it itself, and
+     * core does it for the file it reads through parseLogConfig().
+     */
+    static void warnIfSecretsAreReadable(const std::string& fileName, const LogConfig&);
+
+    /**
      * Adds a human-readable log file to the root, for a process that has no
      * logging.conf to tell it where to write.  This is a sink of the code, so a
      * configuration that is read later does not take it away; asking twice for

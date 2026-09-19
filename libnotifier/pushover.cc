@@ -23,31 +23,82 @@
 #include <curl/curl.h>
 #endif
 
-#include <iostream>
-#include <sstream>
 #include <algorithm>
+#include <chrono>
+#include <cstddef>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <sstream>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "LogConfig.h"
+#include "LogManager.h"
+#include "LogRateLimit.h"
+#include "LogSink.h"
+#include "logger.h"
 #include "pushover.h"
 #include "threadworker.h"
-#include "logger.h"
 
 GNUWORLD_MODULE_LOGGER("core.notifier");
 
 namespace gnuworld {
 
-PushoverClient::PushoverClient(std::string token, pushoverKeysType users
+namespace {
+
+/// The logger this sink reports its own failures on, and takes nothing from
+const std::string notifierLogger("core.notifier");
+
+#ifdef HAVE_LIBCURL
+/// The parts of a comma separated list, each without the space around it
+std::vector<std::string> splitList(const std::string& value) {
+    static const std::string blanks(" \t\r\n\v\f");
+
+    std::vector<std::string> parts;
+    std::string::size_type at = 0;
+
+    for (;;) {
+        const std::string::size_type comma = value.find(',', at);
+        const std::string piece =
+            std::string::npos == comma ? value.substr(at) : value.substr(at, comma - at);
+
+        const std::string::size_type begin = piece.find_first_not_of(blanks);
+
+        parts.push_back(std::string::npos == begin
+                            ? std::string()
+                            : piece.substr(begin, piece.find_last_not_of(blanks) - begin + 1));
+
+        if (std::string::npos == comma)
+            break;
+
+        at = comma + 1;
+    }
+
+    return parts;
+}
+#endif // HAVE_LIBCURL
+
+} // namespace
+
+PushoverClient::PushoverClient(std::string token, pushoverKeysType users, std::string url,
+                               Verbosity threshold, std::size_t rateCount,
+                               std::chrono::seconds ratePer)
+    : apiToken(std::move(token)), userKeys(std::move(users)),
+      apiUrl(url.empty() ? std::string(defaultUrl()) : std::move(url)), threshold(threshold),
+      rateLimit(rateCount, ratePer), failureReports(1, std::chrono::seconds(60)) {}
+
+PushoverClient::~PushoverClient() {
 #ifdef USE_THREAD
-                               ,
-                               ThreadWorker* worker
+    /* Whatever is still queued is asked to do nothing: the worker below is
+     * destroyed - which drains its queue and joins its thread - before any
+     * other member of this object is, so a job that runs now finds everything
+     * it touches alive, and a job that has not started yet returns at once
+     * rather than spending a timeout on an endpoint that is not answering */
+    stopping.store(true);
 #endif
-                               )
-    : apiToken(token), userKeys(users)
-#ifdef USE_THREAD
-      ,
-      threadWorker(worker)
-#endif
-{
 }
 
 #ifdef HAVE_LIBCURL
@@ -60,7 +111,35 @@ void PushoverClient::initialise_curl() {
 }
 #endif
 
+/**
+ * Whether a record of this logger is one this sink must not touch.
+ *
+ * Its own delivery failures are logged on core.notifier, from the worker thread
+ * where the logger's re-entrancy guard does not apply, so a sink attached to the
+ * root would page about failing to page - and fail, and page.  Dropping every
+ * record of that logger and of everything below it is what breaks the loop.
+ */
+bool PushoverClient::isNotifierLogger(const std::string& logger) {
+    if (logger.size() < notifierLogger.size())
+        return false;
+
+    if (0 != logger.compare(0, notifierLogger.size(), notifierLogger))
+        return false;
+
+    return logger.size() == notifierLogger.size() || '.' == logger[notifierLogger.size()];
+}
+
 void PushoverClient::emit(const LogRecord& r) {
+    // The loop guard: this sink's own logger, and everything below it
+    if (isNotifierLogger(r.logger))
+        return;
+
+    /* A pager's own threshold.  logging.conf's "level" is applied before a
+     * record ever gets here, but a file that gave none leaves that at TRACE,
+     * and TRACE is no level for a pager */
+    if (r.level > threshold)
+        return;
+
     sendMessage(std::format("[{}] {}", r.logger.empty() ? std::string("root") : r.logger,
                             levelName(r.level)),
                 (r.level == INFO ? std::string() : r.function + "> ") + r.message);
@@ -77,48 +156,74 @@ bool PushoverClient::sendMessage(const std::string title, const std::string mess
     return sendMessage(title, message, 0, 60, 3600);
 }
 
+/**
+ * One notification, if the rate limit lets it through.
+ *
+ * What the limit refused is counted by the limit itself, and the next
+ * notification that does go out is preceded by one saying how many did not: a
+ * pager that goes quiet under a flood would otherwise say nothing about the
+ * flood.  That summary costs no token of its own - it is about the limit, not a
+ * record of its own - and it is sent before the record it stands in front of.
+ */
 bool PushoverClient::sendMessage(const std::string title, const std::string message, int priority,
                                  int retry, int expire) {
+    if (!rateLimit.admit())
+        return false;
+
+    const std::size_t suppressed = rateLimit.takeSuppressed();
+
+    if (0 != suppressed)
+        queueMessage("[gnuworld] suppressed",
+                     std::to_string(suppressed) +
+                         " messages were suppressed by the rate limit of " + rateLimit.describe(),
+                     priority, retry, expire);
+
+    return queueMessage(title, message, priority, retry, expire);
+}
+
+bool PushoverClient::queueMessage(const std::string& title, const std::string& message,
+                                  int priority, int retry, int expire) {
 #ifdef USE_THREAD
-    if (threadWorker) {
-        threadWorker->submitJob([this, title, message, priority, retry, expire]() {
-            this->processMessage(title, message, priority, retry, expire);
-        });
-        return true; // Assume success for async operations
-    } else
-#endif
-    {
-        bool ok = processMessage(title, message, priority, retry, expire);
-        if (!ok) {
-            /* Logged on core.notifier, which no pushover sink is attached to:
-             * see processMessage() for why that is what keeps this from
-             * feeding itself */
-            LOG(ERROR, "Failed to send message: {}", message);
-            statErrors++;
-        }
-        return ok;
+    /* On this sink's own worker, which this sink joins: a job cannot outlive
+     * the object it was queued on, and one queued while the object is going
+     * away does nothing at all */
+    threadWorker.submitJob([this, title, message, priority, retry, expire]() {
+        if (stopping.load())
+            return;
+
+        this->processMessage(title, message, priority, retry, expire);
+    });
+
+    return true; // Assume success for async operations
+#else
+    const bool ok = processMessage(title, message, priority, retry, expire);
+
+    if (!ok) {
+        /* Logged on core.notifier, which this sink takes no record of: see
+         * isNotifierLogger() for why that is what keeps it from feeding itself */
+        reportFailure(std::format("Failed to send a notification titled: {}", title));
+        ++statErrors;
     }
+
+    return ok;
+#endif
 }
 
 bool PushoverClient::processMessage(const std::string title, const std::string message,
                                     int priority, int retry, int expire) {
     bool allSucceeded = true;
 
-    for (const auto& user : userKeys) {
-        bool ok = sendToUser(user, title, message, priority, retry, expire);
+    for (std::size_t at = 0; at < userKeys.size(); ++at) {
+        const bool ok = sendToUser(at + 1, userKeys[at], title, message, priority, retry, expire);
+
         if (!ok) {
-            /* A failure the logger itself hears about.  Called from emit() the
-             * record is re-entrant and the logger keeps it away from every
-             * suppressOnReentry sink, this one among them; with a ThreadWorker
-             * the send happens on the worker's thread, outside any dispatch, so
-             * the record is an ordinary one and reaches whatever sinks
-             * core.notifier and its ancestors carry.  It can only come back
-             * here - and then not stop - if a pushover sink is attached to
-             * core.notifier or to an ancestor of it; cservice attaches its own
-             * to the logger "cservice", which is a sibling of "core", so the
-             * record never reaches it and no machinery is needed to stop it */
-            LOG(ERROR, "Failed to send to user: {}", user);
-            statErrors++;
+            /* A failure the logger hears about, on core.notifier and by the
+             * user's POSITION in the list: a user key is a secret, and a log
+             * file is read by whoever can read a log file.  At most one of
+             * these a minute, each standing for however many it was not worth
+             * repeating */
+            reportFailure(std::format("Failed to send to user #{}", at + 1));
+            ++statErrors;
             allSucceeded = false;
         }
     }
@@ -126,7 +231,27 @@ bool PushoverClient::processMessage(const std::string title, const std::string m
     return allSucceeded;
 }
 
-bool PushoverClient::sendToUser([[maybe_unused]] const std::string user,
+/**
+ * One ERROR on core.notifier, and no more than one a minute per sink.
+ *
+ * An endpoint that is not there fails once per record per user key, and a log
+ * file is not the place to hear about every one of them: the record that is
+ * logged says how many failures went unsaid behind it.
+ */
+void PushoverClient::reportFailure(const std::string& what) {
+    if (!failureReports.admit())
+        return;
+
+    const std::size_t hidden = failureReports.takeSuppressed();
+
+    if (0 == hidden)
+        LOG(ERROR, "{}", what);
+    else
+        LOG(ERROR, "{} ({} further failures were not logged)", what, hidden);
+}
+
+bool PushoverClient::sendToUser([[maybe_unused]] std::size_t position,
+                                [[maybe_unused]] const std::string user,
                                 [[maybe_unused]] const std::string title,
                                 [[maybe_unused]] const std::string message,
                                 [[maybe_unused]] int priority, [[maybe_unused]] int retry,
@@ -148,7 +273,6 @@ bool PushoverClient::sendToUser([[maybe_unused]] const std::string user,
             postData << "&retry=" << retry << "&expire=" << expire;
         }
 
-        std::string url = "https://api.pushover.net/1/messages.json";
         std::string body = postData.str();
 
         CURL* curl = curl_easy_init();
@@ -158,7 +282,7 @@ bool PushoverClient::sendToUser([[maybe_unused]] const std::string user,
         struct curl_slist* hdrs = nullptr;
         hdrs = curl_slist_append(hdrs, "Content-Type: application/x-www-form-urlencoded");
 
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_URL, apiUrl.c_str());
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
         curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS, body.c_str());
@@ -167,22 +291,113 @@ bool PushoverClient::sendToUser([[maybe_unused]] const std::string user,
         curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_1_1);
 
         CURLcode rc = curl_easy_perform(curl);
+        long status = 0;
+
+        if (CURLE_OK == rc)
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+
         curl_slist_free_all(hdrs);
         curl_easy_cleanup(curl);
+
         if (rc != CURLE_OK)
             throw std::runtime_error(curl_easy_strerror(rc));
 
-        statSuccessful++;
-        LOG(TRACE, "Message sent to user: {} with title: {} and message: {}", user, safeTitle,
+        /* An endpoint that answers, but not with a success, is a failure of
+         * delivery like any other: a token the service rejected would otherwise
+         * look like a notification that went out */
+        if (status < 200 || status > 299)
+            throw std::runtime_error("the endpoint answered " + std::to_string(status));
+
+        ++statSuccessful;
+
+        /* The user's position, never the key itself, and the title and the
+         * sentence, which are the log record this notification was made of */
+        LOG(TRACE, "Message sent to user #{} with title: {} and message: {}", position, safeTitle,
             safeMessage);
+
         return true;
     } catch (const std::exception& e) {
-        LOG(ERROR, "exception: {}", e.what());
+        reportFailure(std::format("Failed to send to user #{}: {}", position, e.what()));
     } catch (...) {
-        LOG(ERROR, "unknown exception");
+        reportFailure(std::format("Failed to send to user #{}: an unknown error", position));
     }
 #endif
     return false;
+}
+
+/**
+ * The sink a "sink.<id>.type = pushover" line asks for.
+ *
+ * Everything it says about what is wrong names a KEY of the file and never a
+ * value: an option of this kind of sink may be a token or a user key, and this
+ * error goes into a log file, where a secret has no business being.
+ */
+std::shared_ptr<LogSink> PushoverClient::makeSink([[maybe_unused]] const SinkSpec& spec,
+                                                  std::string& error) {
+    const std::string prefix = "sink." + spec.id + ".";
+
+#ifndef HAVE_LIBCURL
+    error = prefix + "type: pushover support is not compiled in (libcurl was not found at build "
+                     "time)";
+
+    return nullptr;
+#else
+    std::string token;
+    pushoverKeysType users;
+    std::string url;
+    std::size_t rateCount = 10;
+    std::chrono::seconds ratePer(60);
+
+    for (const std::pair<const std::string, std::string>& option : spec.options) {
+        if ("token" == option.first) {
+            token = option.second;
+        } else if ("userkey" == option.first) {
+            users = splitList(option.second);
+        } else if ("url" == option.first) {
+            url = option.second;
+        } else if ("rate" == option.first) {
+            if (!LogRateLimit::parse(option.second, rateCount, ratePer)) {
+                error =
+                    prefix + option.first + ": not a rate, expected <N>/min, <N>/hour or <N>/sec";
+
+                return nullptr;
+            }
+        } else {
+            error = prefix + option.first + ": unknown setting for a pushover sink";
+
+            return nullptr;
+        }
+    }
+
+    if (token.empty()) {
+        error = prefix + "token: a pushover sink needs an application token";
+
+        return nullptr;
+    }
+
+    if (users.empty()) {
+        error = prefix + "userkey: a pushover sink needs at least one user key";
+
+        return nullptr;
+    }
+
+    for (const std::string& user : users)
+        if (user.empty()) {
+            error = prefix + "userkey: an empty user key in the list";
+
+            return nullptr;
+        }
+
+    /* A pager nobody gave a level to is at ERROR: TRACE, which every other kind
+     * of sink defaults to, is a notification per protocol message */
+    const Verbosity level = spec.levelGiven ? spec.level : ERROR;
+
+    return std::make_shared<PushoverClient>(token, users, url, level, rateCount, ratePer);
+#endif
+}
+
+void PushoverClient::registerSinkType() {
+    LogManager::registerSinkType(typeName(), &PushoverClient::makeSink);
 }
 
 } // namespace gnuworld

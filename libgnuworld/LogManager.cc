@@ -17,6 +17,8 @@
  * USA.
  *
  */
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <exception>
@@ -441,8 +443,16 @@ bool LogManager::configure(const LogConfig& config, std::vector<string>& errors)
         const std::shared_ptr<LogSink> sink = factory(spec, why);
 
         if (nullptr == sink) {
-            errors.push_back("sink." + spec.id + ": " +
-                             (why.empty() ? string("the sink could not be made") : why));
+            if (why.empty())
+                errors.push_back("sink." + spec.id + ": the sink could not be made");
+            else if (0 == why.compare(0, ("sink." + spec.id).size(), "sink." + spec.id))
+                /* A factory that knows which of its own settings is wrong names
+                 * that key itself - "sink.page.token: ..." - and is quoted as it
+                 * stands rather than behind a second "sink.page:" */
+                errors.push_back(why);
+            else
+                errors.push_back("sink." + spec.id + ": " + why);
+
             continue;
         }
 
@@ -563,8 +573,11 @@ bool LogManager::loadFile(const string& fileName) {
     try {
         applied = parseLogConfig(fileName, config, errors);
 
-        if (applied)
+        if (applied) {
+            warnIfSecretsAreReadable(fileName, config);
+
             applied = configure(config, errors);
+        }
     } catch (const std::exception& e) {
         applied = false;
         errors.clear();
@@ -583,6 +596,40 @@ bool LogManager::loadFile(const string& fileName) {
     }
 
     return applied;
+}
+
+/**
+ * Says once that a file holding a token is readable by somebody else.
+ *
+ * A file nobody but this process's own user may read is the normal case and says
+ * nothing at all; a file that cannot be asked about - it went away between being
+ * read and being asked about - says nothing either.  This is a warning and never
+ * anything more: a configuration file is data.
+ */
+void LogManager::warnIfSecretsAreReadable(const string& fileName, const LogConfig& config) {
+    bool holdsSecret = false;
+
+    for (const SinkSpec& spec : config.sinks)
+        if (spec.options.end() != spec.options.find("token")) {
+            holdsSecret = true;
+            break;
+        }
+
+    if (!holdsSecret)
+        return;
+
+    struct stat about;
+
+    if (0 != ::stat(fileName.c_str(), &about))
+        return;
+
+    // Anything at all that a group or the rest of the world may do with it
+    if (0 == (about.st_mode & 077))
+        return;
+
+    LOG_TO(get("core.config"), WARN,
+           "{} holds a token and is readable by others (mode {:04o}); chmod 600 it", fileName,
+           static_cast<unsigned int>(about.st_mode & 07777));
 }
 
 /**

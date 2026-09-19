@@ -72,6 +72,7 @@
 #include "LogSink.h"
 #include "LogSinks.h"
 #include "logger.h"
+#include "pushover.h"
 #include "StringTokenizer.h"
 #include "xparameters.h"
 #include "moduleLoader.h"
@@ -1872,8 +1873,13 @@ void xServer::setupLogging(bool reload) {
          * channel is.  A reload registers the same thing again, which replaces it */
         LogManager::registerSinkType(
             "irc", [this](const SinkSpec& spec, string&) -> std::shared_ptr<LogSink> {
-                return std::make_shared<IrcLogSink>(this, spec.channel, spec.highlight);
+                return std::make_shared<IrcLogSink>(this, spec.channel, spec.highlight, spec.rate);
             });
+
+        /* And the one the notifier makes, which is registered here rather than by
+         * whoever wants to be paged: a pager is a sink of logging.conf like any
+         * other, so it exists before the file that may name it is read */
+        PushoverClient::registerSinkType();
 
         const string fileName = loggingConfFileName();
 
@@ -1955,6 +1961,12 @@ void xServer::setupLogging(bool reload) {
         /* Said last of all, so that every one of these goes where the configuration
          * just applied says it goes rather than wherever the one before it did */
         reportLogConfigErrors(__PRETTY_FUNCTION__, problems);
+
+        /* A file that holds a token - a pushover sink's - and that anybody on
+         * this host may read is worth one warning.  Only for the file that is
+         * really in force: the built-in default holds no secret */
+        if (fromFile)
+            LogManager::warnIfSecretsAreReadable(fileName, config);
 
         if (!reload && !haveFile)
             LOG(INFO, "No logging.conf found; using built-in defaults (see "
