@@ -731,7 +731,13 @@ if (!db->Exec(query)) {
 
 `LOGSQL_ERROR(db)` (it used to be the logger's own macro and needed a
 `logger` member in scope; now it is `dbHandle`'s) expands to `db->logError(__PRETTY_FUNCTION__)`, which logs
-`"SQL Error: {error}"` with the field `error`, the database's message. The
+`"SQL Error: {error}"` with the field `error`, the database's **primary**
+message (`PG_DIAG_MESSAGE_PRIMARY`) rather than the whole of
+`PQerrorMessage()`, whose `LINE 1:` excerpt and `DETAIL: Key (...)=(...)`
+would put the failing statement's literal values — a password hash among
+them — back into the log the `Exec(query, false)` below keeps them out of;
+a failure with no result to ask, a lost connection, still gives the whole
+message. The
 statement is not part of that record: ask for `logger.<module>.sql = DEBUG`
 and it is the record right before it. Every `Exec()` call itself is a `DEBUG` record on the same
 logger with field `query`, unless it is called `Exec(query, false)`, in

@@ -42,18 +42,38 @@ using std::ends;
 using std::string;
 using std::stringstream;
 
+/**
+ * One value of a connection string, quoted the way libpq documents it: in
+ * single quotes, with a backslash before every backslash and single quote.
+ * Without this a value holding a space (a password may) ends the key it
+ * belongs to, and libpq's complaint about the rest of it names the fragment
+ * - which is how a password reaches a log file.
+ */
+static string quoteConnValue(const string& value) {
+    string quoted("'");
+
+    for (const char c : value) {
+        if ('\\' == c || '\'' == c)
+            quoted += '\\';
+        quoted += c;
+    }
+
+    return quoted + '\'';
+}
+
 pgsqlDB::pgsqlDB(xClient* _bot, const string& dbHost, const unsigned short int dbPort,
                  const string& dbName, const string& userName, const string& password)
     : gnuworldDB(dbHost, dbPort, dbName, userName, password), bot(_bot), theDB(0), lastResult(0),
       sqlLog(_bot->getLogger()->child("sql", ERROR)) {
     stringstream s;
-    s << "host=" << dbHost << " dbname=" << dbName << " port=" << dbPort;
+    s << "host=" << quoteConnValue(dbHost) << " dbname=" << quoteConnValue(dbName)
+      << " port=" << dbPort;
 
     if (!userName.empty()) {
-        s << " user=" << userName;
+        s << " user=" << quoteConnValue(userName);
     }
     if (!password.empty()) {
-        s << " password=" << password;
+        s << " password=" << quoteConnValue(password);
     }
     s << ends;
 
@@ -124,7 +144,18 @@ bool pgsqlDB::Exec(const stringstream& theQuery, bool retData) {
 }
 
 void pgsqlDB::logError(const char* func) {
-    sqlLog->createMessage(ERROR, func, "SQL Error: {error}").with("error", ErrorMessage()).log();
+    /* PostgreSQL's primary message and nothing else: the full text of
+     * PQerrorMessage() carries a "LINE 1: <statement>" excerpt and a
+     * "DETAIL: Key (...)=(...)", either of which would put back into the log
+     * the literal values - a password hash, a TOTP secret, a SCRAM record -
+     * that Exec(query, false) keeps out of it.  A connection-level failure
+     * has no result to ask, and there the whole message is all there is. */
+    const char* primary =
+        (0 == lastResult) ? 0 : PQresultErrorField(lastResult, PG_DIAG_MESSAGE_PRIMARY);
+
+    sqlLog->createMessage(ERROR, func, "SQL Error: {error}")
+        .with("error", (0 == primary) ? ErrorMessage() : string(primary))
+        .log();
 }
 
 bool pgsqlDB::StartCopyIn(const string& writeMe) { return Exec(writeMe); }
