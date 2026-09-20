@@ -78,6 +78,14 @@ class LogSink {
      * feeding itself.
      */
     virtual bool suppressOnReentry() const { return false; }
+
+    /**
+     * True when what this sink is given is sent somewhere else: an IRC
+     * channel, a pager.  A record marked localOnly never reaches such a sink.
+     * It is decided here, in code, and not by logging.conf, so that no
+     * configuration can send an SQL statement to a channel.
+     */
+    virtual bool leavesTheHost() const { return false; }
 };
 
 } // namespace gnuworld

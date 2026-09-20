@@ -117,9 +117,9 @@ pgsqlDB::~pgsqlDB() {
 }
 
 bool pgsqlDB::Exec(const string& theQuery, bool log, std::source_location where) {
-    /* Log query. */
+    /* Log query: to this machine only, never to a channel or a pager */
     if (log)
-        LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
+        LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).localOnly().log();
 
     // It is necessary to manually deallocate the last result
     // to prevent memory leaks.

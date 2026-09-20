@@ -63,6 +63,9 @@ class notifier : public LogSink {
      */
     bool suppressOnReentry() const override { return true; }
 
+    /// A notifier is somebody else's service: a pager, a metrics gateway
+    bool leavesTheHost() const override { return true; }
+
     /**
      * Get the number of successful notifications sent
      * @return Number of successful notifications

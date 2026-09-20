@@ -99,6 +99,8 @@ class IrcLogSink : public LogSink, public std::enable_shared_from_this<IrcLogSin
 
     bool suppressOnReentry() const override { return true; }
 
+    bool leavesTheHost() const override { return true; }
+
     /**
      * Remembers the calling thread as the one that may write to the network.
      * Called once, from the main thread, at start-up; until it is, every

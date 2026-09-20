@@ -830,6 +830,10 @@ Two flags change how the logger treats a sink:
   too would feed itself. A thread-local flag marks "already inside a sink
   dispatch"; a record logged while it is set reaches only sinks whose
   `suppressOnReentry()` is false.
+- `leavesTheHost()` — true for the IRC sink and every notifier: what they
+  are given goes to a channel or to somebody else's service. A record
+  marked `localOnly()` (an SQL statement) is never given to such a sink.
+  A sink of your own that sends records anywhere must say so too.
 
 To make a sink `logging.conf` can name by a `sink.<id>.type = ...` line,
 register a factory once, at start-up:
@@ -920,10 +924,16 @@ this kind of sink's `defaultThreshold()`.
 3. **`logger.<module>.sql = DEBUG` logs every statement in full** — for
    cservice and ccontrol that includes the `UPDATE ... SET password = ...`
    the credential exemption above does not cover simply by being a
-   different query. Never route such a logger, at `DEBUG`, to an `irc`
-   sink or to a notifier: that is why the `debugchan` sink of the shipped
-   [cservice section](#cservice) stops at `INFO`, and why
-   `logger.cservice.sql = DEBUG` is shipped commented out.
+   different query. **No configuration can send a statement to a channel or a
+   pager, though:** the db handle marks the record `localOnly()`, and the
+   logger gives such a record to no sink whose `leavesTheHost()` is true —
+   the `irc` sink and every notifier — whatever `logging.conf` routes where
+   and at whatever level. Files and the console get it. Any code that logs
+   something of that kind does the same:
+   `LOG_MSG(DEBUG, "{query}").with("query", q).localOnly().log();`. The error
+   record of a failed statement is NOT local-only — it is what should page
+   somebody — and carries the database's primary message, never the
+   statement.
 4. **An `irc` sink is driven by whatever the uplink sends**, one notice per
    anomaly, and has no rate limit unless `sink.<id>.rate` asks for one. Put
    it on a module's own logger at `WARN` or above rather than on

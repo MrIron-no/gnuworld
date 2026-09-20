@@ -98,6 +98,13 @@ struct LogRecord {
     std::vector<LogSpan> spans;
     std::vector<LogField> context;
     std::vector<LogField> fields;
+
+    /**
+     * True for a record that must not leave this machine, such as an SQL
+     * statement: the logger gives it to no sink that says leavesTheHost(),
+     * whatever logging.conf routes where and at whatever level.
+     */
+    bool localOnly = false;
 };
 
 /**

@@ -729,6 +729,49 @@ def _cservice_logging_conf(tmp_path, *, sql_debug: bool = False) -> tuple[str, P
 
 
 @pytest.mark.asyncio
+async def test_no_configuration_sends_a_statement_to_a_channel(docker_stack, fake_hub_p11, tmp_path):
+    """The worst logging.conf there is: every statement asked for, and an irc
+    sink that takes everything.  The file gets the statements; the channel gets
+    cservice's other DEBUG records and not one statement - a record marked
+    localOnly is kept from every sink that leaves the host by the logger, not
+    by the levels of a file."""
+    hub = fake_hub_p11
+    channel = "#coder-com"
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    log_path = f"{root}/cservice.log"
+    logging_conf = (
+        "sink.file.type = file\n"
+        f"sink.file.path = {log_path}\n"
+        "sink.file.format = json\n"
+        "sink.chan.type = irc\n"
+        f"sink.chan.channel = {channel}\n"
+        "sink.chan.level = TRACE\n"
+        "logger.root = INFO, file\n"
+        "logger.cservice = TRACE, file, chan\n"
+        "additivity.cservice = no\n"
+        "logger.cservice.sql = TRACE\n"
+    )
+    burst = [f"{hub.server_numnick} B {channel} 1700000004 +tn"]
+
+    async with link_cservice_logging(
+        docker_stack, hub, tmp_path, logging_conf=logging_conf, burst=burst,
+    ) as (hub, proc, conf_dir):
+        await cs.login(hub)
+        await asyncio.sleep(1.0)
+        texts = [t for t in (_notice_text(line, channel) for line in hub.received) if t]
+
+    records = _read_json_lines(Path(log_path))
+    statements = [r for r in records if r.get("logger") == "cservice.sql" and "query" in r]
+    assert statements, "the file got no statement: the test proves nothing"
+
+    # The channel is alive and does carry DEBUG records of cservice...
+    assert any("[cservice]" in t for t in texts), texts[:5]
+    # ...but nothing of cservice.sql below an error, and no statement text
+    assert not [t for t in texts if "[cservice.sql]" in t and "SQL Error" not in t], texts
+    assert not [t for t in texts if "SELECT " in t or "UPDATE " in t or "INSERT " in t], texts
+
+
+@pytest.mark.asyncio
 async def test_cservice_without_a_logger_line_reaches_the_root_sinks(
     docker_stack, fake_hub_p11, tmp_path
 ):

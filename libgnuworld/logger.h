@@ -379,6 +379,15 @@ class Logger {
         }
 
         /**
+         * Keeps the record on this machine: no sink that leavesTheHost() - an
+         * IRC channel, a pager - is given it, however logging.conf routes it.
+         */
+        MessageTemplate& localOnly() {
+            local = true;
+            return *this;
+        }
+
+        /**
          * Renders the sentence and hands the record to the logger.
          * Nothing is rendered when the level rules the record out.
          */
@@ -432,6 +441,7 @@ class Logger {
         std::vector<LogField> fields;   // Typed fields, in insertion order
         Verbosity level;                // Log level
         const char* func;               // __PRETTY_FUNCTION__ of the call site
+        bool local = false;             // localOnly(): not for a sink that leaves the host
         Logger* loggerInstance;         // The logger the record goes to
     };
 

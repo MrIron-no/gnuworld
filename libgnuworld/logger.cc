@@ -397,6 +397,9 @@ void Logger::log(LogRecord&& record) {
         if (guard.wasInside() && target.sink->suppressOnReentry())
             continue;
 
+        if (record.localOnly && target.sink->leavesTheHost())
+            continue;
+
         target.sink->emit(record);
     }
 }
@@ -425,6 +428,7 @@ void Logger::MessageTemplate::log() const {
     record.message = rendered.text;
     record.spans = rendered.spans;
     record.fields = fields;
+    record.localOnly = local;
 
     loggerInstance->log(std::move(record));
 }

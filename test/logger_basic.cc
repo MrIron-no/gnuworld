@@ -199,6 +199,13 @@ class SuppressingCaptureSink : public CaptureSink {
     bool suppressOnReentry() const override { return true; }
 };
 
+/// A capture sink that sends what it is given elsewhere, as an IRC channel
+/// or a pager does
+class RemoteCaptureSink : public CaptureSink {
+  public:
+    bool leavesTheHost() const override { return true; }
+};
+
 /* ------------------------------------------------------------------ *
  * The notifier base class, which libnotifier's pushover and prometheus
  * clients are.  Only its header is used here - the test links libgnuworld
@@ -437,6 +444,44 @@ void testSinkThresholds() {
  * A record logged from inside a sink's emit() reaches the sinks that put up
  * with it and no others, and nothing deadlocks on the way.
  */
+/**
+ * A record marked localOnly - an SQL statement - reaches the sinks of this
+ * machine and no sink that leaves it, at whatever level that sink is attached:
+ * it is the code that decides, not a configuration.
+ */
+void testLocalOnly() {
+    logger = LogManager::get("basic.localonly");
+
+    const std::shared_ptr<CaptureSink> file = std::make_shared<CaptureSink>();
+    const std::shared_ptr<RemoteCaptureSink> channel = std::make_shared<RemoteCaptureSink>();
+
+    logger->addSink(file, TRACE);
+    logger->addSink(channel, TRACE);
+
+    LOG_MSG_TO(logger, ERROR, "{query}")
+        .with("query", "UPDATE users SET password = 'x'")
+        .localOnly()
+        .log();
+
+    CHECK(1 == file->records.size());
+    CHECK(0 == channel->records.size());
+
+    // An ordinary record goes to both, and the mark is not sticky
+    LOG_MSG_TO(logger, ERROR, "{what} failed").with("what", "something").log();
+
+    CHECK(2 == file->records.size());
+    CHECK(1 == channel->records.size());
+    if (1 == channel->records.size())
+        CHECK_EQ(channel->records[0].message, "something failed");
+
+    // What libnotifier's clients are, and therefore the pager
+    const RecordingNotifier pager;
+    CHECK(static_cast<const LogSink&>(pager).leavesTheHost());
+
+    logger->removeSink(file);
+    logger->removeSink(channel);
+}
+
 void testReentrancy() {
     logger = LogManager::get("basic.reentrancy");
 
@@ -720,6 +765,7 @@ int main() {
     testConstPointer();
     testFallbackWithoutExtractor();
     testSinkThresholds();
+    testLocalOnly();
     testReentrancy();
     testNotifierEmit();
     testNotifierDoesNotRecurse();
