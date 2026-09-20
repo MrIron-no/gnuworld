@@ -284,9 +284,6 @@ cservice::cservice(const string& args) : xClient(args) {
     confSqlPort = cserviceConfig->Require("sql_port")->second;
     confSqlUser = cserviceConfig->Require("sql_user")->second;
 
-    string Query = "host=" + confSqlHost + " dbname=" + confSqlDb + " port=" + confSqlPort +
-                   " user=" + confSqlUser + " password=" + confSqlPass;
-
     LOG(INFO, "Attempting to make PostgreSQL connection to: {}; Database Name: {}", confSqlHost,
         confSqlDb);
 
@@ -296,8 +293,7 @@ cservice::cservice(const string& args) : xClient(args) {
     assert(SQLDb != 0);
 
     if (SQLDb->ConnectionBad()) {
-        LOG(FATAL, "Unable to connect to SQL server.");
-        LOGSQL_ERROR(SQLDb);
+        LOG(FATAL, "Unable to connect to SQL server: {}", SQLDb->ErrorMessage());
 
         ::exit(0);
     } else {
@@ -2589,10 +2585,9 @@ bool cservice::wipeUser(unsigned int userId, bool expired) {
 
     if (expired) {
         if (last_seen > 0)
-            LOG(INFO, "User {} ({}) has expired", tmpUser->getUserName(), tmpUser->getEmail());
+            LOG(INFO, "User {} has expired", tmpUser->getUserName());
         else
-            LOG(INFO, "User {} ({}) has expired (Never logged in)", tmpUser->getUserName(),
-                tmpUser->getEmail());
+            LOG(INFO, "User {} has expired (Never logged in)", tmpUser->getUserName());
     } else
         LOG(INFO, "Deleted(wipeUser) {} ({}) from the database.", tmpUser->getUserName(), userId);
 
@@ -3161,7 +3156,7 @@ void cservice::updatePrometheusMetrics() {
  * Happens when the bot Joins a channel ...
  */
 void cservice::OnJoin(const std::string& chanName) {
-    LOG(TRACE, "{}", chanName);
+    LOG(TRACE, "Join to {}", chanName);
     xClient::OnJoin(chanName);
     Channel* tmpChan = Network->findChannel(chanName);
     if (!tmpChan) {
@@ -5133,8 +5128,7 @@ void cservice::OnChannelEvent(const channelEventType& whichEvent, Channel* theCh
         string partMsg;
         if (data2 != NULL)
             partMsg = string(*(static_cast<string*>(data2)));
-        LOG_MSG(TRACE, "{client} Part {chan} ({})", partMsg)
-            .with("client", theClient)
+        LOG_MSG(TRACE, "{} Part {chan} ({})", theClient->getNickName(), partMsg)
             .with("chan", theChan)
             .log();
         handleChannelPart(theClient, theChan, partMsg);
@@ -6472,9 +6466,6 @@ void cservice::checkDbConnectionStatus() {
         /* Remove the old database connection object. */
         delete (SQLDb);
 
-        string Query = "host=" + confSqlHost + " dbname=" + confSqlDb + " port=" + confSqlPort +
-                       " user=" + confSqlUser + " password=" + confSqlPass;
-
         SQLDb = new (std::nothrow)
             dbHandle(this, confSqlHost, atoi(confSqlPort), confSqlDb, confSqlUser, confSqlPass);
         //		SQLDb = new (std::nothrow) cmDatabase( Query.c_str() ) ;
@@ -7621,7 +7612,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 #ifdef HAVE_LIBSSL
     StringTokenizer st(Message);
     if (st.size() < 2) {
-        LOG(WARN, "Received empty SASL message... Ignoring.");
+        LOG(DEBUG, "Received empty SASL message... Ignoring.");
         return false;
     }
 
@@ -7658,7 +7649,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
         if (it->mechanism == SaslMechanism::PLAIN) {
             auto bufferOpt = b64decode(it->credentials, nullptr, true);
             if (!bufferOpt) {
-                LOG(ERROR, "[PLAIN] Failed to decode credentials");
+                LOG(DEBUG, "[PLAIN] Failed to decode credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid credentials", true);
                 saslRequests.erase(it);
@@ -7671,7 +7662,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             size_t p2 = decodedString.find('\0', p1 + 1);
 
             if (p1 == std::string::npos || p2 == std::string::npos || p1 == 0) {
-                LOG(ERROR, "[PLAIN] Invalid PLAIN format in decoded credentials");
+                LOG(DEBUG, "[PLAIN] Invalid PLAIN format in decoded credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid credentials", true);
                 saslRequests.erase(it);
@@ -7682,7 +7673,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             it->password = decodedString.substr(p2 + 1);
 
             if (it->username.empty() || it->password.empty()) {
-                LOG(ERROR, "[PLAIN] Empty username or password in credentials");
+                LOG(DEBUG, "[PLAIN] Empty username or password in credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid credentials", true);
                 saslRequests.erase(it);
@@ -7709,7 +7700,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
             auto bufferOpt = b64decode(it->credentials, nullptr, true);
             if (!bufferOpt) {
-                LOG(ERROR, "[EXTERNAL] Failed to decode username");
+                LOG(DEBUG, "[EXTERNAL] Failed to decode username");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid username", true);
                 saslRequests.erase(it);
@@ -7722,7 +7713,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
             // Validate that we have at least a username
             if (st2.size() < 1 || st2[0].empty()) {
-                LOG(ERROR, "[EXTERNAL] Invalid username in decoded credentials");
+                LOG(DEBUG, "[EXTERNAL] Invalid username in decoded credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid username", true);
                 saslRequests.erase(it);
@@ -7736,7 +7727,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             if (it->state == SaslState::INITIAL) {
                 auto bufferOpt = b64decode(it->credentials, nullptr, true);
                 if (!bufferOpt) {
-                    LOG(ERROR, "[SCRAM] Failed to decode client first message");
+                    LOG(DEBUG, "[SCRAM] Failed to decode client first message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7746,7 +7737,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 string decodedString =
                     std::string(reinterpret_cast<char*>(bufferOpt->data()), bufferOpt->size());
                 if (decodedString.find("n,,") != 0) {
-                    LOG(ERROR, "[SCRAM] Invalid client first message");
+                    LOG(DEBUG, "[SCRAM] Invalid client first message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7766,7 +7757,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 }
 
                 if (it->username.empty() || it->client_nonce.empty()) {
-                    LOG(ERROR, "[SCRAM] Missing username or client nonce in authentication");
+                    LOG(DEBUG, "[SCRAM] Missing username or client nonce in authentication");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7827,7 +7818,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             } else if (it->state == SaslState::SERVER_FIRST) {
                 auto bufferOpt = b64decode(it->credentials, nullptr, true);
                 if (!bufferOpt) {
-                    LOG(ERROR, "[SCRAM] Failed to decode client final message");
+                    LOG(DEBUG, "[SCRAM] Failed to decode client final message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7841,7 +7832,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
                 size_t p_pos = decodedString.rfind(",p=");
                 if (p_pos == std::string::npos) {
-                    LOG(ERROR, "[SCRAM] Missing ,p= in client final message");
+                    LOG(DEBUG, "[SCRAM] Missing ,p= in client final message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7861,7 +7852,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 }
 
                 if (cbind_input.empty() || nonce.empty() || proof.empty()) {
-                    LOG(ERROR, "[SCRAM] Missing c=, r= or p= in client final message");
+                    LOG(DEBUG, "[SCRAM] Missing c=, r= or p= in client final message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7869,7 +7860,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 }
 
                 if (nonce != it->client_nonce + it->server_nonce) {
-                    LOG(WARN, "[SCRAM] nonce match failed");
+                    LOG(DEBUG, "[SCRAM] nonce match failed");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".FAILED");
                     doXResponse(theServer, Routing, "AUTHENTICATION FAILED as " + it->username,
                                 true);
@@ -7882,7 +7873,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 bool valid = validate_scram_sha256_proof(it->scram.storedKey, auth_message, proof);
 
                 if (!valid) {
-                    LOG(WARN, "[SCRAM] Proof validation failed for user {}", it->username);
+                    LOG(DEBUG, "[SCRAM] Proof validation failed for user {}", it->username);
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".FAILED");
                     doXResponse(theServer, Routing, "AUTHENTICATION FAILED as " + it->username,
                                 true);
@@ -7924,8 +7915,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
         if (it->mechanism == SaslMechanism::SCRAM_SHA_256)
             LOG(TRACE, "Authenticating with SCRAM");
         else
-            LOG(TRACE, "Authenticating with username {} and password {}", it->username,
-                mask(it->password));
+            LOG(TRACE, "Authenticating with username {}", it->username);
 
         AuthResult auth_res = authenticateUser(auth);
         auth.result = auth_res;
@@ -7971,7 +7961,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
         string authMessage;
         if (tmpClient) {
             if (st.size() < 3) {
-                LOG(ERROR, "Bogus SASL message with numeric");
+                LOG(DEBUG, "Bogus SASL message with numeric");
                 doXResponse(theServer, Routing, "An error has occurred", true);
                 return false;
             }
@@ -7982,7 +7972,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             authMessage = string_upper(st[2]);
         } else {
             if (st.size() < 4) {
-                LOG(ERROR, "Bogus SASL message without numeric");
+                LOG(DEBUG, "Bogus SASL message without numeric");
                 doXResponse(theServer, Routing, "An error has occurred", true);
                 return false;
             }
@@ -7994,7 +7984,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
         SaslMechanism mech;
         if (!parseSaslMechanism(authMessage, mech)) {
-            LOG(ERROR, "Received invalid SASL mechanism: {}", authMessage);
+            LOG(DEBUG, "Received invalid SASL mechanism: {}", authMessage);
             doXResponse(theServer, Routing, "An error has occurred", true);
             return false;
         }
@@ -8049,7 +8039,7 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
         if (username.compare(0, 1, ":") == 0)
             username.erase(0, 1);
         password = st.assemble(2);
-        LOG(TRACE, "XQ-LOGIN: LOGIN {} {}", username, mask(password));
+        LOG(TRACE, "XQ-LOGIN: LOGIN {}", username);
     }
     if (st[0] == "LOGIN2") {
         if (st.size() < 6) {
@@ -8064,8 +8054,7 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
         ip = st[1];
         hostname = st[2];
         ident = st[3];
-        LOG(TRACE, "XQ-LOGIN2: LOGIN2 {} {} {} {} {}", ip, hostname, ident, username,
-            mask(password));
+        LOG(TRACE, "XQ-LOGIN2: LOGIN2 {} {} {} {}", ip, hostname, ident, username);
     }
 
     AuthStruct auth = {AuthType::XQUERY, // auth type
@@ -8890,7 +8879,7 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
             current.mngrUserId = atoi(SQLDb->GetValue(0, 1).c_str());
             current.chanId = atoi(SQLDb->GetValue(0, 2).c_str());
             // Debug Proof elogs ...
-            LOG(TRACE, "  current.chanId = {}", current.chanId);
+            LOG(TRACE, "current.chanId = {}", current.chanId);
             LOG(TRACE, "current.chanName = {}", current.chanName);
             appList.push_back(current);
         }
@@ -8904,7 +8893,7 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
                 noticeStr << ", ";
             noticeStr << channelName << " (" << mngrUserName << ")";
             // Debug Proof elogs ...
-            LOG(TRACE, " itr->chanId = {}", itr->chanId);
+            LOG(TRACE, "itr->chanId = {}", itr->chanId);
             LOG(TRACE, "itr->chanName = {}", channelName);
             // Not works with chanId ... (unknown reason)
             // setSupporterNoticedStatus(theUser->getID(), chanId, true);

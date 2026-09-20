@@ -301,9 +301,7 @@ bool BANCommand::Exec(iClient* theClient, const string& Message) {
             /* Ban and kick this user */
             banTarget = Channel::createBan(aNick);
 
-            LOG_MSG(TRACE, "#{}: {client} banTarget: {}", counter, banTarget)
-                .with("client", aNick)
-                .log();
+            LOG(TRACE, "#{}: {} banTarget: {}", counter, aNick->getNickUserHost(), banTarget);
         } else {
             LOG(TRACE, "#{}: {}", counter, banTarget);
 

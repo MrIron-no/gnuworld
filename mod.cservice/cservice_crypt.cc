@@ -292,7 +292,7 @@ bool validate_scram_sha256_proof(const std::vector<unsigned char>& storedKey,
                                  const std::string& clientProof_b64) {
     auto proofOpt = b64decode(clientProof_b64);
     if (!proofOpt || proofOpt->size() != storedKey.size()) {
-        LOG_TO(::gnuworld::LogManager::get("cservice"), ERROR,
+        LOG_TO(::gnuworld::LogManager::get("cservice"), DEBUG,
                "[SCRAM] Proof decode failed or wrong size");
         return false;
     }
