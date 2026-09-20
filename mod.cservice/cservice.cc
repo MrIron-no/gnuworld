@@ -43,7 +43,6 @@
 #include "ip.h"
 #include "Network.h"
 #include "StringTokenizer.h"
-#include "ELog.h"
 #include "dbHandle.h"
 #include "constants.h"
 #include "networkData.h"
@@ -288,8 +287,8 @@ cservice::cservice(const string& args) : xClient(args) {
     string Query = "host=" + confSqlHost + " dbname=" + confSqlDb + " port=" + confSqlPort +
                    " user=" + confSqlUser + " password=" + confSqlPass;
 
-    elog << "*** [CMaster]: Attempting to make PostgreSQL connection to: " << confSqlHost
-         << "; Database Name: " << confSqlDb << endl;
+    LOG(INFO, "Attempting to make PostgreSQL connection to: {}; Database Name: {}", confSqlHost,
+        confSqlDb);
 
     // SQLDb = new (std::nothrow) cmDatabase( Query.c_str() ) ;
     SQLDb = new (std::nothrow)
@@ -297,12 +296,12 @@ cservice::cservice(const string& args) : xClient(args) {
     assert(SQLDb != 0);
 
     if (SQLDb->ConnectionBad()) {
-        elog << "*** [CMaster]: Unable to connect to SQL server." << endl
-             << "*** [CMaster]: PostgreSQL error message: " << SQLDb->ErrorMessage() << endl;
+        LOG(FATAL, "Unable to connect to SQL server.");
+        LOGSQL_ERROR(SQLDb);
 
         ::exit(0);
     } else {
-        elog << "*** [CMaster]: Connection established to SQL server. " << endl;
+        LOG(INFO, "Connection established to SQL server.");
     }
 
     // Verify database migrations
@@ -324,10 +323,9 @@ cservice::cservice(const string& args) : xClient(args) {
          */
 
         dbTimeOffset = serverTime - ::time(NULL);
-        elog << "*** [CMaster::ImplementServer]:  Current DB server time: " << currentTime()
-             << endl;
+        LOG(INFO, "Current DB server time: {}", currentTime());
     } else {
-        elog << "Unable to retrieve time from postgres server!" << endl;
+        LOG(FATAL, "Unable to retrieve time from postgres server!");
         ::exit(0);
     }
 
@@ -1725,12 +1723,9 @@ unsigned int cservice::hasFP(sqlUser* theUser) {
     stringstream theQuery;
     theQuery << "SELECT COUNT(*) FROM "
              << "users_fingerprints WHERE user_id = " << theUser->getID() << endl;
-#ifdef LOG_SQL
-    elog << "cservice::hasFP::sqlQuery> " << theQuery.str() << endl;
-#endif
 
     if (!SQLDb->Exec(theQuery, true)) {
-        elog << "cservice::hasFP> SQL Error: " << SQLDb->ErrorMessage() << endl;
+        LOGSQL_ERROR(SQLDb);
         return 0;
     }
 
@@ -2082,8 +2077,7 @@ void cservice::loadHelpTable() {
                 std::make_pair(atoi(SQLDb->GetValue(i, 0).c_str()), SQLDb->GetValue(i, 1)),
                 SQLDb->GetValue(i, 2)));
 
-    elog << "*** [CMaster::loadHelpTable]: Loaded " << helpTable.size() << " help messages."
-         << endl;
+    LOG(INFO, "Loaded {} help messages.", helpTable.size());
 }
 
 /**
@@ -2140,8 +2134,7 @@ void cservice::loadTranslationTable() {
                 SQLDb->GetValue(i, 1),
                 std::make_pair(atoi(SQLDb->GetValue(i, 0).c_str()), SQLDb->GetValue(i, 2))));
 
-    elog << "*** [CMaster::loadTranslationTable]: Loaded " << languageTable.size() << " languages."
-         << endl;
+    LOG(INFO, "Loaded {} languages.", languageTable.size());
 
     if (SQLDb->Exec("SELECT language_id,response_id,text FROM translations", true))
     // if( PGRES_TUPLES_OK == status )
@@ -2161,8 +2154,7 @@ void cservice::loadTranslationTable() {
         }
     }
 
-    elog << "*** [CMaster::loadTranslationTable]: Loaded " << translationTable.size()
-         << " translations." << endl;
+    LOG(INFO, "Loaded {} translations.", translationTable.size());
 }
 
 int cservice::rehashMOTD() {
@@ -2945,12 +2937,8 @@ void cservice::updateUsers() {
 void cservice::updateFingerprints() {
     const std::string theQuery = "SELECT fingerprint,user_id FROM users_fingerprints";
 
-#ifdef LOG_SQL
-    elog << "*** [CMaster::updateFingerprints]: sqlQuery: " << theQuery << endl;
-#endif
-
     if (!SQLDb->Exec(theQuery, true)) {
-        elog << "*** [CMaster::updateFingerprints]: SQL error: " << SQLDb->ErrorMessage() << endl;
+        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -3173,7 +3161,7 @@ void cservice::updatePrometheusMetrics() {
  * Happens when the bot Joins a channel ...
  */
 void cservice::OnJoin(const std::string& chanName) {
-    // elog << "cservice::OnJoin " << chanName << endl;
+    LOG(TRACE, "{}", chanName);
     xClient::OnJoin(chanName);
     Channel* tmpChan = Network->findChannel(chanName);
     if (!tmpChan) {
@@ -4473,8 +4461,10 @@ void cservice::OnEvent(const eventType& theEvent, void* data1, void* data2, void
         iServer* theServer = static_cast<iServer*>(data1);
         const char* Routing = reinterpret_cast<char*>(data2);
         const char* Message = reinterpret_cast<char*>(data3);
-        // elog << "CSERVICE.CC XREPLY: " << theServer->getName() << " " << Routing << " " <<
-        // Message << endl; As it is possible to run multiple GNUWorld clients on one server, first
+        LOG_MSG(TRACE, "XREPLY: {server} {} {}", string(Routing), string(Message))
+            .with("server", theServer)
+            .log();
+        // As it is possible to run multiple GNUWorld clients on one server, first
         // parameter should be a nickname. If it ain't us, ignore the message, the message is
         // probably meant for another client here.
         StringTokenizer st(Message);
@@ -4863,7 +4853,7 @@ void cservice::doTheRightThing(Channel* tmpChan) {
         return;
     }
 
-    // elog << "cservice::doTheRightThing> channel: "	<< tmpChan->getName() << endl;
+    LOG_MSG(TRACE, "channel: {chan}").with("chan", tmpChan).log();
 
     sqlChannel* reggedChan = getChannelRecord(tmpChan->getName());
 
@@ -5143,8 +5133,10 @@ void cservice::OnChannelEvent(const channelEventType& whichEvent, Channel* theCh
         string partMsg;
         if (data2 != NULL)
             partMsg = string(*(static_cast<string*>(data2)));
-        // elog << "cservice::EVT_PART> " << theClient << " Part " << theChan->getName() << " (" <<
-        // partMsg << ")" << endl;
+        LOG_MSG(TRACE, "{client} Part {chan} ({})", partMsg)
+            .with("client", theClient)
+            .with("chan", theChan)
+            .log();
         handleChannelPart(theClient, theChan, partMsg);
         break;
     }
@@ -6287,15 +6279,21 @@ void cservice::initialiseSupport(const string& chanName,
             sqlPendingChannel::supporterListType::iterator Supptr =
                 pendingChan->supporterList.find(loggedUser->getID());
             if (Supptr == pendingChan->supporterList.end()) {
-                // elog << "cservice::initializeInitialIPs> New supporter for channel " << chanName
-                // << " suppUser = " << loggedUser->getUserName() << " inserting with joincount 1 "
-                // << endl;
+                LOG_MSG(TRACE,
+                        "New supporter for channel {} suppUser = {user} inserting with "
+                        "joincount 1 ",
+                        chanName)
+                    .with("user", loggedUser)
+                    .log();
                 pendingChan->supporterList.insert(
                     sqlPendingChannel::supporterListType::value_type(loggedUser->getID(), 1));
             } else {
-                // elog << "cservice::initializeInitialIPs> Already existing supporter for channel "
-                // << chanName << " suppUser = " << loggedUser->getUserName() << " joinCount = " <<
-                // Supptr->second << " reset joincount to 1" << endl;
+                LOG_MSG(TRACE,
+                        "Already existing supporter for channel {} suppUser = {user} "
+                        "joinCount = {} reset joincount to 1",
+                        chanName, Supptr->second)
+                    .with("user", loggedUser)
+                    .log();
                 Supptr->second = 1;
             }
             LOG_MSG(
@@ -6520,7 +6518,7 @@ void cservice::preloadChannelCache() {
 #endif
     theQuery << "WHERE registered_ts <> 0";
 
-    elog << "*** [CMaster::preloadChannelCache]: Loading all registered channel records: " << endl;
+    LOG(DEBUG, "Loading all registered channel records:");
 
     if (SQLDb->Exec(theQuery, true)) {
         for (unsigned int i = 0; i < SQLDb->Tuples(); i++) {
@@ -6540,8 +6538,7 @@ void cservice::preloadChannelCache() {
         LOGSQL_ERROR(SQLDb);
     } // if()
 
-    elog << "*** [CMaster::preloadChannelCache]: Done. Loaded " << SQLDb->Tuples()
-         << " registered channel records." << endl;
+    LOG(INFO, "Done. Loaded {} registered channel records.", SQLDb->Tuples());
 }
 
 void cservice::preloadBanCache() {
@@ -6552,7 +6549,7 @@ void cservice::preloadBanCache() {
     stringstream theQuery;
     theQuery << "SELECT " << sql::ban_fields << " FROM bans;" << ends;
 
-    elog << "*** [CMaster::preloadBanCache]: Precaching Bans table: " << endl;
+    LOG(DEBUG, "Precaching Bans table:");
 
     if (SQLDb->Exec(theQuery, true))
     // if( PGRES_TUPLES_OK == status )
@@ -6581,7 +6578,7 @@ void cservice::preloadBanCache() {
         } // for()
     } // if()
 
-    elog << "*** [CMaster::preloadBanCache]: Done. Loaded " << SQLDb->Tuples() << " bans." << endl;
+    LOG(INFO, "Done. Loaded {} bans.", SQLDb->Tuples());
 }
 
 void cservice::preloadLevelsCache() {
@@ -6592,7 +6589,7 @@ void cservice::preloadLevelsCache() {
     stringstream theQuery;
     theQuery << "SELECT " << sql::level_fields << " FROM levels" << ends;
 
-    elog << "*** [CMaster::preloadLevelCache]: Precaching Level table: " << endl;
+    LOG(DEBUG, "Precaching Level table:");
 
     unsigned int goodCount = 0;
     if (SQLDb->Exec(theQuery, true))
@@ -6625,8 +6622,7 @@ void cservice::preloadLevelsCache() {
         } // for()
     } // if()
 
-    elog << "*** [CMaster::preloadLevelCache]: Done. Loaded " << goodCount
-         << " level records out of " << SQLDb->Tuples() << "." << endl;
+    LOG(INFO, "Done. Loaded {} level records out of {}.", goodCount, SQLDb->Tuples());
 }
 
 /*
@@ -6642,8 +6638,7 @@ void cservice::preloadUserCache() {
              << " users_lastseen.last_seen >= (date_part('epoch', CURRENT_TIMESTAMP)::int - "
              << (preloadUserDays * 86400) << ")" << ends;
 
-    elog << "*** [CMaster::preloadUserCache]: Loading users accounts logged in within "
-         << preloadUserDays << " days : " << endl;
+    LOG(DEBUG, "Loading users accounts logged in within {} days :", preloadUserDays);
 
     if (SQLDb->Exec(theQuery, true))
     //	if( PGRES_TUPLES_OK == status )
@@ -6658,15 +6653,14 @@ void cservice::preloadUserCache() {
         }
     }
 
-    elog << "*** [CMaster::preloadUserCache]: Done. Loaded " << SQLDb->Tuples() << " user accounts."
-         << endl;
+    LOG(INFO, "Done. Loaded {} user accounts.", SQLDb->Tuples());
 }
 
 void cservice::preloadFingerprintCache() {
     stringstream theQuery;
     theQuery << "SELECT fingerprint,user_id FROM users_fingerprints" << endl;
 
-    elog << "*** [CMaster::preloadFingerprintCache]: Loading TLS fingerprints : " << endl;
+    LOG(DEBUG, "Loading TLS fingerprints :");
 
     if (SQLDb->Exec(theQuery, true)) {
         for (unsigned int i = 0; i < SQLDb->Tuples(); i++) {
@@ -6674,8 +6668,7 @@ void cservice::preloadFingerprintCache() {
         }
     }
 
-    elog << "*** [CMaster::preloadFingerprintCache]: Done. Loaded " << SQLDb->Tuples()
-         << " fingerprints." << endl;
+    LOG(INFO, "Done. Loaded {} fingerprints.", SQLDb->Tuples());
 }
 
 void cservice::incStat(const string& name) {
@@ -6920,12 +6913,9 @@ void cservice::doCoderStats(iClient* theClient) {
     theQuery.str("");
     theQuery << "SELECT COUNT(*) FROM users,users_fingerprints WHERE "
              << "users.id = users_fingerprints.user_id" << endl;
-#ifdef LOG_SQL
-    elog << "cservice::doCoderStats::sqlQuery> " << theQuery.str().c_str() << endl;
-#endif
 
     if (!SQLDb->Exec(theQuery, true)) {
-        elog << "cservice::doCoderStats> SQL Error: " << SQLDb->ErrorMessage() << endl;
+        LOGSQL_ERROR(SQLDb);
         return;
     }
     userDBFPTotal = atoi(SQLDb->GetValue(0, 0));
@@ -7543,7 +7533,7 @@ bool cservice::processAuthentication(AuthStruct auth, std::string* Message) {
         break;
     default:
         // Should never get here!
-        elog << "Response " << auth.result << " while authenticating!" << endl;
+        LOG(ERROR, "Response {} while authenticating!", auth.result);
         authResponse = TokenStringsParams("AUTHENTICATION FAILED as %s (due to an error)",
                                           auth.username.c_str());
         break;
@@ -7626,12 +7616,12 @@ std::string cservice::saslMechsAdvertiseList() {
 }
 
 bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string& Message) {
-    elog << "cservice::doXQSASL: Routing: " << Routing << " Message: " << Message << "\n";
+    LOG(TRACE, "Routing: {}", Routing);
 
 #ifdef HAVE_LIBSSL
     StringTokenizer st(Message);
     if (st.size() < 2) {
-        elog << "Received empty SASL message... Ignoring." << endl;
+        LOG(WARN, "Received empty SASL message... Ignoring.");
         return false;
     }
 
@@ -7651,7 +7641,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
     /* Found existing challenge. */
     if (it != saslRequests.end()) {
-        elog << "Found matching SASL request for Routing: " << Routing << "\n";
+        LOG(TRACE, "Found matching SASL request for Routing: {}", Routing);
         string authMessage = st[1];
 
         it->last_ts = currentTime();
@@ -7668,7 +7658,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
         if (it->mechanism == SaslMechanism::PLAIN) {
             auto bufferOpt = b64decode(it->credentials, nullptr, true);
             if (!bufferOpt) {
-                elog << "[PLAIN] Failed to decode credentials: " << it->credentials << endl;
+                LOG(ERROR, "[PLAIN] Failed to decode credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid credentials", true);
                 saslRequests.erase(it);
@@ -7681,8 +7671,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             size_t p2 = decodedString.find('\0', p1 + 1);
 
             if (p1 == std::string::npos || p2 == std::string::npos || p1 == 0) {
-                elog << "[PLAIN] Invalid PLAIN format in decoded credentials: " << decodedString
-                     << endl;
+                LOG(ERROR, "[PLAIN] Invalid PLAIN format in decoded credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid credentials", true);
                 saslRequests.erase(it);
@@ -7693,7 +7682,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             it->password = decodedString.substr(p2 + 1);
 
             if (it->username.empty() || it->password.empty()) {
-                elog << "[PLAIN] Empty username or password in credentials" << endl;
+                LOG(ERROR, "[PLAIN] Empty username or password in credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid credentials", true);
                 saslRequests.erase(it);
@@ -7720,7 +7709,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
             auto bufferOpt = b64decode(it->credentials, nullptr, true);
             if (!bufferOpt) {
-                elog << "[EXTERNAL] Failed to decode username: " << it->credentials << endl;
+                LOG(ERROR, "[EXTERNAL] Failed to decode username");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid username", true);
                 saslRequests.erase(it);
@@ -7733,7 +7722,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
             // Validate that we have at least a username
             if (st2.size() < 1 || st2[0].empty()) {
-                elog << "[EXTERNAL] Invalid username in decoded credentials" << endl;
+                LOG(ERROR, "[EXTERNAL] Invalid username in decoded credentials");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "Invalid username", true);
                 saslRequests.erase(it);
@@ -7747,8 +7736,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             if (it->state == SaslState::INITIAL) {
                 auto bufferOpt = b64decode(it->credentials, nullptr, true);
                 if (!bufferOpt) {
-                    elog << "[SCRAM] Failed to decode client first message: " << it->credentials
-                         << endl;
+                    LOG(ERROR, "[SCRAM] Failed to decode client first message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7758,7 +7746,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 string decodedString =
                     std::string(reinterpret_cast<char*>(bufferOpt->data()), bufferOpt->size());
                 if (decodedString.find("n,,") != 0) {
-                    elog << "[SCRAM] Invalid client first message: " << decodedString << endl;
+                    LOG(ERROR, "[SCRAM] Invalid client first message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7778,8 +7766,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 }
 
                 if (it->username.empty() || it->client_nonce.empty()) {
-                    elog << "[SCRAM] Missing username or client nonce in authentication: "
-                         << decodedString << endl;
+                    LOG(ERROR, "[SCRAM] Missing username or client nonce in authentication");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7799,7 +7786,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
                 auto nonceOpt = generateRandomNonce();
                 if (!nonceOpt) {
-                    elog << "[SCRAM] Failed to generate server nonce." << endl;
+                    LOG(ERROR, "[SCRAM] Failed to generate server nonce.");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Internal error", true);
                     saslRequests.erase(it);
@@ -7840,8 +7827,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             } else if (it->state == SaslState::SERVER_FIRST) {
                 auto bufferOpt = b64decode(it->credentials, nullptr, true);
                 if (!bufferOpt) {
-                    elog << "[SCRAM] Failed to decode client final message: " << it->credentials
-                         << endl;
+                    LOG(ERROR, "[SCRAM] Failed to decode client final message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7855,8 +7841,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
 
                 size_t p_pos = decodedString.rfind(",p=");
                 if (p_pos == std::string::npos) {
-                    elog << "[SCRAM] Missing ,p= in client final message: " << decodedString
-                         << endl;
+                    LOG(ERROR, "[SCRAM] Missing ,p= in client final message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7876,8 +7861,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 }
 
                 if (cbind_input.empty() || nonce.empty() || proof.empty()) {
-                    elog << "[SCRAM] Missing c=, r= or p= in client final message: "
-                         << decodedString << endl;
+                    LOG(ERROR, "[SCRAM] Missing c=, r= or p= in client final message");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                     doXResponse(theServer, Routing, "Invalid credentials", true);
                     saslRequests.erase(it);
@@ -7885,7 +7869,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 }
 
                 if (nonce != it->client_nonce + it->server_nonce) {
-                    elog << "[SCRAM] nonce match failed: " << decodedString << endl;
+                    LOG(WARN, "[SCRAM] nonce match failed");
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".FAILED");
                     doXResponse(theServer, Routing, "AUTHENTICATION FAILED as " + it->username,
                                 true);
@@ -7898,7 +7882,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 bool valid = validate_scram_sha256_proof(it->scram.storedKey, auth_message, proof);
 
                 if (!valid) {
-                    elog << "[SCRAM] Proof validation failed for user " << it->username << endl;
+                    LOG(WARN, "[SCRAM] Proof validation failed for user {}", it->username);
                     incStat("SASL." + saslMechanismToString(it->mechanism) + ".FAILED");
                     doXResponse(theServer, Routing, "AUTHENTICATION FAILED as " + it->username,
                                 true);
@@ -7918,7 +7902,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             } else if (it->state == SaslState::COMPLETE) {
                 /* Pass through to authentication. */
             } else {
-                elog << "[SCRAM] Invalid state in authentication." << endl;
+                LOG(ERROR, "[SCRAM] Invalid state in authentication.");
                 incStat("SASL." + saslMechanismToString(it->mechanism) + ".ERROR");
                 doXResponse(theServer, Routing, "An error occurred", true);
                 saslRequests.erase(it);
@@ -7938,10 +7922,10 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                            it->mechanism};
 
         if (it->mechanism == SaslMechanism::SCRAM_SHA_256)
-            elog << "Authenticating with SCRAM" << endl;
+            LOG(TRACE, "Authenticating with SCRAM");
         else
-            elog << "Authenticating with username " << it->username << " and password "
-                 << mask(it->password) << endl;
+            LOG(TRACE, "Authenticating with username {} and password {}", it->username,
+                mask(it->password));
 
         AuthResult auth_res = authenticateUser(auth);
         auth.result = auth_res;
@@ -7960,8 +7944,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 doXResponse(theServer, Routing, string());
             }
 
-            elog << "cservice::doXQSASL: "
-                 << "Successful auth for " << it->username << endl;
+            LOG(INFO, "Successful auth for {}", it->username);
 
             saslRequests.erase(it);
             return true;
@@ -7988,7 +7971,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
         string authMessage;
         if (tmpClient) {
             if (st.size() < 3) {
-                elog << "Bogus SASL message with numeric" << endl;
+                LOG(ERROR, "Bogus SASL message with numeric");
                 doXResponse(theServer, Routing, "An error has occurred", true);
                 return false;
             }
@@ -7999,7 +7982,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
             authMessage = string_upper(st[2]);
         } else {
             if (st.size() < 4) {
-                elog << "Bogus SASL message without numeric" << endl;
+                LOG(ERROR, "Bogus SASL message without numeric");
                 doXResponse(theServer, Routing, "An error has occurred", true);
                 return false;
             }
@@ -8023,7 +8006,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
         }
 
         // Valid mechanism - store in cache for further use.
-        elog << "Received valid SASL mechanism: " << authMessage << " from IP: " << IP << endl;
+        LOG(DEBUG, "Received valid SASL mechanism: {} from IP: {}", authMessage, IP);
         SaslRequest newRequest;
         newRequest.theClient = tmpClient;
         newRequest.routing = Routing;
@@ -8106,8 +8089,7 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
                     auth.theUser->getUserName() + ":" + std::to_string(auth.theUser->getID()) +
                         ":" + std::to_string(makeAccountFlags(auth.theUser)) +
                         (auth.theUser->getFlag(sqlUser::F_AUTOHIDE) ? " +x" : ""));
-        elog << "cservice::doXQLogin: "
-             << "Succesful auth for " << username << endl;
+        LOG(INFO, "Succesful auth for {}", username);
         return true;
     }
 
@@ -8360,7 +8342,7 @@ bool cservice::doXRW(iServer* theServer, const string& Command, const string& Me
     sqlChannel* theChan = getChannelRecord(st[2]);
 
     if (!theChan) {
-        elog << "cservice::doXRW: Can't find the channel!" << endl;
+        LOG(WARN, "Can't find the channel!");
         return false;
     }
 
@@ -8908,8 +8890,8 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
             current.mngrUserId = atoi(SQLDb->GetValue(0, 1).c_str());
             current.chanId = atoi(SQLDb->GetValue(0, 2).c_str());
             // Debug Proof elogs ...
-            // elog << "cservice::doCommonLogin>   current.chanId = " << current.chanId << endl;
-            // elog << "cservice::doCommonLogin> current.chanName = " << current.chanName << endl;
+            LOG(TRACE, "  current.chanId = {}", current.chanId);
+            LOG(TRACE, "current.chanName = {}", current.chanName);
             appList.push_back(current);
         }
         for (AppDataListType::const_iterator itr = appList.begin(); itr != appList.end(); ++itr) {
@@ -8922,8 +8904,8 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
                 noticeStr << ", ";
             noticeStr << channelName << " (" << mngrUserName << ")";
             // Debug Proof elogs ...
-            // elog << "cservice::doCommonLogin>  itr->chanId = " << itr->chanId << endl;
-            // elog << "cservice::doCommonLogin> itr->chanName = " << channelName << endl;
+            LOG(TRACE, " itr->chanId = {}", itr->chanId);
+            LOG(TRACE, "itr->chanName = {}", channelName);
             // Not works with chanId ... (unknown reason)
             // setSupporterNoticedStatus(theUser->getID(), chanId, true);
             setSupporterNoticedStatus(theUser->getID(), channelName, true);

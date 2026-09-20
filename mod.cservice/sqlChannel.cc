@@ -466,8 +466,7 @@ time_t sqlChannel::getMaskLastTime(const string& Mask) {
 
 void sqlChannel::RemoveFlooderMask(const string& Mask) {
     if (chanFloodMap.find(Mask) != chanFloodMap.end()) {
-        // elog << "sqlChannel::RemoveFlooderMask> chanFloodMap.find(" << Mask << ") !=
-        // chanFloodMap.end() ERASING" << endl;
+        LOG(TRACE, "chanFloodMap.find({}) != chanFloodMap.end() ERASING", Mask);
         delete chanFloodMap[Mask];
         chanFloodMap.erase(Mask);
     }

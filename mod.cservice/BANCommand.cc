@@ -301,15 +301,11 @@ bool BANCommand::Exec(iClient* theClient, const string& Message) {
             /* Ban and kick this user */
             banTarget = Channel::createBan(aNick);
 
-            //		elog 	<< "cservice::BANCommand> #" << counter << ": "
-            //			<< aNick->getNickUserHost()
-            //			<< " banTarget: "
-            //			<< banTarget
-            //			<< endl ;
+            LOG_MSG(TRACE, "#{}: {client} banTarget: {}", counter, banTarget)
+                .with("client", aNick)
+                .log();
         } else {
-            //		elog	<< "cservice::BANCommand> #" << counter << ": "
-            //			<< banTarget
-            //			<< endl ;
+            LOG(TRACE, "#{}: {}", counter, banTarget);
 
             // Validate any eventual cidr range
             if (!validCIDRLength(st2[counter])) {

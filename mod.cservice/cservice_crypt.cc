@@ -39,7 +39,8 @@
 #include <iomanip>
 
 #include "cservice_config.h"
-#include "ELog.h"
+#include "LogManager.h"
+#include "logger.h"
 
 namespace gnuworld {
 
@@ -291,7 +292,8 @@ bool validate_scram_sha256_proof(const std::vector<unsigned char>& storedKey,
                                  const std::string& clientProof_b64) {
     auto proofOpt = b64decode(clientProof_b64);
     if (!proofOpt || proofOpt->size() != storedKey.size()) {
-        elog << "[SCRAM] Proof decode failed or wrong size\n";
+        LOG_TO(::gnuworld::LogManager::get("cservice"), ERROR,
+               "[SCRAM] Proof decode failed or wrong size");
         return false;
     }
     const std::vector<unsigned char>& clientProof = *proofOpt;

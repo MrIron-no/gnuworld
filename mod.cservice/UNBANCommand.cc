@@ -138,9 +138,7 @@ bool UNBANCommand::Exec(iClient* theClient, const string& Message) {
     unsigned int banCount = 0;
 
     for (; counter < st2.size(); counter++) {
-        //	elog	<< "cservice::UNBANCommand> #" << counter
-        //		<< ": " << st2[counter]
-        //		<< endl;
+        LOG(TRACE, "#{}: {}", counter, st2[counter]);
 
         /*
          *  Are they trying to unban by nick or hostmask?

@@ -149,7 +149,7 @@ bool WHITELISTCommand::Exec(iClient* theClient, const string& Message) {
         }
 
         string whiteReason = st.assemble(4);
-        //	elog << st[1] << " " << strIP << " " << whiteTime << " " << whiteReason << endl;
+        LOG(TRACE, "{} {} {} {}", st[1], strIP, whiteTime, whiteReason);
 
         stringstream whitelistQuery;
         whitelistQuery << "INSERT INTO whitelist (IP, AddedBy, AddedOn, ExpiresAt, Reason) "

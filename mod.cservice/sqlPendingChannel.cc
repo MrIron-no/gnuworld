@@ -58,16 +58,14 @@ sqlPendingChannel::sqlPendingChannel(cservice* _bot)
 sqlPendingChannel::~sqlPendingChannel() {
     for (trafficListType::iterator ptr = trafficList.begin(); ptr != trafficList.end(); ++ptr) {
         sqlPendingTraffic* toDie = ptr->second;
-        //			elog << "Autocleanup of Traffic record for #" << toDie->ip_number <<
-        // endl;
+        LOG(TRACE, "Autocleanup of Traffic record for #{}", toDie->ip_number);
         delete (toDie);
     }
 
     for (trafficListType::iterator ptr = uniqueSupporterList.begin();
          ptr != uniqueSupporterList.end(); ++ptr) {
         sqlPendingTraffic* toDie = ptr->second;
-        //			elog << "Autocleanup of Traffic record for #" << toDie->ip_number <<
-        // endl;
+        LOG(TRACE, "Autocleanup of Traffic record for #{}", toDie->ip_number);
         delete (toDie);
     }
 }
@@ -83,7 +81,7 @@ void sqlPendingChannel::loadTrafficCache() {
     if (SQLDb->Exec(theQuery, true)) {
         for (unsigned int i = 0; i < SQLDb->Tuples(); i++) {
             string theIp = SQLDb->GetValue(i, 0);
-            //			elog << "IP: " << theIp << endl;
+            LOG(TRACE, "IP: {}", theIp);
 
             sqlPendingTraffic* trafRecord = new sqlPendingTraffic(bot);
             trafRecord->ip_number = theIp;
@@ -122,10 +120,8 @@ bool sqlPendingChannel::commit() {
      * 3. Update Traffic table with new traffic counts.
      */
 
-    // elog << "Commiting Pending Channel Details: " << endl
-    //	<< "Channel ID: " << channel_id << endl
-    //	<< "Total Join Count: " << join_count
-    //	<< endl;
+    LOG(TRACE, "Commiting Pending Channel Details:\nChannel ID: {}\nTotal Join Count: {}",
+        channel_id, join_count);
 
     /*
      *  Set the number of unique joins to be the number
