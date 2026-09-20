@@ -43,11 +43,9 @@
 #include "Network.h"
 #include "StringTokenizer.h"
 #include "misc.h"
-#include "ELog.h"
 
 namespace gnuworld {
 
-using std::endl;
 using std::string;
 using std::stringstream;
 using std::vector;
@@ -78,7 +76,7 @@ cloner::cloner(const string& configFileName) : xClient(configFileName) {
 
     cloneBurstCount = conf.Require<unsigned int>("cloneburstcount");
     if (cloneBurstCount < 1) {
-        elog << "cloner> cloneBurstCount must be at least 1" << endl;
+        LOG(FATAL, "cloneBurstCount must be at least 1");
         ::exit(0);
     }
 
@@ -89,7 +87,7 @@ cloner::cloner(const string& configFileName) : xClient(configFileName) {
     }
 
     if (hostNames.empty()) {
-        elog << "cloner> Must specify at least one hostname" << endl;
+        LOG(FATAL, "Must specify at least one hostname");
         ::exit(0);
     }
 
@@ -100,7 +98,7 @@ cloner::cloner(const string& configFileName) : xClient(configFileName) {
     }
 
     if (userNames.empty()) {
-        elog << "cloner> Must specify at least one username" << endl;
+        LOG(FATAL, "Must specify at least one username");
         ::exit(0);
     }
 
@@ -118,7 +116,7 @@ cloner::cloner(const string& configFileName) : xClient(configFileName) {
     }
 
     if (accountNames.empty() || confError) {
-        elog << "cloner> Must specify at least one username" << endl;
+        LOG(FATAL, "Must specify at least one username");
         ::exit(0);
     }
 
@@ -126,11 +124,11 @@ cloner::cloner(const string& configFileName) : xClient(configFileName) {
     maxNickLength = conf.Require<unsigned int>("maxnicklength");
 
     if (minNickLength < 1) {
-        elog << "cloner> minNickLength must be at least 1" << endl;
+        LOG(FATAL, "minNickLength must be at least 1");
         ::exit(0);
     }
     if (maxNickLength <= minNickLength) {
-        elog << "cloner> minNickLength must be less than maxNickLength" << endl;
+        LOG(FATAL, "minNickLength must be less than maxNickLength");
         ::exit(0);
     }
 }
@@ -785,7 +783,7 @@ size_t cloner::quitClone(iClient* theClone, const string quitMsg) {
 void cloner::addClone() {
 
     if (cloneQueue.empty()) {
-        elog << "addClone() called, but no clones to add." << endl;
+        LOG(WARN, "addClone() called, but no clones to add.");
         return;
     }
 
