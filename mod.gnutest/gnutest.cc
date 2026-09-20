@@ -141,13 +141,12 @@ void gnutest::BurstChannels() {
         const std::optional<time_t> ts =
             (st.size() >= 2) ? parseNumber<time_t>(st[1]) : std::nullopt;
         if (!ts) {
-            elog << "gnutest::BurstChannels> burstchannel wants \"<#channel> <timestamp> "
-                 << "[<modes> [<args>]]\", got: " << burstChannel << endl;
+            LOG(ERROR, "burstchannel wants \"<#channel> <timestamp> [<modes> [<args>]]\", got: {}",
+                burstChannel);
         } else {
             const bool done =
                 MyUplink->BurstChannel(st[0], (st.size() > 2) ? st.assemble(2) : string(), *ts);
-            elog << "gnutest::BurstChannels> BurstChannel(" << burstChannel
-                 << "): " << (done ? "done" : "refused") << endl;
+            LOG(INFO, "BurstChannel({}): {}", burstChannel, string(done ? "done" : "refused"));
         }
     }
     MyUplink->RegisterChannelEvent(operChan, this);
@@ -157,7 +156,7 @@ void gnutest::BurstChannels() {
 void gnutest::OnChannelEvent(const channelEventType& whichEvent, Channel* theChan, void* data1,
                              void* data2, void* data3, void* data4) {
     if (theChan->getName() != operChan) {
-        elog << "gnutest::OnChannelEvent> Got bad channel: " << theChan->getName() << endl;
+        LOG_MSG(WARN, "Got bad channel: {chan}").with("chan", theChan).log();
         return;
     }
 
@@ -678,11 +677,11 @@ void gnutest::spawnServer(iClient* requestingClient, const StringTokenizer& st) 
     assert(newServer != 0);
 
     if (!MyUplink->AttachServer(newServer, this)) {
-        elog << "gnutest::spawnServer> Failed to add new iServer: " << *newServer << endl;
+        LOG_MSG(ERROR, "Failed to add new iServer: {server}").with("server", newServer).log();
 
         Notice(requestingClient, "Failed to add new server");
     } else {
-        elog << "gnutest::spawnServer> Added new iServer: " << *newServer << endl;
+        LOG_MSG(INFO, "Added new iServer: {server}").with("server", newServer).log();
 
         Notice(requestingClient, "Added new server with description: {}", description);
     }
@@ -697,18 +696,18 @@ void gnutest::removeServer(iClient* requestingClient, const StringTokenizer& st)
 
     iServer* theServer = Network->findServerName(name);
     if (0 == theServer) {
-        elog << "gnutest::removeServer> Failed to find server name: " << name << endl;
+        LOG(WARN, "Failed to find server name: {}", name);
 
         Notice(requestingClient, "Failed to find server: {}", name);
         return;
     }
 
     if (!MyUplink->DetachServer(theServer)) {
-        elog << "gnutest::removeServer> Failed to DetachServer(): " << *theServer << endl;
+        LOG_MSG(ERROR, "Failed to DetachServer(): {server}").with("server", theServer).log();
 
         Notice(requestingClient, "Failed to remove server: {}", name);
     } else {
-        elog << "gnutest::removeServer> Successfully removed server: " << *theServer << endl;
+        LOG_MSG(INFO, "Successfully removed server: {server}").with("server", theServer).log();
 
         Notice(requestingClient, "Successfully removed server: {}", name);
         delete theServer;
@@ -724,7 +723,7 @@ void gnutest::removeClient(iClient* requestingClient, const StringTokenizer& st)
 
     string nickName(st[1]);
 
-    elog << "gnutest::removeClient> Removing: " << nickName << endl;
+    LOG(DEBUG, "Removing: {}", nickName);
 
     iClient* removeMe = Network->findFakeNick(nickName);
     if (0 == removeMe) {
@@ -762,7 +761,7 @@ void gnutest::spawnClient(iClient* requestingClient, const StringTokenizer& st) 
 
     string nickName(st[1]);
 
-    elog << "gnutest::spawnClient> Spawning " << nickName << endl;
+    LOG(DEBUG, "Spawning {}", nickName);
 
     char newCharYY[6];
     newCharYY[2] = 0;
@@ -789,21 +788,21 @@ void gnutest::spawnClient(iClient* requestingClient, const StringTokenizer& st) 
     assert(newClient != 0);
 
     if (!MyUplink->AttachClient(newClient, this)) {
-        elog << "gnutest::spawnClient> Failed to add new client: " << *newClient << endl;
+        LOG_MSG(ERROR, "Failed to add new client: {client}").with("client", newClient).log();
 
         Notice(requestingClient, "Failed to create new fake client");
         delete newClient;
         newClient = 0;
     } else {
         Notice(requestingClient, "Created new client {}", nickName);
-        elog << "gnutest::spawnClient> Added client: " << *newClient << endl;
+        LOG_MSG(INFO, "Added client: {client}").with("client", newClient).log();
     }
 }
 
 void gnutest::OnTimer(const xServer::timerID&, void*) {
     Channel* theChan = Network->findChannel(timerChan);
     if (NULL == theChan) {
-        elog << "gnutest::OnTimer> Unable to find channel: " << timerChan << endl;
+        LOG(WARN, "Unable to find channel: {}", timerChan);
         return;
     }
 
@@ -906,14 +905,14 @@ void gnutest::spawnPart(iClient* srcClient, const StringTokenizer& st) {
 }
 
 void gnutest::chanInfo(const Channel* theChan) {
-    elog << *theChan << endl << "--- User information ---" << endl;
+    LOG_MSG(DEBUG, "{chan}\n--- User information ---").with("chan", theChan).log();
 
     // Iterate through all clients, and return info about each
     // ChannelUser
     for (Channel::const_userIterator cItr = theChan->userList_begin();
          cItr != theChan->userList_end(); ++cItr) {
         const ChannelUser* theUser = cItr->second;
-        elog << *theUser << endl;
+        LOG_MSG(DEBUG, "{user}").with("user", theUser).log();
     }
 }
 

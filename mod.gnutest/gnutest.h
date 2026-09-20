@@ -30,6 +30,11 @@
 #include "iClient.h"
 #include "Channel.h"
 #include "StringTokenizer.h"
+#include "logger.h"
+
+/* Every file of this module logs under the module's name, which is what the LOG
+ * and LOG_MSG macros resolve; it has to stand outside every namespace. */
+GNUWORLD_MODULE_LOGGER("gnutest");
 
 namespace gnuworld {
 
