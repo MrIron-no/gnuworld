@@ -17,11 +17,13 @@ import json
 import re
 import signal
 import subprocess
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
 
 import cservice_client as cs
+import gnutest_client as gt
 from conftest import (
     LocalGnuworldProc,
     _prepare_conf_dir,
@@ -1279,3 +1281,95 @@ async def test_reconnect_cycle_with_irc_sink_survives(docker_stack, fake_hub, tm
 # task's instructions, this case is skipped rather than adding a new
 # unload/reload trigger to production code.
 # --------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------
+# 16. A module logs on its own logger, not on "legacy": mod.gnutest.
+# --------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def _link_gnutest_logging(docker_stack, hub, tmp_path, logging_conf: str):
+    """gnuworld with mod.gnutest and a logging.conf of the test's own.
+
+    link_debug() loads gnutest but takes no logging.conf, and link_bare()
+    takes one but loads no module; this is the two together, and nothing
+    else - mod.debug is left out because nothing here needs it.
+    """
+    require_module("gnutest")
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf", uplink=CONTAINER_UPLINK, port=hub.port,
+        password=hub.password,
+        module_lines=f"module = libgnutest.la {root}/gnutest.conf",
+    )
+    (conf_dir / "logging.conf").write_text(logging_conf, encoding="utf-8")
+    with (conf_dir / "GNUWorld.conf").open("a", encoding="utf-8") as fh:
+        fh.write(f"\nlogging_conf = {root}/logging.conf\n")
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=45.0)
+        await proc.wait_for_stdout("Connected", timeout=30.0)
+        yield hub, proc, conf_dir
+    finally:
+        await proc.terminate()
+
+
+@pytest.mark.asyncio
+async def test_gnutest_spawn_logs_on_its_own_logger_and_not_on_legacy(
+    docker_stack, fake_hub, tmp_path
+):
+    """Spawning a fake server and a fake client through gnutest's chat
+    commands: each is an INFO record on the logger "gnutest", carrying the
+    object's own fields (server_name, client_nick) because the statement
+    names the object with .with(). Nothing of it is on "legacy", which is
+    where every one of these lines was while gnutest wrote to elog."""
+    _require_local()
+    hub = fake_hub
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    log_path = f"{root}/main.log"
+    logging_conf = (
+        "sink.mainlog.type = file\n"
+        f"sink.mainlog.path = {log_path}\n"
+        "sink.mainlog.format = json\n"
+        "logger.root = DEBUG, mainlog\n"
+        "logger.legacy = DEBUG\n"
+    )
+
+    async with _link_gnutest_logging(docker_stack, hub, tmp_path, logging_conf) as (
+        hub, proc, conf_dir,
+    ):
+        asker = await hub.introduce_nick("asker", username="asker")
+        await gt.run(hub, asker, "spawnserver spawned.testnet a spawned server")
+        await gt.run(hub, asker, "spawnclient fakey spawned.testnet")
+        await asyncio.sleep(0.3)  # let the sink's writes land
+
+    records = _read_json_lines(Path(log_path))
+    assert records, "the JSON sink never received a record"
+
+    gnutest_records = [r for r in records if r.get("logger") == "gnutest"]
+    assert gnutest_records, "mod.gnutest logged nothing on the logger \"gnutest\""
+
+    server_added = [
+        r for r in gnutest_records
+        if r.get("level") == "INFO" and r.get("server_name") == "spawned.testnet"
+    ]
+    assert server_added, [r["message"] for r in gnutest_records]
+    assert "spawned.testnet" in server_added[0]["message"]
+    assert server_added[0]["function"] == "gnutest::spawnServer"
+
+    client_added = [
+        r for r in gnutest_records
+        if r.get("level") == "INFO" and r.get("client_nick") == "fakey"
+    ]
+    assert client_added, [r["message"] for r in gnutest_records]
+    assert "fakey" in client_added[0]["message"]
+    assert client_added[0]["function"] == "gnutest::spawnClient"
+
+    # and none of it went out on the elog stream's logger
+    legacy = [r["message"] for r in records if r.get("logger") == "legacy"]
+    assert not any("spawned.testnet" in m or "Spawning fakey" in m for m in legacy), legacy
