@@ -1134,6 +1134,16 @@ async def test_a_statement_carrying_a_credential_is_kept_out_of_the_logs(
     assert blocked, errors
     assert not any("query" in e for e in errors), errors
 
+    # The database's message is its primary line only: PQerrorMessage()'s
+    # "LINE 1: <statement>" excerpt and its "DETAIL: Key (...)=(...)" would
+    # each put the statement's literal values back into the record that the
+    # Exec(query, false) above kept them out of
+    for error in errors:
+        reported = error.get("error", "")
+        assert "LINE 1" not in reported, error
+        assert "password =" not in reported, error
+        assert "DETAIL:" not in reported, error
+
     # And the hash the statement carried is nowhere in the file at all
     assert password_hash not in text
 
@@ -1143,7 +1153,11 @@ async def test_forced_sql_error_in_cservice(
     docker_stack, fake_hub_p11, tmp_path, broken_webnotices_table
 ):
     """A failed statement is an ERROR record of "cservice.sql" whatever the
-    logger is configured at: its code default reports errors and nothing else."""
+    logger is configured at: its code default reports errors and nothing else.
+
+    This is also the case whose error PostgreSQL does report a position for -
+    a missing relation - so its full PQerrorMessage() carries a "LINE 1:"
+    excerpt of the statement.  The record holds the primary message alone."""
     logging_conf, cservice_log, _main_log = _cservice_logging_conf(tmp_path)
 
     async with link_cservice_logging(
@@ -1158,6 +1172,14 @@ async def test_forced_sql_error_in_cservice(
         e.get("message", "").startswith("SQL Error:") and e.get("error")
         for e in errors
     )
+
+    # The one the fixture causes, and no excerpt of the statement behind it
+    missing = [e for e in errors if "webnotices" in e.get("error", "")]
+    assert missing, errors
+    for error in errors:
+        reported = error.get("error", "")
+        assert "LINE 1" not in reported, error
+        assert "DELETE FROM" not in reported, error
 
 
 # --------------------------------------------------------------------------
@@ -1370,6 +1392,24 @@ async def test_gnutest_spawn_logs_on_its_own_logger_and_not_on_legacy(
     assert "fakey" in client_added[0]["message"]
     assert client_added[0]["function"] == "gnutest::spawnClient"
 
-    # and none of it went out on the elog stream's logger
-    legacy = [r["message"] for r in records if r.get("logger") == "legacy"]
-    assert not any("spawned.testnet" in m or "Spawning fakey" in m for m in legacy), legacy
+    # And none of it went out on the elog stream's logger.  "no legacy record
+    # mentions it" would also hold with no legacy record at all, so the same
+    # property is asserted from the other side as well: every record in the
+    # file that mentions the spawn is one of gnutest's own, and that set is
+    # not empty (the two above are in it).  "logger.legacy = DEBUG" is in the
+    # fixture's logging.conf, so a record of the elog stream would be here.
+    spoken_of = [
+        r for r in records
+        if "spawned.testnet" in r.get("message", "") or "fakey" in r.get("message", "")
+    ]
+    assert spoken_of, [r.get("message") for r in records]
+    assert all(r.get("logger") == "gnutest" for r in spoken_of), [
+        (r.get("logger"), r.get("message")) for r in spoken_of
+    ]
+    assert not any(r.get("logger") == "legacy" for r in spoken_of), spoken_of
+
+    # The hand-written "Class::method> " prefix was the elog form of these
+    # lines and the macro captures the function now, so it is nowhere at all
+    text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    assert "gnutest::spawnServer>" not in text
+    assert "gnutest::spawnClient>" not in text
