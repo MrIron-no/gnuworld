@@ -732,7 +732,8 @@ if (!db->Exec(query)) {
 }
 ```
 
-The record is `"SQL Error: {error}"` with the field `error`, the database's
+The record is `"SQL Error: {error} (line {line})"` — `line` is the caller's,
+which says which statement of a function failed — with the field `error`, the database's
 **primary** message (`PG_DIAG_MESSAGE_PRIMARY`) rather than the whole of
 `PQerrorMessage()`, whose `LINE 1:` excerpt and `DETAIL: Key (...)=(...)`
 would put the failing statement's literal values — a password hash among

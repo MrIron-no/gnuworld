@@ -1291,6 +1291,12 @@ async def test_a_failed_statement_reports_itself_in_a_module_that_never_did(
     assert missing[0].get("message", "").startswith("SQL Error:"), missing
     assert missing[0].get("function") == "ccontrol::loadBadChannels", missing
 
+    # Which statement of that function it was: the line of the call
+    source = (Path(__file__).resolve().parents[2] / "mod.ccontrol" / "ccontrol.cc").read_text(
+        encoding="utf-8", errors="replace").splitlines()
+    line = missing[0].get("line")
+    assert isinstance(line, int) and "Exec(" in "".join(source[line - 3:line]), missing
+
     # The statement is not part of the record here either
     assert "query" not in missing[0], missing
     assert "SELECT" not in missing[0].get("error", ""), missing

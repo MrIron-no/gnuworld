@@ -146,11 +146,15 @@ bool pgsqlDB::Exec(const string& theQuery, bool log, std::source_location where)
      * "DETAIL: Key (...)=(...)", either of which would put back into the log
      * the literal values - a password hash, a TOTP secret, a SCRAM record -
      * that Exec(query, false) keeps out of it.  A connection-level failure
-     * has no result to ask, and there the whole message is all there is. */
+     * has no result to ask, and there the whole message is all there is.
+     *
+     * The line is the caller's: a function that runs several statements says
+     * with it which of them this was. */
     const char* primary = PQresultErrorField(lastResult, PG_DIAG_MESSAGE_PRIMARY);
 
-    sqlLog->createMessage(ERROR, where.function_name(), "SQL Error: {error}")
+    sqlLog->createMessage(ERROR, where.function_name(), "SQL Error: {error} (line {line})")
         .with("error", (0 == primary) ? ErrorMessage() : string(primary))
+        .with("line", static_cast<std::uint64_t>(where.line()))
         .log();
     return false;
 }
