@@ -529,6 +529,7 @@ async def link_debug(
     gnutest: bool = False,
     burstchannel: str | None = None,
     gnutest_stealth: bool = False,
+    second_gnutest: str | None = None,
 ):
     """Run a Dockerized gnuworld with stealth mod.debug linked to ``hub``.
 
@@ -537,6 +538,9 @@ async def link_debug(
     commands (see gnutest_client.py); ``burstchannel`` makes it claim a channel
     with xServer::BurstChannel() during gnuworld's own burst, and
     ``gnutest_stealth`` runs it with no client on the network (see test_stealth).
+    ``second_gnutest`` is the nickname of a second instance of the same module,
+    on its own operchan: one module can then act from inside an event handler
+    while the other watches (see test_event_order.py).
     gnuworld runs from the build tree unless GNUWORLD_HARNESS=docker, in which
     case the docker_stack fixture has to be active. Yields (hub, proc).
     """
@@ -550,6 +554,13 @@ async def link_debug(
         GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf", burstchannel=burstchannel,
                                           stealth=gnutest_stealth)
         modules.append(f"module = libgnutest.la {GnuworldProc.conf_root(conf_dir)}/gnutest.conf")
+    if second_gnutest:
+        GnuworldProc.write_gnutest_config(conf_dir / f"{second_gnutest}.conf",
+                                          operchan=f"#{second_gnutest}-opers",
+                                          nickname=second_gnutest)
+        modules.append(
+            f"module = libgnutest.la {GnuworldProc.conf_root(conf_dir)}/{second_gnutest}.conf"
+        )
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",
         uplink=CONTAINER_UPLINK,
@@ -566,6 +577,10 @@ async def link_debug(
         await proc.wait_for_stdout("Loaded stealth client, nickname: debug", timeout=30.0)
         if gnutest_stealth:
             await proc.wait_for_stdout("Loaded stealth client, nickname: gnutest", timeout=30.0)
+        if second_gnutest:
+            assert hub.get_user_numnick(second_gnutest), (
+                f"the second mod.gnutest did not burst {second_gnutest}"
+            )
         yield hub, proc
     finally:
         await proc.terminate()
@@ -582,6 +597,15 @@ async def debug_linked_p11(docker_stack, fake_hub_p11, tmp_path):
 async def gnutest_linked_p11(docker_stack, fake_hub_p11, tmp_path):
     """Dockerized gnuworld with mod.debug and mod.gnutest, linked to a P11 hub."""
     async with link_debug(fake_hub_p11, tmp_path, gnutest=True) as linked:
+        yield linked
+
+
+@pytest_asyncio.fixture
+async def two_gnutests_linked_p11(docker_stack, fake_hub_p11, tmp_path):
+    """Two mod.gnutest instances, gnutest and gnutest2, on a P11 hub: one acts
+    from inside an event handler while the other watches (test_event_order.py)."""
+    async with link_debug(fake_hub_p11, tmp_path, gnutest=True,
+                          second_gnutest="gnutest2") as linked:
         yield linked
 
 

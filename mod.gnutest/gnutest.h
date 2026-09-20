@@ -208,6 +208,28 @@ class gnutest : public xClient {
     virtual bool channelCommand(iClient* requestingClient, const StringTokenizer& st,
                                 const iClient* fake);
 
+    /**
+     * The test-only event commands: "events on|off" reports every event we
+     * receive, "onevent <NAME> <action> [args]" arms one action to run from
+     * inside the handler the next time that event arrives.
+     * Returns false if st[0] is not one of these.
+     */
+    virtual bool eventCommand(iClient* requestingClient, const StringTokenizer& st);
+
+    /**
+     * Send one "EVENT <NAME> <arg1> <arg2> ..." notice to whoever turned
+     * reporting on, naming the printable identity of each payload.
+     */
+    virtual void reportEvent(const std::string& name, const std::vector<std::string>& args);
+
+    /**
+     * Run what "onevent" armed, if this is the event it waits for, and disarm.
+     * aboutClient is the client the event is about and theChan the channel;
+     * either may be null.
+     */
+    virtual void runArmedAction(int whichEvent, bool channelEvent, iClient* aboutClient,
+                                Channel* theChan);
+
     virtual void chanInfo(const Channel* theChan);
 
     /**
@@ -215,6 +237,23 @@ class gnutest : public xClient {
      * client sits.
      */
     std::string operChan;
+
+    /**
+     * The numnick "events on" named, empty while reporting is off.  A numnick
+     * and not an iClient*, which the next event may be about to delete.
+     */
+    std::string eventWatcher;
+
+    /**
+     * What "onevent" armed, unset when nothing is.
+     */
+    struct armedEvent {
+        int whichEvent;
+        bool channelEvent;
+        std::string action;
+        std::string argument;
+    };
+    std::optional<armedEvent> armed;
 
     /// "<#channel> <timestamp> [<modes> [<args>]]" to BurstChannel() during
     /// our burst; empty for none.

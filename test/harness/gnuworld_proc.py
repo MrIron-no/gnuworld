@@ -326,12 +326,16 @@ class GnuworldProc:
         operchan: str = "#gnutest-opers",
         burstchannel: str | None = None,
         stealth: bool = False,
+        nickname: str = "gnutest",
     ) -> Path:
         """``burstchannel`` is "<#channel> <timestamp> [<modes> [<args>]]": gnutest
         then calls xServer::BurstChannel() with it during gnuworld's own burst.
         ``stealth`` runs it with no client on the network, addressed as
-        ``gnutest@<server>``."""
+        ``gnutest@<server>``. ``nickname`` is what the module calls its client,
+        so that a second instance of the same module can be loaded beside the
+        first (see conftest.link_debug)."""
         text = GNUTEST_CONF_TEMPLATE.read_text(encoding="utf-8").replace("@OPERCHAN@", operchan)
+        text = text.replace("nickname = gnutest", f"nickname = {nickname}")
         if burstchannel:
             text += f"burstchannel = {burstchannel}\n"
         if stealth:

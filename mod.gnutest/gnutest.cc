@@ -20,11 +20,15 @@
  */
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
+#include <vector>
 #include <iostream>
 #include <sstream>
 #include "client.h"
 #include "gnutest.h"
+#include "events.h"
+#include "Gline.h"
 #include "iClient.h"
 #include "StringTokenizer.h"
 #include "EConfig.h"
@@ -35,6 +39,142 @@ namespace gnuworld {
 using std::cout;
 using std::endl;
 using std::string;
+
+/**
+ * Every event core can post, by the name gnutest reports it under: what
+ * eventNames[] spells with the spaces taken out, except that EVT_QUIT and
+ * EVT_KILL keep the short names and EVT_ACCOUNT_FLAGS has no eventNames[]
+ * entry at all - from EVT_RAW up that table is one short and misaligned.
+ * The two enums of events.h overlap (EVT_JOIN == EVT_NOOP), so a network
+ * event and a channel event are named from their own table.
+ */
+struct eventNameEntry {
+    int whichEvent;
+    const char* name;
+};
+
+static const eventNameEntry networkEventNames[] = {
+    {EVT_OPER, "OperUp"},
+    {EVT_NETBREAK, "NetBreak"},
+    {EVT_NETJOIN, "NetJoin"},
+    {EVT_BURST_CMPLT, "BurstComplete"},
+    {EVT_BURST_ACK, "BurstAcknowledge"},
+    {EVT_EA_SENT, "BurstAcknowledgeSent"},
+    {EVT_GLINE, "GlineAdd"},
+    {EVT_REMGLINE, "GlineRemove"},
+    {EVT_JUPE, "ServerJupe"},
+    {EVT_UNJUPE, "ServerUnJupe"},
+    {EVT_QUIT, "Quit"},
+    {EVT_KILL, "Kill"},
+    {EVT_NICK, "ClientConnect"},
+    {EVT_CHNICK, "NickChange"},
+    {EVT_ACCOUNT, "AccountLogin"},
+    {EVT_ACCOUNT_FLAGS, "AccountFlags"},
+    {EVT_RAW, "Raw"},
+    {EVT_XQUERY, "XQuery"},
+    {EVT_XREPLY, "XReply"},
+    {EVT_NETCONF, "NetconfAdd"},
+    {EVT_REMNETCONF, "NetconfRemove"},
+};
+
+static const eventNameEntry channelEventNames[] = {
+    {EVT_JOIN, "ChannelJoin"},
+    {EVT_PART, "ChannelPart"},
+    {EVT_SERVERMODE, "ChannelModeByServer"},
+    {EVT_TOPIC, "ChannelTopicChange"},
+    {EVT_KICK, "ChannelKick"},
+    {EVT_CREATE, "ChannelCreate"},
+    {EVT_BURST, "ChannelBurst"},
+};
+
+/// The name gnutest reports this event under
+static string eventName(int whichEvent, bool channelEvent) {
+    const std::span<const eventNameEntry> table =
+        channelEvent ? std::span<const eventNameEntry>(channelEventNames)
+                     : std::span<const eventNameEntry>(networkEventNames);
+    for (const eventNameEntry& entry : table) {
+        if (entry.whichEvent == whichEvent) {
+            return string(entry.name);
+        }
+    }
+    return string("?");
+}
+
+/// The event one of those names stands for; false if it is not a name we know
+static bool findEventByName(const string& name, int& whichEvent, bool& channelEvent) {
+    for (const eventNameEntry& entry : networkEventNames) {
+        if (name == entry.name) {
+            whichEvent = entry.whichEvent;
+            channelEvent = false;
+            return true;
+        }
+    }
+    for (const eventNameEntry& entry : channelEventNames) {
+        if (name == entry.name) {
+            whichEvent = entry.whichEvent;
+            channelEvent = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The printable identity of one event payload, by the type that payload has:
+ * "-" for one that is null or was not passed at all. */
+
+static string nickOf(void* data) {
+    const iClient* theClient = static_cast<iClient*>(data);
+    return (0 == theClient) ? string("-") : theClient->getNickName();
+}
+
+static string serverNameOf(void* data) {
+    const iServer* theServer = static_cast<iServer*>(data);
+    return (0 == theServer) ? string("-") : theServer->getName();
+}
+
+static string memberOf(void* data) {
+    const ChannelUser* theUser = static_cast<ChannelUser*>(data);
+    return (0 == theUser) ? string("-") : theUser->getNickName();
+}
+
+static string glineMaskOf(void* data) {
+    const Gline* theGline = static_cast<Gline*>(data);
+    return (0 == theGline) ? string("-") : theGline->getUserHost();
+}
+
+static string stringOf(void* data) {
+    const string* text = static_cast<string*>(data);
+    return (0 == text || text->empty()) ? string("-") : *text;
+}
+
+/// EVT_XQUERY and EVT_XREPLY pass a const char*, not a std::string*
+static string charsOf(void* data) {
+    const char* text = static_cast<const char*>(data);
+    return (0 == text || 0 == *text) ? string("-") : string(text);
+}
+
+/**
+ * A payload whose type is not the same at every post site: EVT_KILL's source is
+ * an iClient*, an iServer* or null, and EVT_NETBREAK's second is a std::string*
+ * at two sites and an iServer* at the third.  Nothing in the event says which,
+ * so the only way to print one without guessing is to look the pointer up in
+ * the network's own tables.  Empty if it is neither.
+ */
+static string knownObjectOf(void* data) {
+    for (xNetwork::clientIterator ptr = Network->clients_begin(); ptr != Network->clients_end();
+         ++ptr) {
+        if (ptr->second == data) {
+            return ptr->second->getNickName();
+        }
+    }
+    for (xNetwork::serverIterator ptr = Network->servers_begin(); ptr != Network->servers_end();
+         ++ptr) {
+        if (ptr->second == data) {
+            return ptr->second->getName();
+        }
+    }
+    return string();
+}
 
 /*
  *  Exported function used by moduleLoader to gain an
@@ -155,8 +295,49 @@ void gnutest::BurstChannels() {
 
 void gnutest::OnChannelEvent(const channelEventType& whichEvent, Channel* theChan, void* data1,
                              void* data2, void* data3, void* data4) {
+    // EVT_SERVERMODE is the one channel event whose first payload is an
+    // iServer, so it is about no client
+    iClient* const aboutClient = (EVT_SERVERMODE == whichEvent) ? 0 : static_cast<iClient*>(data1);
+
+    if (!eventWatcher.empty()) {
+        std::vector<string> args;
+        args.push_back(theChan->getName());
+
+        switch (whichEvent) {
+        case EVT_JOIN:
+        case EVT_BURST:
+        case EVT_CREATE:
+            // The member is passed with a create by everything but msg_C
+            args.push_back(nickOf(data1));
+            args.push_back(memberOf(data2));
+            break;
+        case EVT_PART:
+            // The part message is passed on one path only
+            args.push_back(nickOf(data1));
+            args.push_back(stringOf(data2));
+            break;
+        case EVT_TOPIC:
+            // The client is null for a topic that arrives in a burst
+            args.push_back(nickOf(data1));
+            args.push_back(stringOf(data2));
+            break;
+        case EVT_SERVERMODE:
+            args.push_back(serverNameOf(data1));
+            break;
+        default:
+            break;
+        }
+
+        reportEvent(eventName(whichEvent, true), args);
+    }
+
+    runArmedAction(whichEvent, true, aboutClient, theChan);
+
     if (theChan->getName() != operChan) {
-        LOG_MSG(WARN, "Got bad channel: {chan}").with("chan", theChan).log();
+        // Watching every channel is expected; any other channel is not ours
+        if (eventWatcher.empty()) {
+            LOG_MSG(WARN, "Got bad channel: {chan}").with("chan", theChan).log();
+        }
         return;
     }
 
@@ -184,7 +365,190 @@ void gnutest::OnChannelEvent(const channelEventType& whichEvent, Channel* theCha
 
 void gnutest::OnEvent(const eventType& whichEvent, void* data1, void* data2, void* data3,
                       void* data4) {
+    // Which payload is the client the event is about, for an armed action
+    iClient* aboutClient = 0;
+    switch (whichEvent) {
+    case EVT_OPER:
+    case EVT_QUIT:
+    case EVT_NICK:
+    case EVT_CHNICK:
+    case EVT_ACCOUNT:
+    case EVT_ACCOUNT_FLAGS:
+        aboutClient = static_cast<iClient*>(data1);
+        break;
+    case EVT_KILL:
+        aboutClient = static_cast<iClient*>(data2);
+        break;
+    default:
+        break;
+    }
+
+    if (!eventWatcher.empty()) {
+        std::vector<string> args;
+
+        switch (whichEvent) {
+        case EVT_OPER:
+        case EVT_NICK:
+        case EVT_ACCOUNT:
+        case EVT_ACCOUNT_FLAGS:
+            args.push_back(nickOf(data1));
+            break;
+        case EVT_QUIT:
+            // The reason is passed on one path only
+            args.push_back(nickOf(data1));
+            args.push_back(stringOf(data2));
+            break;
+        case EVT_CHNICK:
+            args.push_back(nickOf(data1));
+            args.push_back(stringOf(data2));
+            break;
+        case EVT_KILL: {
+            const string source = knownObjectOf(data1);
+            args.push_back((0 == data1) ? string("-") : (source.empty() ? string("?") : source));
+            args.push_back(nickOf(data2));
+            args.push_back(stringOf(data3));
+            break;
+        }
+        case EVT_NETBREAK: {
+            args.push_back(serverNameOf(data1));
+            // A cascading squit passes the uplink here, not the source string
+            const string uplink = knownObjectOf(data2);
+            args.push_back(uplink.empty() ? stringOf(data2) : uplink);
+            args.push_back(stringOf(data3));
+            break;
+        }
+        case EVT_NETJOIN:
+            // The uplink is passed at one site of three
+            args.push_back(serverNameOf(data1));
+            args.push_back(serverNameOf(data2));
+            break;
+        case EVT_BURST_CMPLT:
+        case EVT_BURST_ACK:
+        case EVT_EA_SENT:
+            args.push_back(serverNameOf(data1));
+            break;
+        case EVT_GLINE:
+        case EVT_REMGLINE:
+            args.push_back(glineMaskOf(data1));
+            break;
+        case EVT_RAW:
+            args.push_back(stringOf(data1));
+            break;
+        case EVT_XQUERY:
+        case EVT_XREPLY:
+            args.push_back(serverNameOf(data1));
+            args.push_back(charsOf(data2));
+            args.push_back(charsOf(data3));
+            break;
+        case EVT_NETCONF:
+        case EVT_REMNETCONF:
+            args.push_back(serverNameOf(data1));
+            args.push_back(stringOf(data2));
+            break;
+        default:
+            break;
+        }
+
+        reportEvent(eventName(whichEvent, false), args);
+    }
+
+    runArmedAction(whichEvent, false, aboutClient, 0);
+
     xClient::OnEvent(whichEvent, data1, data2, data3, data4);
+}
+
+/**
+ * "events on|off" registers this module for every event core posts, on every
+ * channel, and reports each one it receives; "onevent <NAME> <action> [args]"
+ * arms one action to run from inside the handler the next time that event
+ * arrives.  Both are for the harness's event tests, and do nothing until used.
+ * Returns false if st[0] is not one of these.
+ */
+bool gnutest::eventCommand(iClient* requester, const StringTokenizer& st) {
+    if (st[0] == "events" && st.size() > 1) {
+        const bool on = (st[1] == "on");
+        for (const eventNameEntry& entry : networkEventNames) {
+            on ? MyUplink->RegisterEvent(entry.whichEvent, this)
+               : MyUplink->UnRegisterEvent(entry.whichEvent, this);
+        }
+        on ? MyUplink->RegisterChannelEvent(xServer::CHANNEL_ALL, this)
+           : MyUplink->UnRegisterChannelEvent(xServer::CHANNEL_ALL, this);
+
+        eventWatcher = on ? requester->getCharYYXXX() : string();
+        Notice(requester, "Events {}", on ? "on" : "off");
+        return true;
+    }
+
+    if (st[0] == "onevent" && st.size() > 2) {
+        armedEvent action;
+        if (!findEventByName(st[1], action.whichEvent, action.channelEvent)) {
+            Notice(requester, "No such event: {}", st[1]);
+            return true;
+        }
+        action.action = st[2];
+        action.argument = (st.size() > 3) ? st.assemble(3) : string();
+        armed = action;
+        Notice(requester, "Armed {} on {}", action.action, st[1]);
+        return true;
+    }
+
+    return false;
+}
+
+void gnutest::reportEvent(const string& name, const std::vector<string>& args) {
+    iClient* watcher = Network->findClient(eventWatcher);
+    if (0 == watcher) {
+        // Whoever asked is gone
+        return;
+    }
+
+    string line("EVENT ");
+    line += name;
+    for (const string& arg : args) {
+        line += ' ';
+        line += arg;
+    }
+
+    Notice(watcher, line);
+}
+
+void gnutest::runArmedAction(int whichEvent, bool channelEvent, iClient* aboutClient,
+                             Channel* theChan) {
+    if (!armed || armed->whichEvent != whichEvent || armed->channelEvent != channelEvent) {
+        return;
+    }
+
+    // Once, whatever the action goes on to do to this module
+    const armedEvent action = *armed;
+    armed.reset();
+
+    if (action.action == "kill" && aboutClient != 0) {
+        Kill(aboutClient, "onevent kill");
+    } else if (action.action == "kick" && aboutClient != 0 && theChan != 0) {
+        Kick(theChan, aboutClient, "onevent kick");
+    } else if (action.action == "part") {
+        Part(action.argument);
+    } else if (action.action == "unregister") {
+        channelEvent ? MyUplink->UnRegisterChannelEvent(xServer::CHANNEL_ALL, this)
+                     : MyUplink->UnRegisterEvent(whichEvent, this);
+    } else if (action.action == "register") {
+        int newEvent = 0;
+        bool newIsChannel = false;
+        if (findEventByName(action.argument, newEvent, newIsChannel)) {
+            newIsChannel ? MyUplink->RegisterChannelEvent(xServer::CHANNEL_ALL, this)
+                         : MyUplink->RegisterEvent(newEvent, this);
+        }
+    } else if (action.action == "post") {
+        /* One nested event that nothing depends on: EVT_RAW's payload is a
+         * std::string* this call owns, it is information only, and core posts
+         * it for every line it reads anyway. */
+        string nested("onevent post");
+        MyUplink->PostEvent(EVT_RAW, static_cast<void*>(&nested));
+    } else if (action.action == "unloadself") {
+        MyUplink->UnloadClient(this, "test");
+    } else if (action.action == "detachself") {
+        MyUplink->DetachClient(this, "test");
+    }
 }
 
 void gnutest::OnChannelMessage(iClient* theClient, Channel* theChan, const string& message) {
@@ -507,6 +871,9 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
     }
     if (st[0] == "isonchannel" && st.size() > 1) {
         Notice(theClient, "{}: {}", st[1], isOnChannel(st[1]) ? "yes" : "no");
+        return;
+    }
+    if (eventCommand(theClient, st)) {
         return;
     }
 
