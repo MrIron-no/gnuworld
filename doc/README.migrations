@@ -161,7 +161,8 @@ Troubleshooting
 
 **Problem: gnuworld fails to start with a migration error**
 When a migration fails to apply, the error message will say:
-  ERROR  <module>  Failed to apply migration 'XXX_name.sql' for module '<module>': ...
+  ERROR  <module>.sql  SQL Error: <what the database said> (line N)
+  ERROR  <module>      Failed to apply migration 'XXX_name.sql' for module '<module>'
 
 Causes and solutions:
 - Syntax error in the migration file - fix the SQL in the file

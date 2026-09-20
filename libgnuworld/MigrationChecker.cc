@@ -101,7 +101,7 @@ bool MigrationChecker::ensureMigrationsTableExists() {
     )";
 
     if (!db->Exec(createTableSQL)) {
-        LOG_TO(logger, ERROR, "Failed to create gnuworld_migrations table: {}", db->ErrorMessage());
+        LOG_TO(logger, ERROR, "Failed to create gnuworld_migrations table");
         return false;
     }
 
@@ -153,8 +153,7 @@ std::vector<std::string> MigrationChecker::getAppliedMigrations() {
           << "' ORDER BY id;";
 
     if (!db->Exec(query.str(), true)) {
-        LOG_TO(logger, WARN, "Failed to query applied migrations for '{}': {}", moduleName,
-               db->ErrorMessage());
+        LOG_TO(logger, WARN, "Failed to query applied migrations for '{}'", moduleName);
         return applied;
     }
 
@@ -190,8 +189,8 @@ bool MigrationChecker::applyMigrations(const std::vector<std::string>& unapplied
 
         // Execute the migration SQL
         if (!db->Exec(sqlContent.str())) {
-            LOG_TO(logger, ERROR, "Failed to apply migration '{}' for module '{}': {}", filename,
-                   moduleName, db->ErrorMessage());
+            LOG_TO(logger, ERROR, "Failed to apply migration '{}' for module '{}'", filename,
+                   moduleName);
             return false;
         }
 
@@ -213,8 +212,7 @@ bool MigrationChecker::recordMigration(const std::string& filename) {
                 << "', '" << filename << "');";
 
     if (!db->Exec(insertQuery.str())) {
-        LOG_TO(logger, ERROR, "Failed to record migration '{}' in database: {}", filename,
-               db->ErrorMessage());
+        LOG_TO(logger, ERROR, "Failed to record migration '{}' in database", filename);
         return false;
     }
 
