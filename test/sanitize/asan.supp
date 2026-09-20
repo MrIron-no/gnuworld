@@ -1,0 +1,42 @@
+# AddressSanitizer suppressions for test/sanitize/run.sh.
+#
+# Eight entries, one cause, and they are here only because without them the gate
+# cannot run at all: ASan aborts the daemon before main() in every single harness
+# test, so nothing else would ever be reported.  They are a PRE-EXISTING FINDING
+# of the core overhaul's survey, for a later task, not something to suppress and
+# forget.
+#
+# The cause: libgnuworld.a is linked into BOTH the gnuworld executable AND
+# libgnuworldcore.so, so every global of libgnuworld exists twice in the running
+# program.  ASan's ODR checker is right, and the duplication is not harmless -
+# Signal's singleton is six of the eight, so the executable's signal pipe and the
+# core library's are different pipes, and ConsoleSink::setEnabled() called through
+# one copy does not turn the other off.  The fix is for libgnuworld to be in the
+# program once; these entries go away with it, and so does this file.
+#
+# NOTHING ELSE BELONGS HERE.  A finding that does not stop the gate running is a
+# finding to report, not to suppress.  In particular this file does not turn the
+# ODR check off (ASAN_OPTIONS=detect_odr_violation=0 would): an ODR violation the
+# overhaul introduces still fails the gate.
+#
+# THE BARE MEMBER NAME IS THE FORM THAT MATCHES, and that is not a style choice.
+# ASan matches an "odr_violation:" entry against the name the compiler registered
+# the global under, and GCC registers the unqualified source name - 'enabledFlag',
+# exactly as ASan's own report prints it.  Checked by running the gate: with the
+# entries below the daemon reaches main(), and with the same eight written
+# qualified (gnuworld::ConsoleSink::enabledFlag) or mangled
+# (_ZN8gnuworld11ConsoleSink11enabledFlagE) it aborts before main() again, because
+# neither form matches anything.  Do not "fix" them into either of those.
+
+# libgnuworld/LogSinks.cc: the console sink's enabled flag (line 153) and the
+# logger-name column width (line 63)
+odr_violation:enabledFlag
+odr_violation:nameWidthValue
+
+# libgnuworld/Signal.cc, lines 51-58: the whole of Signal's singleton state
+odr_violation:theInstance
+odr_violation:signalError
+odr_violation:readFD
+odr_violation:writeFD
+odr_violation:singletonMutex
+odr_violation:pipeMutex

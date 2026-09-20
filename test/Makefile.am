@@ -107,6 +107,7 @@ EXTRA_DIST += \
 	test/README.econfig \
 	test/README.match \
 	test/README.mtrie \
+	test/README.sanitize \
 	test/README.signal \
 	test/README.stringtokenizer \
 	test/README.testBot \

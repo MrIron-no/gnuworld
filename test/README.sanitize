@@ -1,0 +1,186 @@
+Two gates that the ordinary build cannot be: one that runs the whole tree under
+AddressSanitizer and UndefinedBehaviorSanitizer, and one that compiles it with
+Clang and libc++.  Neither of them is part of "make check" - both build a tree of
+their own, because a sanitized or a libc++ object file next to an ordinary one is
+a link error waiting to happen, and neither touches the checkout they are run
+from.
+
+They exist because the core overhaul is a large change to code with no test of
+its own memory behaviour and one deployment target (FreeBSD) whose C++ standard
+library is not the one this is developed against.  Run them before and after any
+core change; a finding of theirs is worth more the day the change is made than
+the week after.
+
+
+test/sanitize/run.sh
+----------------------
+Exports the tracked working tree into a fresh directory under ${TMPDIR:-/tmp},
+configures it with
+
+	CXXFLAGS="-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize=vptr"
+	LDFLAGS="-fsanitize=address,undefined"
+
+builds it with the twelve-module list of the ordinary build, and then runs both
+test suites there: "make check" and the whole integration harness of
+test/harness.  The harness runs the gnuworld of the tree it sits in, which is the
+sanitized one, and the daemon it spawns inherits the sanitizer options from the
+script - so every line the harness sends the daemon is a sanitized line.
+
+	test/sanitize/run.sh                       # everything
+	test/sanitize/run.sh --keep                # and keep the exported tree
+	test/sanitize/run.sh -- test_logging.py    # one harness file only
+
+Everything after "--" is passed to pytest.  It must be run from the repository
+root and says so if it is not (exit 2).  It needs the host toolchain (GCC with
+libasan and libubsan) and, for the harness's Postgres, Docker.  A run of the
+whole thing takes a good while: the sanitized build is slower than the ordinary
+one, and so is every test in it.
+
+Only tracked files are exported: an untracked build product of the host in there
+would be an object file linked against the unsanitized libraries it was built
+with.  Uncommitted edits to tracked files ARE included, so the gate tests what
+the tree says right now.
+
+ONE THING TO KNOW ABOUT BOTH GATES.  configure.ac assigns CXXFLAGS outright -
+
+	CXXFLAGS="-W -Wall -pipe -I\$(top_srcdir)/libltdl"
+
+- and so throws away whatever CXXFLAGS was passed to configure a moment before.
+LDFLAGS it only ever appends to.  A gate that passes its compile flags to
+configure alone therefore gets a build that is LINKED its way and COMPILED the
+ordinary way, which for the sanitizers means libasan and libubsan loaded and not
+one instrumented instruction: the runtime's malloc interceptors and its SIGSEGV
+handler still report, so the run looks like it is working while every buffer
+overflow in the tree goes unseen.  Both scripts therefore say their flags twice -
+once to configure, as documentation of intent, and once on make's own command
+line, where nothing can drop them, together with the value configure settled on,
+because that value carries the include paths the tree needs.  The sanitizer gate
+then ASSERTS the instrumentation is there ("=== Is it really instrumented?",
+which counts the undefined __asan_/__ubsan_ references of three artifacts - the
+core library libgnuworldcore.so.0, the gnuworld executable the harness starts,
+and libdebug.so, the module it loads) and fails if any of them has none.  Three
+and not one because a flag can be lost for part of a build and kept for the rest.
+Fixing configure.ac would make both of those steps unnecessary; until then, do
+not simplify them away.
+
+WHAT A FAILURE LOOKS LIKE.  A sanitizer says nothing through an exit status: a
+daemon the harness stops looks exactly like one ASan aborted.  So both
+sanitizers are told to write their reports to files -
+
+	ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:halt_on_error=1:log_path=$dir/asan:suppressions=$dir/test/sanitize/asan.supp
+	UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1:log_path=$dir/ubsan
+
+- and the script fails if any $dir/asan.* or $dir/ubsan.* file exists at the end,
+whatever every step's exit status was.  It prints each of them in full under
+"=== Sanitizer reports", and it keeps the exported tree when it fails, so the
+report's line numbers point at files that are still there.  On success the tree
+is removed; --keep keeps it either way.  Exit status: 0 only if every step passed
+and neither sanitizer wrote anything, 1 otherwise, 2 if it was misused.
+
+The two runtimes do not agree on where to write, so the script looks in two
+places.  ASan honours log_path.  GCC's libubsan IGNORES it (checked, GCC 14) and
+always writes to stderr, so every step's output is captured to a log in $dir and
+those logs are searched for UBSan's own first line, "runtime error:", which fails
+the run just as a report file does.
+
+ONE CASE ESCAPES BOTH, and it is the one to know about: the daemon's stderr.
+test/harness/gnuworld_proc.py starts gnuworld with stderr merged into the pipe it
+reads for wait_for_stdout, and does not print what it collects - so a UBSan
+finding inside the running daemon shows up only as a FAILING HARNESS TEST, with
+no report file and nothing in any log.  To get the message out of one:
+
+	test/sanitize/run.sh --keep -- test_logging.py
+	cd <the kept directory>/test/harness
+	ASAN_OPTIONS=detect_leaks=0:suppressions=<kept>/test/sanitize/asan.supp \
+	UBSAN_OPTIONS=print_stacktrace=1 \
+	    ../../gnuworld -c -f <a conf of that test's tmp directory>
+
+which runs the daemon with its stderr on the terminal.  pytest's own tmp
+directories (/tmp/pytest-of-*/pytest-*/) still hold the GNUWorld.conf and
+logging.conf of the failing test, which is the shortest way to a conf that
+reproduces it.
+
+test/sanitize/asan.supp holds the only suppressions there are, eight of them, all
+one cause and all there because without them the daemon aborts before main() in
+every harness test: libgnuworld.a is linked into both the gnuworld executable and
+libgnuworldcore.so, so every global of libgnuworld exists twice and ASan's ODR
+checker says so.  Read the file - it names each one and says what the duplication
+costs.  They are a pre-existing finding waiting for the task that fixes the
+linkage, not a dismissal, and the check itself stays on: an ODR violation the
+overhaul introduces still fails the gate.  Nothing that does not stop the gate
+running belongs in that file.
+
+-fno-sanitize=vptr is the one check of the twenty-odd in "undefined" that this
+tree cannot be built with, and it costs a link rather than producing a report:
+the vptr check emits a reference to the typeinfo of every polymorphic type a
+pointer is used through, and libgnuworld/match.cc takes a "const iClient*" - a
+type of the CORE, whose typeinfo lives in libgnuworldcore.  test_burst and
+test_mtrie_load link libgnuworld alone, deliberately, so with the check on they
+end in "undefined reference to `typeinfo for gnuworld::iClient'" and nothing at
+all gets built.  Take it out the day libgnuworld stops naming a core type; do not
+widen it to anything else.
+
+detect_leaks=0 IS DELIBERATE, for now.  A survey of core found leaks that are
+still there at exit - objects the daemon allocates once and never gives back -
+and later parts of the core overhaul are what fix them.  Leak checking today
+would bury every real finding under them, so the gate watches for the errors that
+are bugs wherever they happen (buffer overflows, use-after-free, undefined
+behaviour) and leaves the leaks to the tasks that own them.  Turn it to 1 once
+those are done; that is a one-word change in the script.
+
+
+test/docker/clang-libcxx/run.sh
+---------------------------------
+A COMPILE gate: it builds the image of the Dockerfile beside it (Debian trixie,
+Clang and libc++, named gnuworld-clang-libcxx), streams the tracked working tree
+into a container of it through a tar on stdin, and there configures with
+
+	CXX=clang++ CXXFLAGS="-stdlib=libc++" LDFLAGS="-stdlib=libc++"
+
+builds, asserts that the daemon really came out linked against libc++ and not
+libstdc++, and runs "make check".
+
+	test/docker/clang-libcxx/run.sh
+
+It must be run from the repository root too (exit 2), and it needs Docker and
+nothing else.  Nothing is mounted and nothing it writes reaches the host: when it
+is done the only thing left behind is the image.
+
+What it is for: FreeBSD is a deployment target and its C++ standard library is
+libc++, while the machine this is usually developed on has libstdc++ alone - so a
+difference between the two is invisible here until it is a bug report.  It has
+happened.  Code once compared the ADDRESS of std::endl to decide whether a
+manipulator was the end of a line: libstdc++ gave one address per program and the
+comparison worked, libc++ instantiates the template per translation unit, so the
+addresses differed and the comparison silently never matched.  It compiled
+cleanly on both.
+
+The image deliberately has NO prometheus-cpp, NO log4cplus and NO libcurl.  All
+three are C++ libraries, and the Debian ones are built against libstdc++: linking
+them into a libc++ program mixes two incompatible std:: ABIs.  Nothing had to be
+dropped from the module list for that - each of the three is reached only through
+ENABLE_LOG4CPLUS, HAVE_PROMETHEUS or HAVE_LIBCURL, which configure does not
+define in this image, and mod.dronescan, mod.cservice and libnotifier all compile
+without them.  The code behind those three is what test/docker/full-deps compiles
+instead, with the other standard library.
+
+WHAT A FAILURE LOOKS LIKE.  Warnings are counted and printed but are not fatal:
+Clang warns about things GCC does not, and a gate that failed on every one of
+those would be turned off in a week.  The summary line says how many there were,
+and the kinds are listed under "-W" names.  What fails it is an error: a compile
+error (the first forty "error:" lines are printed, then the tail of the build
+log), a daemon linked against libstdc++ after all, or a failing "make check" (the
+FAIL: block of the log is printed).  It ends in either "ALL GOOD" or "SOMETHING
+FAILED, see above", and exits 0 or 1 to match.
+
+
+Proving a gate still works
+----------------------------
+Both gates build a tree that is not the checkout, which makes them easy to check
+for real: plant the fault in the exported tree rather than in the repository.
+Run the sanitizer gate once with --keep, write a heap-buffer-overflow into a core
+.cc file of the directory it kept, and run make and the harness there - the ASan
+report appears as an asan.* file beside it.  For the Clang gate, a syntax error
+in any file of the tree before it is streamed in is enough; the tar is made from
+git's file list, so the fault has to be in a tracked file, and a copy of the
+checkout is the place to do that.
