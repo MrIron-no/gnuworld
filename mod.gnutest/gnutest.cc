@@ -905,14 +905,20 @@ void gnutest::spawnPart(iClient* srcClient, const StringTokenizer& st) {
 }
 
 void gnutest::chanInfo(const Channel* theChan) {
-    LOG_MSG(DEBUG, "{chan}\n--- User information ---").with("chan", theChan).log();
+    LOG_MSG(DEBUG, "Name: {chan}, creation time: {}\n--- User information ---",
+            theChan->getCreationTime())
+        .with("chan", theChan)
+        .log();
 
     // Iterate through all clients, and return info about each
     // ChannelUser
     for (Channel::const_userIterator cItr = theChan->userList_begin();
          cItr != theChan->userList_end(); ++cItr) {
         const ChannelUser* theUser = cItr->second;
-        LOG_MSG(DEBUG, "{user}").with("user", theUser).log();
+        LOG_MSG(DEBUG, "{user}!{}@{} {} user modes: {}", theUser->getUserName(),
+                theUser->getHostName(), theUser->getCharYYXXX(), theUser->getModeString())
+            .with("user", theUser)
+            .log();
     }
 }
 
