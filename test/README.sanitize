@@ -56,9 +56,12 @@ once to configure, as documentation of intent, and once on make's own command
 line, where nothing can drop them, together with the value configure settled on,
 because that value carries the include paths the tree needs.  The sanitizer gate
 then ASSERTS the instrumentation is there ("=== Is it really instrumented?",
-which counts the undefined __asan_/__ubsan_ references of
-libgnuworldcore.so.0) and fails if it is not.  Fixing configure.ac would make
-both of those steps unnecessary; until then, do not simplify them away.
+which counts the undefined __asan_/__ubsan_ references of three artifacts - the
+core library libgnuworldcore.so.0, the gnuworld executable the harness starts,
+and libdebug.so, the module it loads) and fails if any of them has none.  Three
+and not one because a flag can be lost for part of a build and kept for the rest.
+Fixing configure.ac would make both of those steps unnecessary; until then, do
+not simplify them away.
 
 WHAT A FAILURE LOOKS LIKE.  A sanitizer says nothing through an exit status: a
 daemon the harness stops looks exactly like one ASan aborted.  So both

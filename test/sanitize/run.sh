@@ -174,17 +174,29 @@ if [ $failed -eq 0 ]; then
 fi
 
 # The instrumentation, asserted rather than assumed: an instrumented object file
-# calls into the runtime, so the core library has undefined __asan_ and __ubsan_
-# references.  None of them means the whole run below is worth nothing.
+# calls into the runtime, so an instrumented artifact has undefined __asan_ and
+# __ubsan_ references.  None of them means the whole run below is worth nothing.
+#
+# Three artifacts and not one, because a flag can be lost for some of the build
+# and kept for the rest - a per-target CXXFLAGS of one Makefile.am is enough to do
+# it - and the three are the three kinds of thing this gate runs: the core
+# library, the EXECUTABLE THE HARNESS ITSELF STARTS, and a module, since a module
+# is dlopened and gets its own compile line.  libdebug.so is the module, because
+# mod.debug is the one the integration harness loads and the first of $MODULES, so
+# it is there whenever this gate built anything at all.  Every one of the three is
+# reported and any one of them at zero fails the run.
 if [ $failed -eq 0 ]; then
     say 'Is it really instrumented?'
-    asan_refs=$(nm -uD .libs/libgnuworldcore.so.0 2>/dev/null |
-        grep -c '__asan_\|__ubsan_' || true)
-    printf 'libgnuworldcore.so.0 has %s undefined sanitizer references\n' "$asan_refs"
+    for artifact in .libs/libgnuworldcore.so.0 .libs/gnuworld .libs/libdebug.so.0; do
+        asan_refs=$(nm -uD "$artifact" 2>/dev/null |
+            grep -c '__asan_\|__ubsan_' || true)
+        printf '%s has %s undefined sanitizer references\n' \
+            "${artifact#.libs/}" "$asan_refs"
 
-    if [ "$asan_refs" = 0 ]; then
-        fail 'nothing was instrumented: the sanitizer flags did not reach the compiler'
-    fi
+        if [ "$asan_refs" = 0 ]; then
+            fail "nothing was instrumented in $artifact: the sanitizer flags did not reach the compiler"
+        fi
+    done
 fi
 
 if [ $failed -eq 0 ]; then
@@ -206,10 +218,17 @@ if [ -f "$dir/gnuworld" ]; then
     # Through a pipe so that it is both watchable and kept: harness.log is one of
     # the files searched for a UBSan report below.  The exit status is carried out
     # of the subshell in a file, because a pipeline's status is the last command's.
+    #
+    # "|| harness_status=$?" and not a bare pytest: the subshell inherits this
+    # script's "set -e", so a failing pytest as a simple command of its own would
+    # kill the subshell there and then and the file would never be written.  The
+    # statement errexit sees is the whole list, whose status is 0, and $? on its
+    # right-hand side is pytest's own.
     (
         cd "$dir/test/harness" || exit 1
-        python3 -m pytest -q --timeout=180 "$@" 2>&1
-        printf '%s\n' "$?" > "$dir/harness.status"
+        harness_status=0
+        python3 -m pytest -q --timeout=180 "$@" 2>&1 || harness_status=$?
+        printf '%s\n' "$harness_status" > "$dir/harness.status"
     ) | tee "$dir/harness.log"
 
     if [ "$(cat "$dir/harness.status" 2>/dev/null)" != 0 ]; then

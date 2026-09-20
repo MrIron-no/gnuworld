@@ -18,6 +18,15 @@
 # finding to report, not to suppress.  In particular this file does not turn the
 # ODR check off (ASAN_OPTIONS=detect_odr_violation=0 would): an ODR violation the
 # overhaul introduces still fails the gate.
+#
+# THE BARE MEMBER NAME IS THE FORM THAT MATCHES, and that is not a style choice.
+# ASan matches an "odr_violation:" entry against the name the compiler registered
+# the global under, and GCC registers the unqualified source name - 'enabledFlag',
+# exactly as ASan's own report prints it.  Checked by running the gate: with the
+# entries below the daemon reaches main(), and with the same eight written
+# qualified (gnuworld::ConsoleSink::enabledFlag) or mangled
+# (_ZN8gnuworld11ConsoleSink11enabledFlagE) it aborts before main() again, because
+# neither form matches anything.  Do not "fix" them into either of those.
 
 # libgnuworld/LogSinks.cc: the console sink's enabled flag (line 153) and the
 # logger-name column width (line 63)
