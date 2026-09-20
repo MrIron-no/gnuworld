@@ -1044,10 +1044,10 @@ async def test_cservice_configured_mode_uses_logging_conf(docker_stack, fake_hub
 # --------------------------------------------------------------------------
 
 
-def _psql(sql: str) -> None:
+def _psql(sql: str, db: str = "cservice") -> None:
     subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE_FILE), "exec", "-T", "postgres",
-         "psql", "-U", "gnuworld", "-d", "cservice", "-c", sql],
+         "psql", "-U", "gnuworld", "-d", db, "-c", sql],
         cwd=str(HARNESS_DIR),
         check=True,
         capture_output=True,
@@ -1181,6 +1181,15 @@ async def test_forced_sql_error_in_cservice(
         assert "LINE 1" not in reported, error
         assert "DELETE FROM" not in reported, error
 
+    # One record for the one failed statement: the handle reports it, and no
+    # caller reports it a second time
+    assert len(missing) == 1, missing
+
+    # Naming the function that ran the statement, not the handle's own Exec:
+    # its std::source_location argument is defaulted, so it is the call site's
+    assert missing[0].get("function") == "cservice::OnAttach", missing
+    assert not any("pgsqlDB" in e.get("function", "") for e in errors), errors
+
 
 # --------------------------------------------------------------------------
 # 13. ccontrol: ccontrol.sql DEBUG records reach the root's own sink, only
@@ -1236,6 +1245,55 @@ async def test_ccontrol_sql_debug_records_absent_without_the_logger_line(
     records = _read_json_lines(Path(log_path))
     queries = [r for r in records if r.get("logger") == "ccontrol.sql" and "query" in r]
     assert not queries, queries
+
+
+@pytest.fixture
+def broken_badchannels_table(docker_stack):
+    """Renames ccontrol's "badchannels" away so its start-up SELECT from it
+    fails, and always renames it back - the database is shared by the whole
+    session."""
+    require_module("ccontrol")
+    docker_stack.up()
+    _psql("ALTER TABLE badchannels RENAME TO badchannels_moved", db="ccontrol")
+    try:
+        yield
+    finally:
+        _psql("ALTER TABLE badchannels_moved RENAME TO badchannels", db="ccontrol")
+
+
+@pytest.mark.asyncio
+async def test_a_failed_statement_reports_itself_in_a_module_that_never_did(
+    docker_stack, fake_hub, tmp_path, broken_badchannels_table
+):
+    """ccontrol::loadBadChannels() reports nothing of its own: it returns false
+    and its one caller ignores that.  The handle reports the failure anyway, on
+    "ccontrol.sql" and naming that function - which is what every module gets
+    out of Exec() taking the caller's location."""
+    _require_local()
+    root = GnuworldProc.conf_root(tmp_path / "etc-gnuworld")
+    log_path = f"{root}/main.log"
+    logging_conf = (
+        "sink.mainlog.type = file\n"
+        f"sink.mainlog.path = {log_path}\n"
+        "sink.mainlog.format = json\n"
+        "logger.root = INFO, mainlog\n"
+    )
+
+    async with link_ccontrol_logging(
+        docker_stack, fake_hub, tmp_path, logging_conf=logging_conf,
+    ) as (hub, proc, conf_dir):
+        await asyncio.sleep(1.0)
+
+    records = _read_json_lines(Path(log_path))
+    errors = [r for r in records if r.get("logger") == "ccontrol.sql" and r.get("level") == "ERROR"]
+    missing = [e for e in errors if "badchannels" in e.get("error", "")]
+    assert len(missing) == 1, errors
+    assert missing[0].get("message", "").startswith("SQL Error:"), missing
+    assert missing[0].get("function") == "ccontrol::loadBadChannels", missing
+
+    # The statement is not part of the record here either
+    assert "query" not in missing[0], missing
+    assert "SELECT" not in missing[0].get("error", ""), missing
 
 
 # --------------------------------------------------------------------------

@@ -719,35 +719,35 @@ registration is gone). Core's own extractors for `iClient`/`iServer`/
 `Channel`/`ChannelUser` are registered once at start-up under owner
 `nullptr` and never removed.
 
-**Database errors.** Any module with a `dbHandle` gets `<module>.sql` and
-`LOGSQL_ERROR` for free, no setup:
+**Database errors.** Any module with a `dbHandle` gets `<module>.sql` for
+free, no setup, and nothing to write: a failed statement is reported by the
+handle itself, naming the **caller** — `Exec()` takes a defaulted
+`std::source_location`, evaluated at the call site, so leave it alone. Add
+a sentence beside it only for what the handle cannot say, and never the
+database's message again.
 
 ```cpp
 if (!db->Exec(query)) {
-    LOGSQL_ERROR(db);   // ERROR record on "<module>.sql": message and `error`
-    return false;
+    return false;       // already an ERROR record on "<module>.sql"
 }
 ```
 
-`LOGSQL_ERROR(db)` (it used to be the logger's own macro and needed a
-`logger` member in scope; now it is `dbHandle`'s) expands to `db->logError(__PRETTY_FUNCTION__)`, which logs
-`"SQL Error: {error}"` with the field `error`, the database's **primary**
-message (`PG_DIAG_MESSAGE_PRIMARY`) rather than the whole of
+The record is `"SQL Error: {error}"` with the field `error`, the database's
+**primary** message (`PG_DIAG_MESSAGE_PRIMARY`) rather than the whole of
 `PQerrorMessage()`, whose `LINE 1:` excerpt and `DETAIL: Key (...)=(...)`
 would put the failing statement's literal values — a password hash among
-them — back into the log the `Exec(query, false)` below keeps them out of;
-a failure with no result to ask, a lost connection, still gives the whole
-message. The
+them — back into the log `Exec(query, false)` keeps them out of; a lost
+connection, with no result to ask, still gives the whole message. The
 statement is not part of that record: ask for `logger.<module>.sql = DEBUG`
-and it is the record right before it. Every `Exec()` call itself is a `DEBUG` record on the same
-logger with field `query`, unless it is called `Exec(query, false)`, in
-which case it is skipped entirely — used for the handful of statements
-that carry a password hash, a TOTP secret or a SCRAM record:
+and it is the record right before it. Every `Exec()` call itself is a
+`DEBUG` record on the same logger with field `query`, unless it is called
+`Exec(query, false)`, in which case it is skipped entirely — used for the
+handful of statements that carry a password hash, a TOTP secret or a SCRAM
+record, whose failure is reported all the same and names no statement:
 
 ```cpp
 // carries a credential: kept out of the query log
 if (!SQLDb->Exec(queryString, false)) {
-    LOGSQL_ERROR(SQLDb);
     return false;
 }
 ```
