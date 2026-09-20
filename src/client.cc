@@ -526,7 +526,7 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
                         static_cast<void*>(&localReason));
 
     // Remove the user
-    delete Network->removeClient(theClient);
+    MyUplink->destroy(Network->removeClient(theClient));
 
     return true;
 }

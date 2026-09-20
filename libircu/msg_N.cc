@@ -240,7 +240,7 @@ bool msg_N::Execute(const xParameters& params) {
                 std::string(Network->findClient(newClient->getCharYYXXX()) ? "yes" : "no"))
             .with("client", newClient)
             .log();
-        delete newClient;
+        destroy(newClient);
         newClient = 0;
         return false;
     }

@@ -142,7 +142,7 @@ bool msg_B::Execute(const xParameters& Param) {
             LOG(ERROR, "Failed to add channel: {}", std::string(Param[1]));
 
             // Prevent a memory leak by deleting the channel
-            delete theChan;
+            destroy(theChan);
             theChan = 0;
 
             // Return error
@@ -226,8 +226,6 @@ bool msg_B::Execute(const xParameters& Param) {
 void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incomingIsNewer) {
     // This is a protected method, so the method arguments are
     // guaranteed to be valid
-    string chanName = theChan->getName(); // Added for fixing crash when Channel gets destroyed in
-                                          // the result of PostChannelEvent() below
     // elog	<< "msg_B::parseBurstUsers> Channel: " << theChan->getName()
     //	<< ", users: " << theUsers << endl ;
     //  Parse out users and their modes
@@ -311,8 +309,6 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         // and we see channel messages only where we have a client.  The
         // flag would be stale on nearly every channel, which is worse than
         // not having it.
-        // Decided now, because theChan may be destroyed by the event
-        // posted below.
         bool memberHidden = false;
         if (isP11 && 0 == mode_state) {
             memberHidden =
@@ -365,7 +361,7 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
 
             // Prevent a memory leak by deallocating the unused
             // ChannelUser object
-            delete chanUser;
+            destroy(chanUser);
             chanUser = 0;
 
             // Remove the channel info from the client
@@ -378,16 +374,6 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
         // joined the channel
         theServer->PostChannelEvent(EVT_BURST, theChan, static_cast<void*>(theClient),
                                     static_cast<void*>(chanUser));
-
-        // Check if the Channel and User both exist after PostChannelEvent()
-        // Has to be done to prevent a crash for cases where PostChannelEvent() results in kicking
-        // the burst user right in the middle of this function. If the user was alone in the
-        // channel, the channel is destroyed and referenced later, causing a segmentation fault.
-        Channel* tmpChan = Network->findChannel(chanName);
-        if (tmpChan == 0)
-            continue;
-        if (tmpChan->findUser(theClient) == 0)
-            continue;
 
         // Apply the current bucket's state to this client.
         if (mode_state & 1) {

@@ -119,7 +119,7 @@ bool msg_C::Execute(const xParameters& Param) {
 
                 // Prevent memory leaks by removing the unused
                 // channel
-                delete theChan;
+                destroy(theChan);
                 theChan = 0;
 
                 // continue to next one *shrug*
@@ -177,7 +177,7 @@ bool msg_C::Execute(const xParameters& Param) {
 
                 // Prevent a memory leak by deallocating the
                 // unused ChannelUser structure
-                delete theUser;
+                destroy(theUser);
                 theUser = 0;
 
                 // Remove the channel information from the client

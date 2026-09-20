@@ -136,7 +136,7 @@ bool msg_J::Execute(const xParameters& Param) {
 
                 // Prevent memory leaks by deallocating the
                 // Channel object
-                delete theChan;
+                destroy(theChan);
                 theChan = 0;
 
                 // Continue to next channel
@@ -228,7 +228,7 @@ bool msg_J::Execute(const xParameters& Param) {
 
             // Prevent memory leaks by deallocating the unused
             // ChannelUser object
-            delete theUser;
+            destroy(theUser);
             theUser = 0;
 
             if (EVT_CREATE == whichEvent) {
@@ -238,7 +238,7 @@ bool msg_J::Execute(const xParameters& Param) {
                 Network->removeChannel(theChan->getName());
 
                 // Do some cleanup
-                delete theChan;
+                destroy(theChan);
                 theChan = 0;
             }
 
@@ -257,7 +257,7 @@ bool msg_J::Execute(const xParameters& Param) {
             // deallocate the ChannelUser to prevent memory
             // leaks
             removeUser(theChan, Target);
-            delete theUser;
+            destroy(theUser);
             theUser = 0;
 
             // Did we just create the channel?
@@ -268,7 +268,7 @@ bool msg_J::Execute(const xParameters& Param) {
 
                 // Prevent memory leaks by deallocating
                 // the channel
-                delete theChan;
+                destroy(theChan);
                 theChan = 0;
             }
 
@@ -305,7 +305,7 @@ void msg_J::userPartAllChannels(iClient* theClient) {
                 .with("chan", *ptr)
                 .log();
         }
-        delete theChanUser;
+        destroy(theChanUser);
         theChanUser = 0;
 
         // BUG: This iClient has inconsistent state because
@@ -323,7 +323,7 @@ void msg_J::userPartAllChannels(iClient* theClient) {
 
             // Yup, remove the channel from the network channel
             // table
-            delete Network->removeChannel((*ptr++)->getName());
+            destroy(Network->removeChannel((*ptr++)->getName()));
         } else
             ptr++;
     }

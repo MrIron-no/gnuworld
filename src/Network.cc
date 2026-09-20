@@ -346,7 +346,7 @@ iClient* xNetwork::removeClient(const unsigned int& intYYXXX) {
                 .with("client", retMe)
                 .log();
         }
-        delete theChanUser;
+        theServer->destroy(theChanUser);
         theChanUser = 0;
 
         if ((*chanPtr)->empty()) {
@@ -354,7 +354,7 @@ iClient* xNetwork::removeClient(const unsigned int& intYYXXX) {
             //			<< (*chanPtr)->getName()
             //			<< endl ;
 
-            delete removeChannel((*chanPtr)->getName());
+            theServer->destroy(removeChannel((*chanPtr)->getName()));
         }
         ++chanPtr;
     }
@@ -479,7 +479,7 @@ iServer* xNetwork::removeServer(const unsigned int& YY, bool postEvent) {
         }
 
         // Be sure to deallocate the iClient's allocated heap space
-        delete theClient;
+        theServer->destroy(theClient);
     }
 
     // Return the server being removed
@@ -637,7 +637,7 @@ void xNetwork::OnSplit(const unsigned int& intYY) {
                                  static_cast<void*>(findServer(intYY)),
                                  static_cast<void*>(&Reason));
         }
-        delete tmpServer;
+        theServer->destroy(tmpServer);
     }
 }
 

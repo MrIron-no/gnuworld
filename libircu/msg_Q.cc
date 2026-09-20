@@ -63,7 +63,7 @@ bool msg_Q::Execute(const xParameters& Param) {
     // xNetwork::removeClient will remove user<->channel associations
     Network->removeClient(Param[0]);
 
-    delete theClient;
+    destroy(theClient);
 
     return true;
 }

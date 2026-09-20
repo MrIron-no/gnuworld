@@ -61,7 +61,7 @@ bool msg_GL::Execute(const xParameters& Params) {
         theServer->PostEvent(EVT_REMGLINE, static_cast<void*>(gItr->second));
 
         // Clean up memory
-        delete gItr->second;
+        destroy(gItr->second);
         theServer->eraseGline(gItr);
 
         return true;
@@ -88,7 +88,7 @@ bool msg_GL::Execute(const xParameters& Params) {
         xServer::glineIterator gItr = theServer->findGlineIterator(newGline->getUserHost());
         if (gItr != theServer->glines_end()) {
             // This gline is already present
-            delete gItr->second;
+            destroy(gItr->second);
             theServer->eraseGline(gItr);
         }
     }

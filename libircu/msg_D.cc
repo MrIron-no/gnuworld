@@ -148,7 +148,7 @@ bool msg_D::Execute(const xParameters& Param) {
     Network->removeClient(target);
 
     // Deallocate the memory associated with this iClient.
-    delete target;
+    destroy(target);
 
     return true;
 }

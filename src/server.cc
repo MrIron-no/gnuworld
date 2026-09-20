@@ -794,7 +794,7 @@ bool xServer::SquitServer(const string& serverName, const string& reason) {
     Write(s);
 
     // Deallocate the memory it occupies.
-    delete theServer;
+    destroy(theServer);
     theServer = 0;
 
     // TODO: Log event
@@ -930,7 +930,7 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
         Network->removeLocalClient(Client);
 
         // Do some cleanup
-        delete theIClient;
+        destroy(theIClient);
         theIClient = 0;
         Client->resetInstance();
 
@@ -1203,7 +1203,7 @@ void xServer::removeClient(xClient* theClient) {
         // Remove the fake client from all internal tables and
         // deallocate.  xNetwork::removeClient() will do all but
         // the deallocation.
-        delete Network->removeClient(fakeClient);
+        destroy(Network->removeClient(fakeClient));
     } // for( cItr )
 
     // By this point, the xClient should have removed all of its
@@ -1224,7 +1224,7 @@ void xServer::removeClient(xClient* theClient) {
     } // for()
 
     // Deallocate the iClient instance of the xClient
-    delete iClientPtr;
+    destroy(iClientPtr);
     iClientPtr = 0;
 
     // Reset the iClient instance for good measure
@@ -1233,16 +1233,18 @@ void xServer::removeClient(xClient* theClient) {
     // Walk the channelEventMap, and remove the xClient from all
     // channel's in which it is registered.
     // This will include channel "*"
-    for (channelEventMapType::iterator chPtr = channelEventMap.begin(),
-                                       chEndPtr = channelEventMap.end();
-         chPtr != chEndPtr; ++chPtr) {
-        (*chPtr).second->remove(theClient);
+    for (channelEventMapType::iterator chPtr = channelEventMap.begin();
+         chPtr != channelEventMap.end();) {
+        std::erase(chPtr->second, theClient);
+
+        // An entry with no listeners left is no entry
+        chPtr = chPtr->second.empty() ? channelEventMap.erase(chPtr) : std::next(chPtr);
     }
 
     // Remove this xClient from all other events
     for (eventListType::iterator evPtr = eventList.begin(), evEndPtr = eventList.end();
          evPtr != evEndPtr; ++evPtr) {
-        (*evPtr).remove(theClient);
+        std::erase(*evPtr, theClient);
     }
 
     // Remove all remaining timers for this xClient
@@ -1353,13 +1355,13 @@ void xServer::OnPartChannel(iClient* theClient, Channel* theChan) {
     assert(theChan != 0);
 
     theClient->removeChannel(theChan);
-    delete theChan->removeUser(theClient);
+    destroy(theChan->removeUser(theClient));
 
     PostChannelEvent(EVT_PART, theChan, static_cast<void*>(theClient));
 
     if (theChan->empty()) {
         // Empty channel
-        delete Network->removeChannel(theChan);
+        destroy(Network->removeChannel(theChan));
     }
 }
 
@@ -1497,7 +1499,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             LOG_MSG(ERROR, "addChannel() failed: {chan}").with("chan", theChan).log();
 
             // Prevent a memory leak
-            delete theChan;
+            destroy(theChan);
             theChan = 0;
 
             // Return failure
@@ -1533,7 +1535,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             LOG_MSG(ERROR, "addChannel() failed: {chan}").with("chan", theChan).log();
 
             // Prevent a memory leak
-            delete theChan;
+            destroy(theChan);
             theChan = 0;
 
             // Return failure
@@ -2187,7 +2189,7 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
         // Take the member off the channel now.  A PART that a server sends
         // for it later is ignored, and this way a fake client of ours is
         // cleaned up too.
-        delete theChan->removeUser(target);
+        destroy(theChan->removeUser(target));
 
         if (!target->removeChannel(theChan)) {
             LOG_MSG(ERROR, "Unable to remove channel {chan} from the iClient {client}")
@@ -2213,7 +2215,7 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
     if (joined != 0) {
         joined->Part(theChan);
     } else if (theChan->empty()) {
-        delete Network->removeChannel(theChan->getName());
+        destroy(Network->removeChannel(theChan->getName()));
     }
     return true;
 }
@@ -2581,7 +2583,7 @@ void xServer::doShutdown() {
         iClient* theClient = cItr->second;
         ++count;
         ++cItr;
-        delete Network->removeClient(theClient);
+        destroy(Network->removeClient(theClient));
     }
     LOG(DEBUG, "Removed {} network clients", count);
 
@@ -2597,7 +2599,7 @@ void xServer::doShutdown() {
 
         LOG_MSG(DEBUG, "Found channel: {chan}").with("chan", theChan).log();
 
-        delete Network->removeChannel(theChan);
+        destroy(Network->removeChannel(theChan));
     }
     LOG(DEBUG, "Removed {} channels", count);
 
@@ -2608,7 +2610,7 @@ void xServer::doShutdown() {
         ++count;
 
         iServer* tmpServer = sItr->second;
-        delete Network->removeServer(tmpServer->getIntYY());
+        destroy(Network->removeServer(tmpServer->getIntYY()));
     }
 
     LOG(DEBUG, "Removed {} servers...", count);
@@ -2622,7 +2624,7 @@ void xServer::doShutdown() {
         Gline* tmpGline = gItr->second;
         ++count;
         eraseGline(gItr++);
-        delete tmpGline;
+        destroy(tmpGline);
     }
     LOG(DEBUG, "Removed {} glines", count);
 
@@ -2759,7 +2761,7 @@ bool xServer::JoinChannel(iClient* theClient, const string& chanName) {
 
     if (!theChan->addUser(theUser)) {
         LOG_MSG(ERROR, "Failed to add user to channel: {chan}").with("chan", theChan).log();
-        delete theUser;
+        destroy(theUser);
         theUser = 0;
         return false;
     }
@@ -2768,7 +2770,7 @@ bool xServer::JoinChannel(iClient* theClient, const string& chanName) {
         LOG_MSG(ERROR, "Failed to add channel to client: {client}").with("client", theClient).log();
 
         theChan->removeUser(theUser);
-        delete theUser;
+        destroy(theUser);
         theUser = 0;
         return false;
     }
@@ -2806,7 +2808,7 @@ void xServer::PartChannel(iClient* theClient, const string& chanName, const stri
         return;
     }
 
-    delete theChan->removeUser(theClient);
+    destroy(theChan->removeUser(theClient));
     theClient->removeChannel(theChan);
 
     stringstream s;
