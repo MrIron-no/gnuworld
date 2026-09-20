@@ -116,7 +116,7 @@ pgsqlDB::~pgsqlDB() {
     }
 }
 
-bool pgsqlDB::Exec(const string& theQuery, bool log) {
+bool pgsqlDB::Exec(const string& theQuery, bool log, std::source_location where) {
     /* Log query. */
     if (log)
         LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
@@ -136,26 +136,27 @@ bool pgsqlDB::Exec(const string& theQuery, bool log) {
         return true;
     if (PGRES_COMMAND_OK == status)
         return true;
-    return false;
-}
 
-bool pgsqlDB::Exec(const stringstream& theQuery, bool retData) {
-    return Exec(theQuery.str(), retData);
-}
-
-void pgsqlDB::logError(const char* func) {
-    /* PostgreSQL's primary message and nothing else: the full text of
+    /* The failure is the handle's own to report, whatever "log" says: no
+     * caller has to remember to, and none of them can name the statement in
+     * the record anyway.
+     *
+     * PostgreSQL's primary message and nothing else: the full text of
      * PQerrorMessage() carries a "LINE 1: <statement>" excerpt and a
      * "DETAIL: Key (...)=(...)", either of which would put back into the log
      * the literal values - a password hash, a TOTP secret, a SCRAM record -
      * that Exec(query, false) keeps out of it.  A connection-level failure
      * has no result to ask, and there the whole message is all there is. */
-    const char* primary =
-        (0 == lastResult) ? 0 : PQresultErrorField(lastResult, PG_DIAG_MESSAGE_PRIMARY);
+    const char* primary = PQresultErrorField(lastResult, PG_DIAG_MESSAGE_PRIMARY);
 
-    sqlLog->createMessage(ERROR, func, "SQL Error: {error}")
+    sqlLog->createMessage(ERROR, where.function_name(), "SQL Error: {error}")
         .with("error", (0 == primary) ? ErrorMessage() : string(primary))
         .log();
+    return false;
+}
+
+bool pgsqlDB::Exec(const stringstream& theQuery, bool retData, std::source_location where) {
+    return Exec(theQuery.str(), retData, where);
 }
 
 bool pgsqlDB::StartCopyIn(const string& writeMe) { return Exec(writeMe); }

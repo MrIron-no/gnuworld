@@ -93,8 +93,6 @@ bool WHITELISTCommand::Exec(iClient* theClient, const string& Message) {
                    << "IP = '" << strIP << "'" << ends;
 
     if (!bot->SQLDb->Exec(whitelistQuery, true)) {
-        LOG(ERROR, "WHITELISTCommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 
@@ -158,8 +156,6 @@ bool WHITELISTCommand::Exec(iClient* theClient, const string& Message) {
                        << whiteReason << "')" << ends;
 
         if (!bot->SQLDb->Exec(whitelistQuery, true)) {
-            LOG(ERROR, "WHITELISTCommand SQL Error:");
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         }
         bot->Notice(theClient, "IP %s added to the whitelist.", strIP.c_str());
@@ -185,8 +181,6 @@ bool WHITELISTCommand::Exec(iClient* theClient, const string& Message) {
                        << "WHERE ip = '" << dbIP << "'" << ends;
 
         if (!bot->SQLDb->Exec(whitelistQuery, true)) {
-            LOG(ERROR, "WHITELISTCommand SQL Error:");
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         }
         bot->Notice(theClient, "Removed IP %s from the whitelist.", strIP.c_str());

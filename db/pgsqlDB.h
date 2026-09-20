@@ -27,17 +27,12 @@
 
 #include <string>
 #include <exception>
+#include <source_location>
 
 #include "libpq-fe.h"
 #include "gnuworldDB.h"
 #include "client.h"
 #include "logger.h"
-
-/**
- * Reports the failure of the last statement of a handle, as an ERROR record of
- * the "<module>.sql" logger of the module that owns it.  Works in any module.
- */
-#define LOGSQL_ERROR(db) (db)->logError(__PRETTY_FUNCTION__)
 
 namespace gnuworld {
 
@@ -56,12 +51,17 @@ class pgsqlDB : public gnuworldDB {
     pgsqlDB(xClient* bot, const std::string& connectInfo);
     virtual ~pgsqlDB();
 
-    virtual bool Exec(const std::string&, bool = true);
-    virtual bool Exec(const std::stringstream&, bool = true);
+    /**
+     * A failed statement is an ERROR record of "<module>.sql" naming the
+     * function that ran it: "where" is defaulted, so it is the call site's,
+     * and needs no argument of its own.  The "log" flag governs the DEBUG
+     * record of the statement, not the report of a failure.
+     */
+    virtual bool Exec(const std::string&, bool log = true,
+                      std::source_location where = std::source_location::current());
+    virtual bool Exec(const std::stringstream&, bool log = true,
+                      std::source_location where = std::source_location::current());
     virtual bool isConnected() const;
-
-    /// What LOGSQL_ERROR(db) calls
-    void logError(const char* func);
 
     virtual bool PutLine(const std::string&);
     virtual bool StartCopyIn(const std::string&);

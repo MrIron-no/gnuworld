@@ -133,8 +133,6 @@ bool PURGECommand::Exec(iClient* theClient, const string& Message) {
     string managerEmail = "No Email Address";
 
     if (!bot->SQLDb->Exec(managerQuery, true)) {
-        LOG(ERROR, "PURGECommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     } else {
         if (bot->SQLDb->Tuples() != 0) {

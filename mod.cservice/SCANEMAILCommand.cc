@@ -79,7 +79,6 @@ bool SCANEMAILCommand::Exec(iClient* theClient, const string& Message) {
                    << ends;
 
     if (!bot->SQLDb->Exec(scanemailQuery, true)) {
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 

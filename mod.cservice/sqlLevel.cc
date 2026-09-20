@@ -129,7 +129,6 @@ bool sqlLevel::commit() {
                 << " WHERE channel_id = " << channel_id << " AND user_id = " << user_id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -148,7 +147,6 @@ bool sqlLevel::insertRecord() {
                 << "date_part('epoch', CURRENT_TIMESTAMP)::int)" << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

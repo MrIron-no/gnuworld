@@ -92,7 +92,6 @@ bool sqlBan::commit() {
                 << " WHERE id = " << id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -116,7 +115,6 @@ bool sqlBan::insertRecord() {
                 << ends;
 
     if (!SQLDb->Exec(queryString, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -135,7 +133,6 @@ bool sqlBan::deleteRecord() {
     queryString << queryHeader << id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

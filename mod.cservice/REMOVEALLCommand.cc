@@ -92,8 +92,6 @@ bool REMOVEALLCommand::Exec(iClient* theClient, const string& Message) {
                   << " channel_id = " << theChan->getID() << ends;
 
     if (!bot->SQLDb->Exec(clearAllQuery, true)) {
-        LOG(ERROR, "REMOVEALLCommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 
@@ -135,8 +133,6 @@ bool REMOVEALLCommand::Exec(iClient* theClient, const string& Message) {
                     theChan->getName().c_str());
         bot->writeChannelLog(theChan, theClient, sqlChannel::EV_REMOVEALL, "");
     } else {
-        LOG(ERROR, "REMOVEALLCommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         bot->Notice(theClient, "A database error occured while removing the access records.");
         bot->Notice(theClient, "Please contact a database administrator!");
     }

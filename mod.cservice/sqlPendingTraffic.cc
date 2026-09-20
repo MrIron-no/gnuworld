@@ -53,7 +53,6 @@ bool sqlPendingTraffic::insertRecord() {
                 << channel_id << ", '" << theip_number << "', " << join_count << ")" << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -69,7 +68,6 @@ bool sqlPendingTraffic::commit() {
                 << " AND ip_number = '" << theip_number << "'" << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

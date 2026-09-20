@@ -140,7 +140,6 @@ bool SCANHOSTCommand::Exec(iClient* theClient, const string& Message) {
                   << sortby << (desc == true ? " DESC" : "") << limto << ends;
 
     if (!bot->SQLDb->Exec(scanhostQuery, true)) {
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 

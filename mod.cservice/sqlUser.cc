@@ -169,7 +169,6 @@ bool sqlUser::commit(std::string last_updated_by) {
 
     // carries a credential: kept out of the query log and out of the error record
     if (!SQLDb->Exec(queryString, false)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -192,7 +191,6 @@ bool sqlUser::commitLastSeen() {
                 << id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -213,7 +211,6 @@ bool sqlUser::commitLastSeenWithoutMask() {
                 << id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -347,7 +344,6 @@ bool sqlUser::Insert() {
 
     // carries a credential: kept out of the query log and out of the error record
     if (!SQLDb->Exec(queryString, false)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

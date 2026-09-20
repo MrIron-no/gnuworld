@@ -240,7 +240,6 @@ bool sqlChannel::setW(const bool status) {
                 << "RETURNING timestamp";
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -286,7 +285,6 @@ bool sqlChannel::commit() {
                 << id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -304,7 +302,6 @@ bool sqlChannel::insertRecord() {
                 << "date_part('epoch', CURRENT_TIMESTAMP)::int," << no_take << ")" << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

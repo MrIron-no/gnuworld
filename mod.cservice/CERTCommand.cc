@@ -67,7 +67,6 @@ bool CERTCommand::Exec(iClient* theClient, const string& Message) {
                  << theClient->getAccountID() << " ORDER BY added_ts";
 
         if (!bot->SQLDb->Exec(theQuery, true)) {
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         }
 
@@ -167,7 +166,6 @@ bool CERTCommand::Exec(iClient* theClient, const string& Message) {
                  << theClient->getRealNickUserHost() << "', '" << note << "')" << std::endl;
 
         if (!bot->SQLDb->Exec(theQuery, true)) {
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         }
 
@@ -217,7 +215,6 @@ bool CERTCommand::Exec(iClient* theClient, const string& Message) {
                  << std::endl;
 
         if (!bot->SQLDb->Exec(theQuery, true)) {
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         }
         /* Remove from cache. */

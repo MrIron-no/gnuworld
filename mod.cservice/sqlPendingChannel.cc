@@ -138,7 +138,6 @@ bool sqlPendingChannel::commit() {
                 << " WHERE channel_id = " << channel_id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -160,9 +159,7 @@ bool sqlPendingChannel::commitSupporter(unsigned int sup_id, unsigned int count)
                 << "join_count = " << count << " WHERE channel_id = " << channel_id
                 << " AND user_id = " << sup_id << ends;
 
-    if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
-    }
+    SQLDb->Exec(queryString);
 
     return true;
 }

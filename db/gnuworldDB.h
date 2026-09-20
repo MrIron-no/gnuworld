@@ -25,6 +25,7 @@
 
 #include <string>
 #include <sstream>
+#include <source_location>
 
 #include <sys/types.h>
 
@@ -55,8 +56,11 @@ class gnuworldDB {
      * Otherwise, no data is expected back, and the method will
      * return true if the command was successfully executed
      * (with no data returned).
+     * A failure is reported by the handle itself, naming the caller:
+     * leave "where" alone, it is evaluated at the call site.
      */
-    virtual bool Exec(const std::stringstream&, bool returnData = false) = 0;
+    virtual bool Exec(const std::stringstream&, bool returnData = false,
+                      std::source_location where = std::source_location::current()) = 0;
 
     /**
      * The Exec method will execute an SQL command with the database.
@@ -68,8 +72,11 @@ class gnuworldDB {
      * Otherwise, no data is expected back, and the method will
      * return true if the command was successfully executed
      * (with no data returned).
+     * A failure is reported by the handle itself, naming the caller:
+     * leave "where" alone, it is evaluated at the call site.
      */
-    virtual bool Exec(const std::string&, bool returnData = false) = 0;
+    virtual bool Exec(const std::string&, bool returnData = false,
+                      std::source_location where = std::source_location::current()) = 0;
     virtual bool isConnected() const = 0;
     virtual bool ConnectionBad() const { return !isConnected(); }
 

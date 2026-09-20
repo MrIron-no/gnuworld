@@ -236,8 +236,6 @@ bool ACCESSCommand::Exec(iClient* theClient, const string& Message) {
      */
 
     if (!bot->SQLDb->Exec(theQuery, true)) {
-        LOG(ERROR, "ACCESS SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 

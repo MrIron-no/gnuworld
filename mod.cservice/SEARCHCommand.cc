@@ -95,7 +95,6 @@ bool SEARCHCommand::Exec(iClient* theClient, const string& Message) {
     theQuery << queryHeader << queryCondition << extraCond.str().c_str() << queryFooter << ends;
 
     if (!bot->SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 

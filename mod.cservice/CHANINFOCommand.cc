@@ -198,8 +198,6 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
             if (!bot->SQLDb->Exec(autoInviteQuery, true))
             //	if( PGRES_TUPLES_OK != status )
             {
-                LOG(ERROR, "CHANINFO SQL Error:");
-                LOGSQL_ERROR(bot->SQLDb);
                 return false;
             }
             if (bot->SQLDb->Tuples() > 0) {
@@ -479,8 +477,6 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
                "pending.decision_ts IS null OR (pending.decision_ts>0 AND pending.decision_ts>="
             << lastdays << "))" << ends;
         if (!bot->SQLDb->Exec(theQuery, true)) {
-            LOG(ERROR, "Error on CHANInfo.status query:");
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         } else if (bot->SQLDb->Tuples() != 0) {
             unsigned int chanID = atoi(bot->SQLDb->GetValue(0, 0));
@@ -564,10 +560,7 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
             theQuery
                 << "SELECT user_name,support,join_count FROM users,supporters WHERE channel_id="
                 << chanID << " AND users.id = supporters.user_id" << ends;
-            if (!bot->SQLDb->Exec(theQuery, true)) {
-                LOG(ERROR, "Error on CHANINFO.supporters query:");
-                LOGSQL_ERROR(bot->SQLDb);
-            }
+            bot->SQLDb->Exec(theQuery, true);
             if (bot->SQLDb->Tuples() == 0) {
                 /*
                 if (theApp == bot->incompleteChanRegs.end())
@@ -628,10 +621,7 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
             theQuery.str("");
             theQuery << "SELECT count(*) FROM objections WHERE channel_id=" << chanID
                      << " AND admin_only='N'" << ends;
-            if (!bot->SQLDb->Exec(theQuery, true)) {
-                LOG(ERROR, "Error on CHANINFO.objections user objections query:");
-                LOGSQL_ERROR(bot->SQLDb);
-            }
+            bot->SQLDb->Exec(theQuery, true);
             if (bot->SQLDb->Tuples() > 0)
                 objCount = atoi(bot->SQLDb->GetValue(0, 0));
 
@@ -641,10 +631,7 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
                 theQuery.str("");
                 theQuery << "SELECT count(*) FROM objections WHERE channel_id=" << chanID
                          << " AND admin_only='Y'" << ends;
-                if (!bot->SQLDb->Exec(theQuery, true)) {
-                    LOG(ERROR, "Error on CHANINFO.objections admin comment query:");
-                    LOGSQL_ERROR(bot->SQLDb);
-                }
+                bot->SQLDb->Exec(theQuery, true);
                 if (bot->SQLDb->Tuples() > 0)
                     comCount = atoi(bot->SQLDb->GetValue(0, 0));
             }

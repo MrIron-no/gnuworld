@@ -57,7 +57,6 @@ bool csGline::Insert() {
     delQuery << Del << escapeSQLChars(string_lower(Host)) << "'" << ends;
 
     if (!SQLDb->Exec(delQuery)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -73,7 +72,6 @@ bool csGline::Insert() {
     if (SQLDb->Exec(theQuery)) {
         return true;
     } else {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 }
@@ -94,7 +92,6 @@ bool csGline::Update() {
     if (SQLDb->Exec(theQuery)) {
         return true;
     } else {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 }
@@ -107,7 +104,6 @@ bool csGline::loadData(int GlineId) {
     theQuery << Main << GlineId << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -132,7 +128,6 @@ bool csGline::loadData(const string& HostName) {
     theQuery << Main << escapeSQLChars(HostName.c_str()) << "'" << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -163,7 +158,6 @@ bool csGline::Delete() {
     if (SQLDb->Exec(theQuery)) {
         return true;
     } else {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     return true;
