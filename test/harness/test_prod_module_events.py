@@ -249,9 +249,23 @@ async def test_cservice_answers_an_xquery_and_forgets_a_split_servers_requests(c
 
 
 async def _register(hub, admin: str, chan: str, members: str, ts: int) -> None:
+    """REGISTER ``chan`` to Admin, and clean up after itself if that goes wrong.
+
+    The assert below is exactly what a regression in X's REGISTER reply would
+    trip, and by then REGISTER has already written its rows: they have to go
+    whatever happens, or a failure here leaves them in a database that is shared
+    with every other test and with any parallel run.  The caller's own
+    ``finally`` cannot do it, because there is nothing to enter a ``try`` for
+    until this returns.
+    """
     await hub.send_raw(f"{hub.server_numnick} B {chan} {ts} +tn {members}")
-    replies = await cs.run(hub, admin, f"register {chan} Admin")
-    assert any("has been registered" in line.lower() or " J " in line for line in replies), replies
+    try:
+        replies = await cs.run(hub, admin, f"register {chan} Admin")
+        assert any("has been registered" in line.lower() or " J " in line
+                   for line in replies), replies
+    except BaseException:
+        unregister(chan)
+        raise
 
 
 def unregister(chan: str) -> None:
@@ -312,7 +326,12 @@ async def test_cservice_acts_on_a_join_to_a_registered_channel(cservice_linked):
 async def test_cservice_sets_a_registered_channel_back_to_plus_r_when_it_is_created(
         cservice_linked):
     """EVT_CREATE: a registered channel X is not in, created again by somebody
-    joining it, is set +R with the time it was registered with."""
+    joining it, is set +R with the time it was registered with.
+
+    The one wire line this file asserts that does NOT name the module's own
+    numnick: cservice sends this mode with a null acting client, so its source
+    is gnuworld's SERVER numeric.
+    """
     hub, proc = cservice_linked
     chan = "#" + unique("cscreate")
     admin = await cs.login(hub)
@@ -809,12 +828,43 @@ async def test_openchanfix_follows_the_network_splitting_and_joining(openchanfix
 
 
 @pytest.mark.asyncio
+async def test_openchanfix_answers_an_xquery_about_a_channel_with_no_scores(openchanfix_linked):
+    """EVT_XQUERY: OPLIST, which chanfix answers with an XR of its own.
+
+    The negative answer costs nothing to set up and nothing to clean up: a
+    channel nobody has been opped in has no scores, and the branch that says so
+    (chanfix.cc, doXROplist) only reads the in-memory score map and the channel
+    cache.  Nor is there a state gate on the event, so this holds in SPLIT,
+    which is where chanfix is on a link of two servers.
+
+    The reply comes from gnuworld's SERVER numeric, like every XR: xServer
+    sends it, and the module is only the thing that asked for it.
+    """
+    hub, proc = openchanfix_linked
+    chan = "#" + unique("cfxq")
+    routing = unique("oplist:")
+
+    after = len(hub.received)
+    await hub.send_xquery(routing=routing, message=f"OPLIST {chan}")
+    line = await hub.wait_for(
+        lambda l: p10_token(l) == "XR" and routing in l, timeout=15.0, after=after)
+    assert strip_msg_tags(line) == (
+        f"{hub.peer_numeric} XR {hub.server_numnick} {routing} :OPLIST {chan} NO"), line
+    alive(proc)
+
+
+@pytest.mark.asyncio
 async def test_openchanfix_drops_a_client_that_quits_from_its_op_tracking(docker_stack,
                                                                          fake_hub_p11, tmp_path):
-    """EVT_ACCOUNT, EVT_NICK, EVT_JOIN and EVT_QUIT.
+    """EVT_ACCOUNT, EVT_NICK, EVT_QUIT, and OnChannelModeO (chanfix's op
+    tracking, not part of this rewrite's EVT_* surface).
 
     chanfix keeps every logged-in client in a map by account, and every channel
-    a client is opped in on the client itself.  EVT_QUIT walks both, and
+    a client is opped in on the client itself.  The second of those is filled by
+    OnChannelModeO, an already-typed virtual of its own, which the raw M line
+    below triggers; chanfix's EVT_JOIN/EVT_BURST case only auto-ops opers on its
+    own joinChans list, and this channel is not one of those, so no EVT_ handler
+    is what puts the client in the opped set.  EVT_QUIT walks both, and
     asserts the client is in the list its own account maps to
     (chanfix.cc:866) - asserts are live in this build, so this makes that path
     run with a client that really is in both structures.
