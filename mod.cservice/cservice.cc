@@ -7934,7 +7934,7 @@ bool cservice::doXQSASL(iServer* theServer, const string& Routing, const string&
                 doXResponse(theServer, Routing, string());
             }
 
-            LOG(INFO, "Successful auth for {}", it->username);
+            LOG(DEBUG, "Successful auth for {}", it->username);
 
             saslRequests.erase(it);
             return true;
@@ -8078,7 +8078,7 @@ bool cservice::doXQLogin(iServer* theServer, const string& Routing, const string
                     auth.theUser->getUserName() + ":" + std::to_string(auth.theUser->getID()) +
                         ":" + std::to_string(makeAccountFlags(auth.theUser)) +
                         (auth.theUser->getFlag(sqlUser::F_AUTOHIDE) ? " +x" : ""));
-        LOG(INFO, "Succesful auth for {}", username);
+        LOG(DEBUG, "Successful auth for {}", username);
         return true;
     }
 
