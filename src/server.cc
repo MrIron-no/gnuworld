@@ -2681,6 +2681,10 @@ void xServer::doShutdown() {
     // This will also commit the disconnects by any clients.
     ConnectionManager::Poll();
 
+    // Whatever was removed while an event was being dispatched above: the main
+    // loop is over, so this is the last chance to give it back
+    releaseHeldObjects();
+
     // Deallocate the serverConnection
     // The Connection is deallocated in ConnectionManager::Poll()
 }

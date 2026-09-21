@@ -9,8 +9,9 @@ below is the order gnuworld wrote them in.
 The dispatch walks a copy of the listener list and counts its depth
 (xServer::dispatch), so a handler may do what it likes to the registries and to
 the network: what it unregisters, registers, kills or empties cannot end the
-walk, and a network object core removes is held until the dispatch has unwound,
-so every later handler is still handed something it can read.
+walk, and a network object core removes is held until the line being processed
+is done with it, so every later handler is still handed something it can read -
+and so is the core code that posted the event.
 
 A post made from inside a handler is therefore not nested: it waits until the
 event being dispatched has reached all of its subscribers, and the queue drains
@@ -246,9 +247,9 @@ async def test_a_handler_that_posts_a_nested_event(two_gnutests_linked_p11):
 async def test_a_handler_that_kills_the_client_the_event_is_about(two_gnutests_linked_p11):
     """gnutest kills the joining client from inside the join, which takes the
     iClient and the ChannelUser that are the event's payload out of the network.
-    Both are held until the dispatch has unwound, so gnutest2, next in the same
-    dispatch, is handed two objects it can still read; the kill it is told about
-    afterwards."""
+    Both are held until the line being processed is done with them, so gnutest2,
+    next in the same dispatch, is handed two objects it can still read; the kill
+    it is told about afterwards."""
     hub, proc = two_gnutests_linked_p11
     # other stays behind, so that the channel is not emptied as well
     env = await setup(hub, channel_members=["other"])
@@ -272,9 +273,9 @@ async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutest
     """gnutest kicks the only member of the channel the event is about, which
     takes the Channel out of the network (xServer::kickMembers parts the module it
     joined to kick with, and a channel left empty goes with it). It is held until
-    the dispatch has unwound, so gnutest2, next in the same dispatch, is handed a
-    Channel it can still read. The join and the part the kick needed are posted
-    from inside the create, and so are reported after it.
+    the line being processed is done with it, so gnutest2, next in the same
+    dispatch, is handed a Channel it can still read. The join and the part the kick
+    needed are posted from inside the create, and so are reported after it.
 
     msg_C passes no ChannelUser with EVT_CREATE, which is why the member of the
     create is reported as "-"."""
@@ -300,9 +301,9 @@ async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutest
 @pytest.mark.asyncio
 async def test_a_kick_that_empties_the_channel_leaves_it_gone(two_gnutests_linked_p11):
     """The other half of the test above: the channel gnutest2 was handed is held
-    for the dispatch only. A handler that wants to know whether what it is looking
-    at is still on the network asks the network, and once the dispatch has unwound
-    the channel is gone for good."""
+    for the line that removed it and no longer. A handler that wants to know
+    whether what it is looking at is still on the network asks the network, and by
+    the time the next line is read the channel is gone for good."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
@@ -313,6 +314,51 @@ async def test_a_kick_that_empties_the_channel_leaves_it_gone(two_gnutests_linke
     )
     alive(proc)
     assert ("gnutest2", f"ChannelCreate {CHAN} victim -") in reports(hub, out, env)
+
+    # "chaninfo" is Network->findChannel(), as a handler would ask it
+    out = await command(hub, env["asker"], "gnutest2", f"chaninfo {CHAN}")
+    alive(proc)
+    assert any("Unable to find channel" in line for line in out)
+
+
+@pytest.mark.asyncio
+async def test_a_wire_part_whose_handler_empties_the_channel(two_gnutests_linked_p11):
+    """The caller side of the same thing, and the reason the holding list is not
+    released where the dispatch ends: the post is the OUTERMOST dispatch, made by
+    msg_L from a wire part, and msg_L reads the channel again after it
+    ("if( theChan->empty() )") to remove a channel the part has emptied.
+
+    victim and gnutest are the two members. victim parts, and gnutest's handler
+    parts the channel from inside that event, which empties it and takes it out
+    of the network - at depth 1, so the Channel is held. Releasing the holding
+    list when the dispatch unwound freed it before msg_L looked at it again,
+    which is a use-after-free in core's own hands and not in a module's: the
+    channel is released once per main loop iteration instead, so the line that
+    posted the event is done with it first.
+
+    The channel the part emptied is gone by the time the next line is read, which
+    is what the second half asserts: a longer lifetime, not a leak.
+
+    mod.gnutest's "onevent <NAME> kick" cannot express the reviewer's version of
+    this, which kicks the last other member: it kicks the client the event is
+    about, and on a part that client has already left the channel, so
+    xServer::kickMembers() finds nobody to kick and refuses. "part" empties the
+    same channel from the same handler through the same held destroy(), and no
+    mod.* file had to change to say it."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub, channel_members=["victim"])
+    await command(hub, env["asker"], "gnutest", f"join {CHAN}")
+
+    await command(hub, env["asker"], "gnutest", f"onevent ChannelPart part {CHAN}")
+
+    out = await drive_or_die(hub, env, [f"{env['victim']} L {CHAN}"], proc)
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", f"ChannelPart {CHAN} victim -"),
+        ("gnutest2", f"ChannelPart {CHAN} victim -"),
+        ("gnutest", f"ChannelPart {CHAN} gnutest -"),
+        ("gnutest2", f"ChannelPart {CHAN} gnutest -"),
+    ]
 
     # "chaninfo" is Network->findChannel(), as a handler would ask it
     out = await command(hub, env["asker"], "gnutest2", f"chaninfo {CHAN}")

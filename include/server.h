@@ -1030,6 +1030,16 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual unsigned int CheckTimers();
 
     /**
+     * Destroy what the holding list holds.  A network object core removes
+     * while a dispatch is running lives until the line that removed it has
+     * been processed to its end, which is not where the dispatch unwinds:
+     * core's own wire handlers read the channel or the client again after the
+     * post they made about it.  So this is called once per iteration of the main
+     * loop, and from doShutdown(), and nowhere else.  See destroy().
+     */
+    void releaseHeldObjects();
+
+    /**
      * The main loop which runs the server.  This contains
      * all of the server essential logic.
      */
@@ -1505,19 +1515,21 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     std::deque<std::function<void()>> pendingEvents;
 
     /**
-     * The holding list: what to destroy once the outermost dispatch has
-     * unwound and pendingEvents is empty.  See destroy().
+     * The holding list: what to destroy once the line being processed is
+     * done with it.  Emptied by releaseHeldObjects().  See destroy().
      */
     std::vector<std::function<void()>> holdingList;
 
     /**
      * Destroy a network object that the network tables no longer hold: now if
-     * nothing is being dispatched, and otherwise once the outermost dispatch
-     * has unwound and the queue is empty.  Every handler of the event that
-     * removed the object is therefore handed something it can still read,
-     * including for a client or channel that is already gone from the
-     * network; a handler that wants to know whether it is still there looks
-     * it up.  A null pointer is nothing to destroy, as with delete.
+     * nothing is being dispatched, and otherwise on the holding list, which is
+     * released before the next line is read.  Every handler of the
+     * event that removed the object is therefore handed something it can
+     * still read, and so is the core code that posted that event, including
+     * for a client or channel that is already gone from the network; whoever
+     * wants to know whether it is still there looks it up.  A null pointer is
+     * nothing to destroy, as with delete: a removal that found nothing has
+     * nothing to hold, and so cannot hold the same object twice.
      *
      * Core destroys an iClient, iServer, Channel, ChannelUser or Gline
      * through here and nowhere else.  Channel::~Channel() is the exception:
@@ -1534,8 +1546,8 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
 
     /**
      * Deliver every post that waited for the dispatch to finish, oldest
-     * first, and then destroy what the holding list holds: by that point
-     * nothing is left that could be handed one of them.
+     * first.  The holding list is not touched: what it holds outlives the
+     * whole of the line being processed.  See releaseHeldObjects().
      */
     void settle();
 

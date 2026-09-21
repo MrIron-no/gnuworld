@@ -82,11 +82,6 @@ enum class payloadKind {
  * event says what each argument points at, and a post that has to wait its
  * turn must own its text, because several callers hand it the address of a
  * local of their own.
- *
- * EVT_NETBREAK's second argument is left out on purpose: two of its three post
- * sites pass the source as a std::string, and the third, a cascading squit in
- * xNetwork::OnSplit(), passes the uplink iServer, so core cannot tell from the
- * event alone which of the two it has.
  */
 payloadKind payloadKindOf(int theEvent, std::size_t which) {
     switch (theEvent) {
@@ -100,8 +95,12 @@ payloadKind payloadKindOf(int theEvent, std::size_t which) {
     case EVT_TOPIC:
         return (1 == which) ? payloadKind::text : payloadKind::object;
     case EVT_KILL:
-    case EVT_NETBREAK:
         return (2 == which) ? payloadKind::text : payloadKind::object;
+    case EVT_NETBREAK:
+        // The source is a std::string at all three of its post sites, and
+        // never the iServer: xNetwork::OnSplit() resolves the server it used
+        // to pass to that server's name, before removing it.
+        return (1 == which || 2 == which) ? payloadKind::text : payloadKind::object;
     case EVT_XQUERY:
     case EVT_XREPLY:
         return (1 == which || 2 == which) ? payloadKind::chars : payloadKind::object;
@@ -272,6 +271,14 @@ void xServer::channelListeners(const string& chanName, std::vector<xClient*>& ou
  *
  * While this runs, dispatchDepth is not zero: a post made from a handler waits
  * in pendingEvents, and a network object core removes waits in holdingList.
+ * Getting back to zero is therefore the invariant the whole of this stands on,
+ * and there is deliberately no try around the walk.  An exception out of a
+ * handler skips the epilogue below, so the depth never returns to zero and
+ * every later post queues forever, silently delivered to nobody: a catch here
+ * that swallowed it would make that the daemon's steady state.  Nothing
+ * between a wire handler and main() catches either, so what really happens is
+ * std::terminate(), which is what this codebase wants of a handler that cannot
+ * cope - see ProtocolError().  Do not add one upstream without reading this.
  */
 template <typename Listeners, typename Call>
 void xServer::dispatch(Listeners listeners, Call call) {
@@ -328,9 +335,7 @@ template <typename Call> void xServer::notifyChannel(const string& chanName, Cal
 /**
  * Deliver every post that waited for the dispatch, oldest first.  A drained
  * post dispatches like any other, so what IT posts is appended behind what is
- * already waiting and the queue empties breadth first.  Only then is the
- * holding list released: by that point nothing is left that could be handed
- * one of the objects on it.
+ * already waiting and the queue empties breadth first.
  */
 void xServer::settle() {
     while (!pendingEvents.empty()) {
@@ -338,6 +343,21 @@ void xServer::settle() {
         pendingEvents.pop_front();
         next();
     }
+}
+
+/**
+ * Destroy what the holding list holds.  The queue is drained where the
+ * outermost dispatch ends, because a handler's own post must arrive before the
+ * Post*() that carried it returns; the holding list is NOT released there,
+ * because the core code under that Post*() reads on.  msg_L is the plain case:
+ * it posts EVT_PART, a handler empties the channel from inside it, and msg_L
+ * then asks that same channel whether it is empty.  So this runs once per
+ * iteration of the main loop, when core is between lines and nothing holds a
+ * pointer to any of it.
+ */
+void xServer::releaseHeldObjects() {
+    // Never with a dispatch in progress: that is the whole point of the list
+    assert(0 == dispatchDepth);
 
     for (const std::function<void()>& release : holdingList) {
         release();
