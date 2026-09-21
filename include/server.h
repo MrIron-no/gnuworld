@@ -35,6 +35,8 @@
 #include <sstream>
 #include <map>
 #include <queue>
+#include <deque>
+#include <functional>
 #include <algorithm>
 
 #include <ctime>
@@ -73,6 +75,15 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * and its kin below.
      */
     friend class xClient;
+
+    /**
+     * Both of these destroy network objects that they have taken out of the
+     * network tables, and so both need destroy(): xNetwork directly, and the
+     * libircu handlers through ServerCommandHandler, which passes on the
+     * friendship C++ does not give a derived class.
+     */
+    friend class xNetwork;
+    friend class ServerCommandHandler;
 
   protected:
     /**
@@ -1019,6 +1030,16 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual unsigned int CheckTimers();
 
     /**
+     * Destroy what the holding list holds.  A network object core removes
+     * while a dispatch is running lives until the line that removed it has
+     * been processed to its end, which is not where the dispatch unwinds:
+     * core's own wire handlers read the channel or the client again after the
+     * post they made about it.  So this is called once per iteration of the main
+     * loop, and from doShutdown(), and nowhere else.  See destroy().
+     */
+    void releaseHeldObjects();
+
+    /**
      * The main loop which runs the server.  This contains
      * all of the server essential logic.
      */
@@ -1456,7 +1477,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     /**
      * The type used to store the system event map.
      */
-    typedef std::vector<std::list<xClient*>> eventListType;
+    typedef std::vector<std::vector<xClient*>> eventListType;
 
     /**
      * This is the vector of lists of xClient pointers.
@@ -1468,15 +1489,91 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     eventListType eventList;
 
     /**
-     * Type used to store the channel event map.
+     * Type used to store the channel event map.  The key is a channel name,
+     * case insensitive, or CHANNEL_ALL for every channel.
      */
-    typedef std::map<std::string, std::list<xClient*>*, rfc1459Compare> channelEventMapType;
+    typedef std::map<std::string, std::vector<xClient*>, rfc1459Compare> channelEventMapType;
 
     /**
      * The structure used to maintain xClient registrations for
-     * channel events.
+     * channel events.  An entry left with no listeners is erased.
      */
     channelEventMapType channelEventMap;
+
+    /**
+     * How many dispatches are on the stack.  Nothing is in progress at zero,
+     * which is when a post is delivered as it is made and a network object
+     * core removes is destroyed as it is removed; anything else means a
+     * handler is running, and both wait.  See notify() and destroy().
+     */
+    unsigned int dispatchDepth = 0;
+
+    /**
+     * The posts made from inside a handler, oldest first, each owning
+     * whatever text its event carries.  Emptied by settle().
+     */
+    std::deque<std::function<void()>> pendingEvents;
+
+    /**
+     * The holding list: what to destroy once the line being processed is
+     * done with it.  Emptied by releaseHeldObjects().  See destroy().
+     */
+    std::vector<std::function<void()>> holdingList;
+
+    /**
+     * Destroy a network object that the network tables no longer hold: now if
+     * nothing is being dispatched, and otherwise on the holding list, which is
+     * released before the next line is read.  Every handler of the
+     * event that removed the object is therefore handed something it can
+     * still read, and so is the core code that posted that event, including
+     * for a client or channel that is already gone from the network; whoever
+     * wants to know whether it is still there looks it up.  A null pointer is
+     * nothing to destroy, as with delete: a removal that found nothing has
+     * nothing to hold, and so cannot hold the same object twice.
+     *
+     * Core destroys an iClient, iServer, Channel, ChannelUser or Gline
+     * through here and nowhere else.  Channel::~Channel() is the exception:
+     * the members it takes with it are gone with the channel, which is itself
+     * what was held.
+     */
+    template <typename T> void destroy(T* what) {
+        if (0 == dispatchDepth) {
+            delete what;
+            return;
+        }
+        holdingList.push_back([what]() { delete what; });
+    }
+
+    /**
+     * Deliver every post that waited for the dispatch to finish, oldest
+     * first.  The holding list is not touched: what it holds outlives the
+     * whole of the line being processed.  See releaseHeldObjects().
+     */
+    void settle();
+
+    /**
+     * Append the listeners of a channel event: those registered for every
+     * channel first, then those registered for this one, which is the order
+     * they have always been called in.
+     */
+    void channelListeners(const std::string& chanName, std::vector<xClient*>& out) const;
+
+    /**
+     * The one walk of a listener list there is, and the only place core calls
+     * into a module.  Defined in src/server_events.cc, where every caller is.
+     */
+    template <typename Listeners, typename Call> void dispatch(Listeners listeners, Call call);
+
+    /**
+     * Deliver a notification: now, or behind the event being dispatched.
+     * Every Post*() goes through here.
+     */
+    template <typename Listeners, typename Call> void notify(Listeners listeners, Call call);
+
+    /**
+     * notify() for a channel event, whose listeners are those of chanName.
+     */
+    template <typename Call> void notifyChannel(const std::string& chanName, Call call);
 
     /**
      * This structure holds the current network glines.
@@ -1865,6 +1962,10 @@ inline time_t ServerCommandHandler::requireTimestamp(std::string_view text) cons
     }
     const std::string problem = std::format("invalid timestamp: {}", text);
     protocolError(std::span(&problem, 1));
+}
+
+template <typename T> void ServerCommandHandler::destroy(T* what) const {
+    theServer->destroy(what);
 }
 
 } // namespace gnuworld

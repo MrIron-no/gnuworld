@@ -147,7 +147,7 @@ bool msg_K::Execute(const xParameters& Param) {
         removeUser(theChan, destClient);
 
         // Deallocate the ChannelUser
-        delete destChanUser;
+        destroy(destChanUser);
         destChanUser = 0;
 
         // Remove the channel information from the client's internal
@@ -166,7 +166,7 @@ bool msg_K::Execute(const xParameters& Param) {
         removeUser(theChan, destClient);
 
         // Deallocate the ChannelUser
-        delete destChanUser;
+        destroy(destChanUser);
         destChanUser = 0;
 
         // Remove the channel information from the client's internal
@@ -216,7 +216,7 @@ bool msg_K::Execute(const xParameters& Param) {
     // Any users or services clients left in the channel?
     if (theChan->empty()) {
         // Nope, remove the channel
-        delete Network->removeChannel(theChan->getName());
+        destroy(Network->removeChannel(theChan->getName()));
 
         // TODO: Post event
     }

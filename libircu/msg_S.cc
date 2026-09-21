@@ -92,7 +92,7 @@ bool msg_S::Execute(const xParameters& params) {
                 std::string(params[6]), serverName)
             .with("server", Network->findServer(serverIntYY))
             .log();
-        delete Network->removeServer(serverIntYY);
+        destroy(Network->removeServer(serverIntYY));
     }
 
     // Dun really care about the server description

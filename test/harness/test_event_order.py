@@ -6,16 +6,21 @@ handler ("onevent <NAME> <action>") and gnutest2 is the witness of what that
 leaves of the dispatch. Each report names the module that sent it, so the order
 below is the order gnuworld wrote them in.
 
-Today's dispatch is a bare walk of a std::list with no protection of any kind
-(xServer::PostEvent, xServer::PostChannelEvent). A handler may therefore do
-things that end the walk: unregistering itself erases the node the iterator
-stands on, killing the client the event is about leaves every later handler a
-deleted iClient, emptying the channel leaves them a deleted Channel, and
-detaching itself deletes the handler's own object. Each of those tests asserts
-what the dispatch is meant to do and is marked xfail non-strict, because today
-the behaviour is undefined: some of it happens not to crash, and some of it
-kills the daemon. Every test checks that gnuworld is still running afterwards,
-so an abort cannot read as a pass.
+The dispatch walks a copy of the listener list and counts its depth
+(xServer::dispatch), so a handler may do what it likes to the registries and to
+the network: what it unregisters, registers, kills or empties cannot end the
+walk, and a network object core removes is held until the line being processed
+is done with it, so every later handler is still handed something it can read -
+and so is the core code that posted the event.
+
+A post made from inside a handler is therefore not nested: it waits until the
+event being dispatched has reached all of its subscribers, and the queue drains
+breadth first. That is what most of these tests pin: every report below is in
+the order gnuworld wrote it, and a module acting from inside a handler shows up
+as a second round after the first, never in the middle of it.
+
+Every test checks that gnuworld is still running afterwards, so an abort cannot
+read as a pass.
 """
 
 from __future__ import annotations
@@ -30,20 +35,15 @@ from p10 import p10_token, strip_msg_tags
 
 CHAN = "#order"
 
-# A deleted payload handed to the next handler in the same dispatch
-UB_DELETED = (
-    "UB today: nested dispatch hands module 2 a deleted client; "
-    "fixed by events-dispatch-queue"
-)
-# A deleted channel handed to the next handler in the same dispatch
-UB_DELETED_CHAN = (
-    "UB today: nested dispatch hands module 2 a deleted channel; "
-    "fixed by events-dispatch-queue"
-)
-# A change to the list the dispatch is walking
-UB_ERASED = (
-    "UB today: a handler that leaves the listener list erases the node the dispatch "
-    "stands on and gnuworld dies; fixed by events-dispatch-queue"
+# The dispatch itself now survives a module detaching itself from inside a
+# handler, and the order below is what it produces. What is still undefined is
+# the module: xServer::removeClient() deletes the xClient whose handler is
+# running and dlcloses its library under it, so the handler returns into freed
+# memory. Nothing catches it today, which is why this is xfail non-strict and
+# not a passing test. Deferring the unload past the dispatch is the next task.
+UB_DETACHED = (
+    "UB: DetachClient() deletes the running handler's own xClient and dlcloses "
+    "its module; deferring the unload past the dispatch is the next task"
 )
 
 
@@ -172,13 +172,12 @@ async def test_both_modules_report_every_event(two_gnutests_linked_p11):
     ]
 
 
-@pytest.mark.xfail(strict=False, reason=UB_ERASED)
 @pytest.mark.asyncio
 async def test_a_handler_that_unregisters_itself(two_gnutests_linked_p11):
-    """gnutest unregisters itself from inside the handler, which erases the very
-    node xServer::PostEvent() has its iterator on: the walk then steps through a
-    freed node. The event is still on its way to gnutest2, and from then on it
-    should reach gnutest2 alone."""
+    """gnutest unregisters itself from inside the handler, which takes it out of
+    the very list the dispatch came from. The dispatch walks a copy, so the event
+    is still on its way to gnutest2, and from then on it reaches gnutest2
+    alone."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
@@ -225,8 +224,10 @@ async def test_a_handler_that_registers_an_event_again(two_gnutests_linked_p11):
 
 @pytest.mark.asyncio
 async def test_a_handler_that_posts_a_nested_event(two_gnutests_linked_p11):
-    """A nested event is dispatched to completion from inside the outer one, so
-    gnutest2 sees the inner event before the outer one it was posted from."""
+    """A post made from inside a handler is not dispatched there and then: it
+    waits until the event being dispatched has reached every subscriber, and is
+    delivered after it. The quit reason and the posted text are both a local of
+    the caller's, which the queued post has to have copied."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
@@ -236,18 +237,19 @@ async def test_a_handler_that_posts_a_nested_event(two_gnutests_linked_p11):
     alive(proc)
     assert reports(hub, out, env) == [
         ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
         ("gnutest", "Raw onevent post"),
         ("gnutest2", "Raw onevent post"),
-        ("gnutest2", "Quit victim bye now"),
     ]
 
 
-@pytest.mark.xfail(strict=False, reason=UB_DELETED)
 @pytest.mark.asyncio
 async def test_a_handler_that_kills_the_client_the_event_is_about(two_gnutests_linked_p11):
-    """gnutest kills the joining client from inside the join, which deletes the
-    iClient and the ChannelUser that are the event's payload. gnutest2 is next
-    in the same dispatch and is handed both."""
+    """gnutest kills the joining client from inside the join, which takes the
+    iClient and the ChannelUser that are the event's payload out of the network.
+    Both are held until the line being processed is done with them, so gnutest2,
+    next in the same dispatch, is handed two objects it can still read; the kill
+    it is told about afterwards."""
     hub, proc = two_gnutests_linked_p11
     # other stays behind, so that the channel is not emptied as well
     env = await setup(hub, channel_members=["other"])
@@ -260,19 +262,23 @@ async def test_a_handler_that_kills_the_client_the_event_is_about(two_gnutests_l
     alive(proc)
     assert reports(hub, out, env) == [
         ("gnutest", f"ChannelJoin {CHAN} victim victim"),
+        ("gnutest2", f"ChannelJoin {CHAN} victim victim"),
         ("gnutest", "Kill - victim onevent kill"),
         ("gnutest2", "Kill - victim onevent kill"),
-        ("gnutest2", f"ChannelJoin {CHAN} victim victim"),
     ]
 
 
-@pytest.mark.xfail(strict=False, reason=UB_DELETED_CHAN)
 @pytest.mark.asyncio
 async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutests_linked_p11):
     """gnutest kicks the only member of the channel the event is about, which
-    deletes the Channel (xServer::kickMembers parts the module it joined to kick
-    with, and a channel left empty goes with it). gnutest2 is next in the same
-    dispatch and is handed that Channel."""
+    takes the Channel out of the network (xServer::kickMembers parts the module it
+    joined to kick with, and a channel left empty goes with it). It is held until
+    the line being processed is done with it, so gnutest2, next in the same
+    dispatch, is handed a Channel it can still read. The join and the part the kick
+    needed are posted from inside the create, and so are reported after it.
+
+    msg_C passes no ChannelUser with EVT_CREATE, which is why the member of the
+    create is reported as "-"."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
@@ -283,20 +289,89 @@ async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutest
     )
     alive(proc)
     assert reports(hub, out, env) == [
-        ("gnutest", f"ChannelCreate {CHAN} victim victim"),
+        ("gnutest", f"ChannelCreate {CHAN} victim -"),
+        ("gnutest2", f"ChannelCreate {CHAN} victim -"),
         ("gnutest", f"ChannelJoin {CHAN} gnutest gnutest"),
-        ("gnutest", f"ChannelPart {CHAN} gnutest -"),
         ("gnutest2", f"ChannelJoin {CHAN} gnutest gnutest"),
+        ("gnutest", f"ChannelPart {CHAN} gnutest -"),
         ("gnutest2", f"ChannelPart {CHAN} gnutest -"),
-        ("gnutest2", f"ChannelCreate {CHAN} victim victim"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_kick_that_empties_the_channel_leaves_it_gone(two_gnutests_linked_p11):
+    """The other half of the test above: the channel gnutest2 was handed is held
+    for the line that removed it and no longer. A handler that wants to know
+    whether what it is looking at is still on the network asks the network, and by
+    the time the next line is read the channel is gone for good."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub)
+
+    await command(hub, env["asker"], "gnutest", "onevent ChannelCreate kick")
+
+    out = await drive_or_die(
+        hub, env, [f"{env['victim']} C {CHAN} {int(time.time())}"], proc
+    )
+    alive(proc)
+    assert ("gnutest2", f"ChannelCreate {CHAN} victim -") in reports(hub, out, env)
+
+    # "chaninfo" is Network->findChannel(), as a handler would ask it
+    out = await command(hub, env["asker"], "gnutest2", f"chaninfo {CHAN}")
+    alive(proc)
+    assert any("Unable to find channel" in line for line in out)
+
+
+@pytest.mark.asyncio
+async def test_a_wire_part_whose_handler_empties_the_channel(two_gnutests_linked_p11):
+    """The caller side of the same thing, and the reason the holding list is not
+    released where the dispatch ends: the post is the OUTERMOST dispatch, made by
+    msg_L from a wire part, and msg_L reads the channel again after it
+    ("if( theChan->empty() )") to remove a channel the part has emptied.
+
+    victim and gnutest are the two members. victim parts, and gnutest's handler
+    parts the channel from inside that event, which empties it and takes it out
+    of the network - at depth 1, so the Channel is held. Releasing the holding
+    list when the dispatch unwound freed it before msg_L looked at it again,
+    which is a use-after-free in core's own hands and not in a module's: the
+    channel is released once per main loop iteration instead, so the line that
+    posted the event is done with it first.
+
+    The channel the part emptied is gone by the time the next line is read, which
+    is what the second half asserts: a longer lifetime, not a leak.
+
+    mod.gnutest's "onevent <NAME> kick" cannot express the reviewer's version of
+    this, which kicks the last other member: it kicks the client the event is
+    about, and on a part that client has already left the channel, so
+    xServer::kickMembers() finds nobody to kick and refuses. "part" empties the
+    same channel from the same handler through the same held destroy(), and no
+    mod.* file had to change to say it."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub, channel_members=["victim"])
+    await command(hub, env["asker"], "gnutest", f"join {CHAN}")
+
+    await command(hub, env["asker"], "gnutest", f"onevent ChannelPart part {CHAN}")
+
+    out = await drive_or_die(hub, env, [f"{env['victim']} L {CHAN}"], proc)
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", f"ChannelPart {CHAN} victim -"),
+        ("gnutest2", f"ChannelPart {CHAN} victim -"),
+        ("gnutest", f"ChannelPart {CHAN} gnutest -"),
+        ("gnutest2", f"ChannelPart {CHAN} gnutest -"),
+    ]
+
+    # "chaninfo" is Network->findChannel(), as a handler would ask it
+    out = await command(hub, env["asker"], "gnutest2", f"chaninfo {CHAN}")
+    alive(proc)
+    assert any("Unable to find channel" in line for line in out)
 
 
 @pytest.mark.asyncio
 async def test_a_handler_that_parts_a_channel(two_gnutests_linked_p11):
     """The harmless neighbour of the two above: gnutest parts a channel of its
-    own from inside a handler. The part is a nested channel event both modules
-    see, and the dispatch it was called from is untouched."""
+    own from inside a handler. xServer::PartChannel() posts EVT_PART from there,
+    so the part is a channel event both modules see after the quit they are in
+    the middle of."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub, channel_members=["other"])
     await command(hub, env["asker"], "gnutest", f"join {CHAN}")
@@ -307,9 +382,65 @@ async def test_a_handler_that_parts_a_channel(two_gnutests_linked_p11):
     alive(proc)
     assert reports(hub, out, env) == [
         ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
         ("gnutest", f"ChannelPart {CHAN} gnutest -"),
         ("gnutest2", f"ChannelPart {CHAN} gnutest -"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_chain_of_nested_posts_is_breadth_first(two_gnutests_linked_p11):
+    """Three deep: the quit reaches both modules, gnutest's handler parts a
+    channel, that part reaches both modules, gnutest2's handler posts an event of
+    its own, and that reaches both modules. Each round is delivered whole before
+    the round it posted, which is what the queue is for."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub, channel_members=["other"])
+    await command(hub, env["asker"], "gnutest", f"join {CHAN}")
+
+    await command(hub, env["asker"], "gnutest2", "onevent ChannelPart post")
+    await command(hub, env["asker"], "gnutest", f"onevent Quit part {CHAN}")
+
+    out = await drive(hub, env, [f"{env['victim']} Q :bye now"])
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
         ("gnutest2", "Quit victim bye now"),
+        ("gnutest", f"ChannelPart {CHAN} gnutest -"),
+        ("gnutest2", f"ChannelPart {CHAN} gnutest -"),
+        ("gnutest", "Raw onevent post"),
+        ("gnutest2", "Raw onevent post"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_handler_that_registers_the_event_being_dispatched(two_gnutests_linked_p11):
+    """A registration made from inside a handler applies to later events, not to
+    the one being dispatched. RegisterEvent() unregisters before it adds back, so
+    this puts gnutest at the end of the very list this dispatch came from: it must
+    not be called a second time for this event, and the reversed order of the next
+    one is the proof that the registration did happen.
+
+    gnutest can only register itself, so the listener added in the middle of the
+    dispatch is its own; a listener added at the end of the list is exactly the
+    one a positional walk would call again."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub)
+
+    await command(hub, env["asker"], "gnutest", "onevent Quit register Quit")
+
+    out = await drive(hub, env, [f"{env['victim']} Q :bye now"])
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
+    ]
+
+    out = await drive(hub, env, [f"{env['other']} Q :me too"])
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest2", "Quit other me too"),
+        ("gnutest", "Quit other me too"),
     ]
 
 
@@ -347,13 +478,23 @@ async def test_a_handler_that_unloads_itself(two_gnutests_linked_p11):
     ]
 
 
-@pytest.mark.xfail(strict=False, reason=UB_ERASED)
+@pytest.mark.xfail(strict=False, reason=UB_DETACHED)
 @pytest.mark.asyncio
 async def test_a_handler_that_detaches_itself(two_gnutests_linked_p11):
-    """xServer::DetachClient() is not deferred: it deletes the xClient whose
-    handler is running, and xServer::removeClient() takes that client out of
-    every listener list - the one the dispatch is walking included - and posts
-    the module's own quit from inside the event it is handling."""
+    """xServer::DetachClient() is not deferred: xServer::removeClient() posts the
+    module's own quit, takes the module out of every listener list, and then
+    deletes the xClient whose handler is running.
+
+    The dispatch survives all three. The quit it was in the middle of still
+    reaches gnutest2, and the module's own quit is delivered after it - by which
+    time the module is no longer a listener, so it is not told of its own
+    departure. That is the whole of what unregistering means here: the module asked
+    to be detached, and a detached module receives nothing.
+
+    Still xfail: the xClient is deleted and its library dlclosed while its own
+    handler is on the stack, so the handler returns into freed memory. It happens
+    to survive that, here and under the sanitizer both, which is luck and not a
+    contract; deferring the unload past the dispatch is the next task."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
@@ -363,7 +504,6 @@ async def test_a_handler_that_detaches_itself(two_gnutests_linked_p11):
     alive(proc)
     assert reports(hub, out, env) == [
         ("gnutest", "Quit victim bye now"),
-        ("gnutest", "Quit gnutest -"),
-        ("gnutest2", "Quit gnutest -"),
         ("gnutest2", "Quit victim bye now"),
+        ("gnutest2", "Quit gnutest -"),
     ]

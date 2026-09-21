@@ -335,7 +335,13 @@ class GnuworldProc:
         so that a second instance of the same module can be loaded beside the
         first (see conftest.link_debug)."""
         text = GNUTEST_CONF_TEMPLATE.read_text(encoding="utf-8").replace("@OPERCHAN@", operchan)
-        text = text.replace("nickname = gnutest", f"nickname = {nickname}")
+        renamed = text.replace("nickname = gnutest", f"nickname = {nickname}")
+        # A template that no longer says it would silently keep the default name,
+        # and the second instance would collide with the first
+        assert nickname == "gnutest" or renamed != text, (
+            f"{GNUTEST_CONF_TEMPLATE} has no 'nickname = gnutest' to replace"
+        )
+        text = renamed
         if burstchannel:
             text += f"burstchannel = {burstchannel}\n"
         if stealth:

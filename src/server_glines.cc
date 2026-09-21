@@ -84,7 +84,7 @@ bool xServer::removeGline(const string& userHost, const xClient* remClient) {
             PostEvent(EVT_REMGLINE, static_cast<void*>(gItr->second));
         }
         // Deallocate the gline
-        delete gItr->second;
+        destroy(gItr->second);
 
         // Remove the gline from the internal gline structure
         eraseGline(gItr);
@@ -104,7 +104,7 @@ bool xServer::setGline(const string& setBy, const string& userHost, const string
         xServer::glineIterator gItr = findGlineIterator(userHost);
         if (gItr != glines_end()) {
             // This gline is already present
-            delete gItr->second;
+            destroy(gItr->second);
             eraseGline(gItr);
         }
     }
@@ -171,15 +171,20 @@ void xServer::sendGlinesToNetwork() {
 }
 
 void xServer::removeMatchingGlines(const string& wildHost) {
-    for (glineIterator ptr = glines_begin(); ptr != glines_end();) {
+    // Which ones first: a post may run module code that changes glineList,
+    // and no iteration of it may span one.
+    vector<Gline*> matched;
+    for (const_glineIterator ptr = glines_begin(); ptr != glines_end(); ++ptr) {
         // TODO: Does this work with two wildHost's?
         if (!match(wildHost, ptr->second->getUserHost())) {
-            PostEvent(EVT_REMGLINE, static_cast<void*>(ptr->second));
-
-            Gline* tmpGline = ptr->second;
-            glineList.erase(ptr++);
-            delete tmpGline;
+            matched.push_back(ptr->second);
         }
+    }
+
+    for (Gline* theGline : matched) {
+        PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
+        glineList.erase(theGline->getUserHost());
+        destroy(theGline);
     }
 }
 
@@ -194,18 +199,19 @@ void xServer::BurstGlines() {
 void xServer::updateGlines() {
     time_t now = ::time(0);
 
-    glineIterator ptr = glines_begin();
-
-    while (ptr != glines_end()) {
+    // Which ones first: a post may run module code that changes glineList,
+    // and no iteration of it may span one.
+    vector<Gline*> expired;
+    for (const_glineIterator ptr = glines_begin(); ptr != glines_end(); ++ptr) {
         if (ptr->second->getExpiration() <= now) {
-            // Expire the gline
-            PostEvent(EVT_REMGLINE, static_cast<void*>(ptr->second));
-
-            delete ptr->second;
-            glineList.erase(ptr++);
-        } else {
-            ptr++;
+            expired.push_back(ptr->second);
         }
+    }
+
+    for (Gline* theGline : expired) {
+        PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
+        glineList.erase(theGline->getUserHost());
+        destroy(theGline);
     }
 } // updateGlines()
 

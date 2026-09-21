@@ -297,6 +297,11 @@ void xServer::mainLoop() {
         // is the only one that may write to the network
         IrcLogSink::flushAll();
 
+        // A network object that was removed while an event was being
+        // dispatched waits here, so that the line that removed it is done with
+        // it first
+        releaseHeldObjects();
+
         // Check if a reconnection is necessary
         // Do not reconnect if the server is in the process of
         // shutting down.

@@ -98,6 +98,11 @@ class ServerCommandHandler {
     }
     static void setTopicTS(Channel* theChan, time_t when) { theChan->setTopicTS(when); }
 
+    /// The same for the server: xServer::destroy(), for a network object this
+    /// handler has taken out of the network tables.  Defined at the end of
+    /// server.h, where xServer is complete.
+    template <typename T> void destroy(T* what) const;
+
   public:
     ServerCommandHandler(xServer* _theServer, const char* _where)
         : theServer(_theServer), where(_where) {}

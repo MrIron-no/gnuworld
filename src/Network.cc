@@ -346,7 +346,7 @@ iClient* xNetwork::removeClient(const unsigned int& intYYXXX) {
                 .with("client", retMe)
                 .log();
         }
-        delete theChanUser;
+        theServer->destroy(theChanUser);
         theChanUser = 0;
 
         if ((*chanPtr)->empty()) {
@@ -354,7 +354,7 @@ iClient* xNetwork::removeClient(const unsigned int& intYYXXX) {
             //			<< (*chanPtr)->getName()
             //			<< endl ;
 
-            delete removeChannel((*chanPtr)->getName());
+            theServer->destroy(removeChannel((*chanPtr)->getName()));
         }
         ++chanPtr;
     }
@@ -479,7 +479,7 @@ iServer* xNetwork::removeServer(const unsigned int& YY, bool postEvent) {
         }
 
         // Be sure to deallocate the iClient's allocated heap space
-        delete theClient;
+        theServer->destroy(theClient);
     }
 
     // Return the server being removed
@@ -594,6 +594,14 @@ void xNetwork::OnSplit(const unsigned int& intYY) {
     // to be removed.
     yyVector.push_back(intYY);
 
+    // The source every leaf of this split broke from.  Its name is taken now,
+    // while it is still in the table: the loop below removes it on its first
+    // turn, and the notification it posts for a leaf may wait, so the event
+    // carries a string that core owns and not a pointer into here.
+    const iServer* const splitServer = findServer(intYY);
+    assert(splitServer != 0);
+    string splitSource(splitServer->getName());
+
     // Recursive method to find all leaf servers of intYY, and all
     // of each of those servers' leaf servers.
     // This is much simpler than having the entire OnSplit() method
@@ -634,10 +642,9 @@ void xNetwork::OnSplit(const unsigned int& intYY) {
             string Reason("Uplink Squit");
 
             theServer->PostEvent(EVT_NETBREAK, static_cast<void*>(tmpServer),
-                                 static_cast<void*>(findServer(intYY)),
-                                 static_cast<void*>(&Reason));
+                                 static_cast<void*>(&splitSource), static_cast<void*>(&Reason));
         }
-        delete tmpServer;
+        theServer->destroy(tmpServer);
     }
 }
 

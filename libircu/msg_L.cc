@@ -123,7 +123,7 @@ bool msg_L::Execute(const xParameters& Param) {
             //			<< *theChan
             //			<< endl ;
         }
-        delete theChanUser;
+        destroy(theChanUser);
         theChanUser = 0;
 
         // Remove this channel from this client's channel structure.
@@ -145,7 +145,7 @@ bool msg_L::Execute(const xParameters& Param) {
         // on the channel?
         if (theChan->empty()) {
             // No users in the channel, remove it.
-            delete Network->removeChannel(theChan->getName());
+            destroy(Network->removeChannel(theChan->getName()));
 
             // TODO: Post event
         }
