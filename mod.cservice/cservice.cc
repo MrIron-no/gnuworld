@@ -4505,11 +4505,6 @@ void cservice::OnNick(iClient* tmpUser) {
 }
 
 void cservice::OnGline(Gline* newG) {
-    if (!newG) // TODO: find out how we get this (Do we even ever get this?)
-    {
-        return;
-    }
-
     csGline* newGline = findGline(newG->getUserHost());
     if (!newGline) {
         newGline = new (std::nothrow) csGline(this);
@@ -4536,10 +4531,6 @@ void cservice::OnGline(Gline* newG) {
 }
 
 void cservice::OnRemGline(Gline* newG) {
-    if (!newG) {
-        return;
-    }
-
     csGline* newGline = findGline(newG->getUserHost());
     if (newGline) {
         remGline(newGline);

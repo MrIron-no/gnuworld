@@ -1189,11 +1189,6 @@ void ccontrol::OnBurstComplete(iServer*) {
 }
 
 void ccontrol::OnGline(Gline* newG) {
-    if (!newG) // TODO: find out how we get this
-    {
-        return;
-    }
-
     if (!saveGlines) {
         return;
     }
@@ -1228,10 +1223,6 @@ void ccontrol::OnGline(Gline* newG) {
 }
 
 void ccontrol::OnRemGline(Gline* newG) {
-    if (!newG) {
-        return;
-    }
-
     ccGline* newGline = findGline(newG->getUserHost());
     if (newGline) {
         remGline(newGline);
