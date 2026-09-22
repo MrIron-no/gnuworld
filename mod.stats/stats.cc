@@ -454,8 +454,8 @@ void stats::dumpStats(iClient* theClient) {
     time_t countingTime = (0 == startTime) ? 0 : ::time(nullptr) - startTime;
     time_t averageTime = (countingTime > 0) ? countingTime : 1;
 
-    Notice(theClient, "I have been counting for %d seconds", countingTime);
-    Notice(theClient, "Total Network Users: %d, Total Network Channels: %d",
+    Notice(theClient, "I have been counting for {} seconds", countingTime);
+    Notice(theClient, "Total Network Users: {}, Total Network Channels: {}",
            Network->clientList_size(), Network->channelList_size());
 
     typedef std::map<size_t, size_t> channelUserInfoMapType;
@@ -490,7 +490,7 @@ void stats::dumpStats(iClient* theClient) {
     }
 
     if (largestChan != 0) {
-        Notice(theClient, "Largest channel is %s, with %d users", largestChan->getName().c_str(),
+        Notice(theClient, "Largest channel is {}, with {} users", largestChan->getName(),
                largestChan->size());
     }
 
@@ -526,12 +526,12 @@ void stats::dumpStats(iClient* theClient) {
         channelsPerUserFile.close();
     }
 
-    Notice(theClient, "Maximum channels joined by a user: %u", maxChannels);
+    Notice(theClient, "Maximum channels joined by a user: {}", maxChannels);
 
     Notice(theClient,
-           "Length of last burst: %d seconds, "
+           "Length of last burst: {} seconds, "
            "Number of bytes processed since beginning of last "
-           "burst: %d",
+           "burst: {}",
            MyUplink->getLastBurstDuration(), MyUplink->getBurstBytes());
 
     {
@@ -598,7 +598,7 @@ void stats::dumpStats(iClient* theClient) {
         Notice(theClient, "%s", writeMe.c_str());
     }
 
-    Notice(theClient, "Total Events: %d, Total Average Events/Second: %f", totalEvents,
+    Notice(theClient, "Total Events: {}, Total Average Events/Second: {:f}", totalEvents,
            (double)totalEvents / (double)averageTime);
 }
 
