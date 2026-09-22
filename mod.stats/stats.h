@@ -115,12 +115,10 @@ class stats : public xClient {
     virtual void OnXReply(iServer*, std::string_view, std::string_view) override;
     virtual void OnNetConf(iServer*, std::string_view) override;
     virtual void OnRemNetConf(iServer*, std::string_view) override;
-    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*, JoinKind) override;
     virtual void OnPart(Channel*, iClient*, std::string_view) override;
     virtual void OnServerMode(Channel*, iServer*) override;
     virtual void OnTopic(Channel*, iClient*, std::string_view) override;
-    virtual void OnCreate(Channel*, iClient*, ChannelUser*) override;
-    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
 
     /**
      * This method is invoked when a channel kick occurs.

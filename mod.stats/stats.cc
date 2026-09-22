@@ -388,7 +388,9 @@ void stats::countEvent(eventType whichEvent) {
 
 /*
  * One handler per event, each naming the counter it belongs to, in the order
- * events.h numbers them.  See stats.h for the three events that are not here.
+ * events.h numbers them - except OnJoin(), which is handed three, one for each
+ * way a membership arrives, and counts each of them separately still.  See
+ * stats.h for the three events that are not here.
  */
 
 void stats::OnOper(iClient*) { countEvent(EVT_OPER); }
@@ -427,17 +429,15 @@ void stats::OnNetConf(iServer*, std::string_view) { countEvent(EVT_NETCONF); }
 
 void stats::OnRemNetConf(iServer*, std::string_view) { countEvent(EVT_REMNETCONF); }
 
-void stats::OnJoin(Channel*, iClient*, ChannelUser*) { countEvent(EVT_JOIN); }
+void stats::OnJoin(Channel*, iClient*, ChannelUser*, JoinKind kind) {
+    countEvent(channelEventOf(kind));
+}
 
 void stats::OnPart(Channel*, iClient*, std::string_view) { countEvent(EVT_PART); }
 
 void stats::OnServerMode(Channel*, iServer*) { countEvent(EVT_SERVERMODE); }
 
 void stats::OnTopic(Channel*, iClient*, std::string_view) { countEvent(EVT_TOPIC); }
-
-void stats::OnCreate(Channel*, iClient*, ChannelUser*) { countEvent(EVT_CREATE); }
-
-void stats::OnBurstJoin(Channel*, iClient*, ChannelUser*) { countEvent(EVT_BURST); }
 
 void stats::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destClient,
                           const string& kickMessage, bool authoritative) {

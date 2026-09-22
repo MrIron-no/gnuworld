@@ -201,11 +201,13 @@ void nickserv::opConsoleJoin(Channel* theChannel, iClient* theClient) {
         Op(theChannel, theClient);
 }
 
-void nickserv::OnBurstJoin(Channel* theChannel, iClient* theClient, ChannelUser*) {
-    opConsoleJoin(theChannel, theClient);
-}
+void nickserv::OnJoin(Channel* theChannel, iClient* theClient, ChannelUser*, JoinKind kind) {
+    if (JoinKind::Create == kind) {
+        // Preserving what the three separate handlers did: OnCreate() was not
+        // overridden, so a create went nowhere.
+        return;
+    }
 
-void nickserv::OnJoin(Channel* theChannel, iClient* theClient, ChannelUser*) {
     opConsoleJoin(theChannel, theClient);
 }
 

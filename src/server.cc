@@ -1437,7 +1437,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
     // Determine the timestamp to use for the join
     time_t postJoinTime = joinTime;
-    channelEventType whichEvent = EVT_JOIN;
+    JoinKind whichKind = JoinKind::Join;
     if (0 == postJoinTime) {
         postJoinTime = ::time(0);
     }
@@ -1518,7 +1518,6 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
         Write(s);
         sendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
-        whichEvent = EVT_BURST;
 
         // Instantiate the new channel
         theChan = new (std::nothrow) Channel(chanName, time(0));
@@ -1551,7 +1550,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
             stringstream s;
             s << theClient->getCharYYXXX() << " C " << chanName << ' ' << postJoinTime;
             Write(s);
-            whichEvent = EVT_CREATE;
+            whichKind = JoinKind::Create;
         }
 
         sendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, joinModes);
@@ -1605,7 +1604,6 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
 
         Write(s);
         sendChannelModes(theClient->getCharYYXXX(), chanName, postJoinTime, afterBurst);
-        whichEvent = EVT_BURST;
     } else {
         // After bursting, and the channel exists
         {
@@ -1659,11 +1657,10 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         return false;
     }
 
-    if (EVT_CREATE == whichEvent) {
-        postCreate(theChan, theIClient, theChanUser);
-    } else {
-        postJoin(theChan, theIClient, theChanUser);
-    }
+    // Our own join is a plain join even on the two paths above that burst the
+    // channel: when these were three virtuals this call distinguished only a
+    // create, and postBurstJoin() was never reached from here.
+    postJoin(theChan, theIClient, theChanUser, whichKind);
 
     theClient->OnJoin(theChan->getName());
     return true;
@@ -2830,7 +2827,7 @@ bool xServer::JoinChannel(iClient* theClient, const string& chanName) {
     s << theClient->getCharYYXXX() << " J " << chanName << ' ' << ::time(0);
     Write(s);
 
-    postJoin(theChan, theClient, theUser);
+    postJoin(theChan, theClient, theUser, JoinKind::Join);
 
     return true;
 }

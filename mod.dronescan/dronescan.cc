@@ -559,7 +559,13 @@ void dronescan::OnQuit(iClient* theClient, std::string_view reason) {
 }
 
 /** Receive the channel events we care about. */
-void dronescan::OnJoin(Channel* theChannel, iClient* theClient, ChannelUser*) {
+void dronescan::OnJoin(Channel* theChannel, iClient* theClient, ChannelUser*, JoinKind kind) {
+    if (JoinKind::Join != kind) {
+        // Preserving what the three separate handlers did: only OnJoin() was
+        // overridden, so a create and a burst join went nowhere.
+        return;
+    }
+
     if (theClient && theClient->isOper() &&
         !strcasecmp(theChannel->getName().c_str(), consoleChannel.c_str())) {
         // Auto-op opers joining the console channel. Must run even during

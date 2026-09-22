@@ -301,14 +301,9 @@ class xClient : public TimerHandler, public NetworkTarget {
     /// A network configuration variable has been removed by theServer
     virtual void OnRemNetConf(iServer* theServer, std::string_view key);
 
-    /// theClient has joined a channel that already existed
-    virtual void OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
-
-    /// The same, for a membership that arrives in a net burst
-    virtual void OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
-
-    /// theClient has created theChan, and is opped in it
-    virtual void OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser);
+    /// theClient is on theChan, having joined it, created it or arrived with a
+    /// net burst; kind says which, and channelEventOf() which event that is
+    virtual void OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser, JoinKind kind);
 
     /// theClient has left theChan, and is already off it.  message may be
     /// empty: only a PART from the network carries one.

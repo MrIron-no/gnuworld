@@ -85,6 +85,19 @@ void testTheEntriesThatUsedToBeMisaligned() {
     CHECK(eventNames[EVT_BURST] == "Channel Burst");
 }
 
+/// Each way a membership can arrive maps to its own channel event: one virtual
+/// delivers the three, but mod.stats still counts and mod.gnutest still names
+/// them apart
+void testEveryJoinKindHasItsOwnEvent() {
+    CHECK(channelEventOf(JoinKind::Join) == EVT_JOIN);
+    CHECK(channelEventOf(JoinKind::Create) == EVT_CREATE);
+    CHECK(channelEventOf(JoinKind::Burst) == EVT_BURST);
+
+    CHECK(eventName(channelEventOf(JoinKind::Join)) == "Channel Join");
+    CHECK(eventName(channelEventOf(JoinKind::Create)) == "Channel Create");
+    CHECK(eventName(channelEventOf(JoinKind::Burst)) == "Channel Burst");
+}
+
 } // anonymous namespace
 
 int main() {
@@ -92,6 +105,7 @@ int main() {
     testTheTableIsTheSizeOfTheEnums();
     testTheNamesAreUnique();
     testTheEntriesThatUsedToBeMisaligned();
+    testEveryJoinKindHasItsOwnEvent();
 
     if (failures > 0) {
         std::cerr << failures << " check(s) failed\n";

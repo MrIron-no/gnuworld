@@ -117,9 +117,8 @@ class gnutest : public xClient {
     virtual void OnNetConf(iServer* theServer, std::string_view key) override;
     virtual void OnRemNetConf(iServer* theServer, std::string_view key) override;
 
-    virtual void OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) override;
-    virtual void OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) override;
-    virtual void OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) override;
+    virtual void OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser,
+                        JoinKind kind) override;
     virtual void OnPart(Channel* theChan, iClient* theClient, std::string_view message) override;
     virtual void OnTopic(Channel* theChan, iClient* theClient, std::string_view topic) override;
     virtual void OnServerMode(Channel* theChan, iServer* theServer) override;

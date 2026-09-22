@@ -152,8 +152,7 @@ class chanfix : public xClient {
      * These are invoked for each of the channel events this client has
      * registered to receive, on one of the channels it watches.
      */
-    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
-    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*, JoinKind) override;
     virtual void OnNetworkKick(Channel*, iClient*, iClient*, const std::string&, bool) override;
     virtual void OnPart(Channel*, iClient*, std::string_view) override;
     virtual void OnServerMode(Channel*, iServer*) override;

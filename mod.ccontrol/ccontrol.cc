@@ -1254,11 +1254,13 @@ void ccontrol::opJoiningOper(Channel* theChan, iClient* theClient) {
     }
 }
 
-void ccontrol::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
-    opJoiningOper(theChan, theClient);
-}
+void ccontrol::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*, JoinKind kind) {
+    if (JoinKind::Create == kind) {
+        // Preserving what the three separate handlers did: OnCreate() was not
+        // overridden, so a create went nowhere.
+        return;
+    }
 
-void ccontrol::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
     opJoiningOper(theChan, theClient);
 }
 
