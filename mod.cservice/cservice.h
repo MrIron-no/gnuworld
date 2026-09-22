@@ -421,37 +421,61 @@ class cservice : public xClient {
     cservice(const string& args);
     virtual ~cservice();
 
-    virtual void OnConnect();
-    virtual void BurstChannels();
-    virtual void OnPrivateMessage(iClient*, const string&, bool = false);
-    virtual void OnChannelCTCP(iClient*, Channel*, const string&, const string&);
-    virtual void OnChannelMessage(iClient*, Channel*, const string&);
-    virtual void OnChannelNotice(iClient*, Channel*, const string&);
+    virtual void OnConnect() override;
+    virtual void BurstChannels() override;
+    virtual void OnPrivateMessage(iClient*, const string&, bool = false) override;
+    virtual void OnChannelCTCP(iClient*, Channel*, const string&, const string&) override;
+    virtual void OnChannelMessage(iClient*, Channel*, const string&) override;
+    virtual void OnChannelNotice(iClient*, Channel*, const string&) override;
+    void handleChannelJoin(Channel*, iClient*, bool burstJoin);
     void handleChannelPart(iClient*, Channel*, const string&);
-    virtual void OnAttach();
-    virtual void OnShutdown(const string&);
-    virtual bool isOnChannel(const string&) const;
+    void handleClientExit(iClient*, const string& quitEvent);
+    virtual void OnAttach() override;
+    virtual void OnShutdown(const string&) override;
+    virtual bool isOnChannel(const string&) const override;
     virtual bool RegisterCommand(Command*);
     virtual bool UnRegisterCommand(const string&);
-    virtual void OnChannelModeV(Channel*, ChannelUser*, const xServer::voiceVectorType&);
-    virtual void OnChannelModeO(Channel*, ChannelUser*, const xServer::opVectorType&);
-    virtual void OnChannelEvent(const channelEventType& whichEvent, Channel* theChan, void* data1,
-                                void* data2, void* data3, void* data4);
-    virtual void OnEvent(const eventType&, void*, void*, void*, void*);
+    virtual void OnChannelModeV(Channel*, ChannelUser*, const xServer::voiceVectorType&) override;
+    virtual void OnChannelModeO(Channel*, ChannelUser*, const xServer::opVectorType&) override;
+
+    /**
+     * These are invoked for each of the channel events this client has
+     * registered to receive, on one of the channels it watches.
+     */
+    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnCreate(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnPart(Channel*, iClient*, std::string_view) override;
+
+    /**
+     * These are invoked for each of the network events this client has
+     * registered to receive.
+     */
+    virtual void OnAccount(iClient*) override;
+    virtual void OnBurstAck(iServer*) override;
+    virtual void OnGline(Gline*) override;
+    virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;
+    virtual void OnNetBreak(iServer*, const iServer*, std::string_view) override;
+    virtual void OnNick(iClient*) override;
+    virtual void OnQuit(iClient*, std::string_view) override;
+    virtual void OnRemGline(Gline*) override;
+    virtual void OnXQuery(iServer*, std::string_view, std::string_view) override;
+    virtual void OnXReply(iServer*, std::string_view, std::string_view) override;
+
     virtual void OnCTCP(iClient* Sender, const string& CTCP, const string& Message,
-                        bool Secure = false);
-    virtual void OnTimer(const xServer::timerID&, void*);
-    virtual void OnJoin(const std::string&);
-    virtual bool Notice(const iClient*, const string&);
+                        bool Secure = false) override;
+    virtual void OnTimer(const xServer::timerID&, void*) override;
+    virtual void OnJoin(const std::string&) override;
+    virtual bool Notice(const iClient*, const string&) override;
 
-    virtual bool Topic(Channel*, const std::string&);
+    virtual bool Topic(Channel*, const std::string&) override;
 
-    virtual void OnWhois(iClient* sourceClient, iClient* targetClient);
+    virtual void OnWhois(iClient* sourceClient, iClient* targetClient) override;
 
-    virtual bool Kick(Channel*, iClient*, const std::string&, bool modeAsServer = false);
+    virtual bool Kick(Channel*, iClient*, const std::string&, bool modeAsServer = false) override;
 
     virtual bool Kick(Channel*, const std::vector<iClient*>&, const std::string&,
-                      bool modeAsServer = false);
+                      bool modeAsServer = false) override;
 
     virtual bool Kick(Channel*, const string&, const std::string&, bool modeAsServer = false);
 

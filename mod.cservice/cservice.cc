@@ -4358,206 +4358,194 @@ void cservice::OnChannelModeO(Channel* theChan, ChannelUser* theChanUser,
     }
 }
 
-void cservice::OnEvent(const eventType& theEvent, void* data1, void* data2, void* data3,
-                       void* data4) {
-    switch (theEvent) {
-    case EVT_NETBREAK: {
-        iServer* theServer = static_cast<iServer*>(data1);
-        saslRequests.erase(
-            std::remove_if(saslRequests.begin(), saslRequests.end(),
-                           [&](const SaslRequest& req) { return req.theServer == theServer; }),
-            saslRequests.end());
-        break;
-    }
-    case EVT_XQUERY: {
-        iServer* theServer = static_cast<iServer*>(data1);
-        const char* Routing = reinterpret_cast<char*>(data2);
-        const char* Message = reinterpret_cast<char*>(data3);
-        // elog << "CSERVICE.CC XQUERY: " << theServer->getName() << " " << Routing << " " <<
-        // Message << endl;
-        // As it is possible to run multiple GNUWorld clients on one server, first parameter should
-        // be a nickname. If it ain't us, ignore the message, the message is probably meant for
-        // another client here.
-        StringTokenizer st(Message);
-        if (st.size() < 2) {
-            // No command or no nick supplied
-            break;
-        }
-        string Command = string_upper(st[0]);
-        if ((Command == "LOGIN") || (Command == "LOGIN2")) {
-            doXQLogin(theServer, Routing, Message);
-        }
+void cservice::OnNetBreak(iServer* theServer, const iServer*, std::string_view) {
+    saslRequests.erase(
+        std::remove_if(saslRequests.begin(), saslRequests.end(),
+                       [&](const SaslRequest& req) { return req.theServer == theServer; }),
+        saslRequests.end());
+}
 
-        if ((Command == "ISUSER") || (Command == "ISCHAN")) {
-            doXQIsCheck(theServer, Routing, Command, Message);
-        }
-        if (Command == "SASL") {
-            doXQSASL(theServer, Routing, Message);
-        }
-        break;
+void cservice::OnXQuery(iServer* theServer, std::string_view routing, std::string_view message) {
+    const string Routing(routing);
+    const string Message(message);
+    // elog << "CSERVICE.CC XQUERY: " << theServer->getName() << " " << Routing << " " <<
+    // Message << endl;
+    // As it is possible to run multiple GNUWorld clients on one server, first parameter should
+    // be a nickname. If it ain't us, ignore the message, the message is probably meant for
+    // another client here.
+    StringTokenizer st(Message);
+    if (st.size() < 2) {
+        // No command or no nick supplied
+        return;
     }
-    case EVT_XREPLY: {
-        iServer* theServer = static_cast<iServer*>(data1);
-        const char* Routing = reinterpret_cast<char*>(data2);
-        const char* Message = reinterpret_cast<char*>(data3);
-        LOG_MSG(TRACE, "XREPLY: {server} {} {}", string(Routing), string(Message))
-            .with("server", theServer)
-            .log();
-        // As it is possible to run multiple GNUWorld clients on one server, first
-        // parameter should be a nickname. If it ain't us, ignore the message, the message is
-        // probably meant for another client here.
-        StringTokenizer st(Message);
-        if (st.size() < 2) {
-            // No command or data supplied
-            break;
-        }
-        string Command = string_upper(st[0]);
-        if (Command == "OPLIST") {
-            // Process the channel OPLIST data from mod.openchanfix
-            doXROplist(theServer, Routing, Message);
-        }
+    string Command = string_upper(st[0]);
+    if ((Command == "LOGIN") || (Command == "LOGIN2")) {
+        doXQLogin(theServer, Routing, Message);
+    }
+
+    if ((Command == "ISUSER") || (Command == "ISCHAN")) {
+        doXQIsCheck(theServer, Routing, Command, Message);
+    }
+    if (Command == "SASL") {
+        doXQSASL(theServer, Routing, Message);
+    }
+}
+
+void cservice::OnXReply(iServer* theServer, std::string_view routing, std::string_view message) {
+    const string Routing(routing);
+    const string Message(message);
+    LOG_MSG(TRACE, "XREPLY: {server} {} {}", Routing, Message).with("server", theServer).log();
+    // As it is possible to run multiple GNUWorld clients on one server, first
+    // parameter should be a nickname. If it ain't us, ignore the message, the message is
+    // probably meant for another client here.
+    StringTokenizer st(Message);
+    if (st.size() < 2) {
+        // No command or data supplied
+        return;
+    }
+    string Command = string_upper(st[0]);
+    if (Command == "OPLIST") {
+        // Process the channel OPLIST data from mod.openchanfix
+        doXROplist(theServer, Routing, Message);
+    }
 #ifdef THERETURN_ENABLED
-        if (Command == "REG" || Command == "PURGE" || Command == "PART" || Command == "JOIN") {
-            doXRW(theServer, Command, Message);
-        }
-#endif // THERETURN_ENABLED
-        break;
+    if (Command == "REG" || Command == "PURGE" || Command == "PART" || Command == "JOIN") {
+        doXRW(theServer, Command, Message);
     }
-    case EVT_ACCOUNT: {
-        iClient* tmpUser = static_cast<iClient*>(data1);
-        networkData* tmpData = static_cast<networkData*>(tmpUser->getCustomData(this));
+#endif // THERETURN_ENABLED
+}
+
+void cservice::OnAccount(iClient* tmpUser) {
+    networkData* tmpData = static_cast<networkData*>(tmpUser->getCustomData(this));
+
+    if (!tmpData) {
+        /* A client already here when we attached never met OnNick(). */
+        return;
+    }
+
+    /* Lookup this user account, if its not there.. trouble */
+    sqlUser* theUser = getUserRecord(tmpUser->getAccount());
+    if (theUser) {
+        tmpData->currentUser = theUser;
+        theUser->addAuthedClient(tmpUser);
+    }
+}
+
+void cservice::OnBurstAck(iServer*) {
+    //	if ( theServer == MyUplink->Uplink )
+    //		{
+    //		}
+}
+
+void cservice::OnQuit(iClient* theClient, std::string_view) { handleClientExit(theClient, "QUIT"); }
+
+void cservice::OnKill(const NetworkTarget*, iClient* theClient, std::string_view) {
+    handleClientExit(theClient, "KILL");
+}
+
+/**
+ *  A client has left the network, killed or quit.
+ *  We need to deauth this user if they're authed.
+ *  Also, clean up their custom data memory.
+ */
+void cservice::handleClientExit(iClient* tmpUser, const string& quitEvent) {
+    sqlUser* tmpSqlUser = isAuthed(tmpUser, false);
+    if (tmpSqlUser) {
+        tmpSqlUser->removeAuthedClient(tmpUser);
+        tmpSqlUser->removeFlag(sqlUser::F_LOGGEDIN);
+        LOG_MSG(TRACE, "Deauthenticated client {client_nick} from user: {user_name}")
+            .with("client", tmpUser)
+            .with("user", tmpSqlUser)
+            .with("quit_event", quitEvent)
+            .logStructured();
+    }
+
+    // Clear up the custom data structure we appended to
+    // this iClient.
+    networkData* tmpData = static_cast<networkData*>(tmpUser->getCustomData(this));
+    tmpUser->removeCustomData(this);
+
+    delete (tmpData);
+    customDataAlloc--;
+}
+
+void cservice::OnNick(iClient* tmpUser) {
+    /*
+     *  Give this new user a custom data structure!
+     */
+    networkData* newData = new (std::nothrow) networkData();
+    assert(newData != 0);
+
+    customDataAlloc++;
+
+    // Not authed.. (yet!)
+    newData->currentUser = NULL;
+    tmpUser->setCustomData(this, static_cast<void*>(newData));
+
+    /*
+     * Well.. they might be already auth'd.
+     * In which case, we'll receieve mode r and accountname for
+     * this person.
+     */
+    if (tmpUser->isModeR()) {
         /* Lookup this user account, if its not there.. trouble */
         sqlUser* theUser = getUserRecord(tmpUser->getAccount());
         if (theUser) {
-            tmpData->currentUser = theUser;
+            /* This function check whether the account flags are correct, if not send update. */
+            sendAccountFlags(theUser, tmpUser);
+        }
+
+        iServer* tmpServer = Network->findServer(tmpUser->getIntYY());
+        if ((this->getUplink()->isBursting() || tmpServer->isBursting()) && theUser) {
+            newData->currentUser = theUser;
             theUser->addAuthedClient(tmpUser);
-        }
-        break;
+        } else
+            doCommonAuth(tmpUser);
     }
-    case EVT_BURST_ACK: {
-        //		iServer* theServer = static_cast< iServer* >( data1 );
-        //		if ( theServer == MyUplink->Uplink )
-        //			{
-        //			}
-        break;
+}
+
+void cservice::OnGline(Gline* newG) {
+    if (!newG) // TODO: find out how we get this (Do we even ever get this?)
+    {
+        return;
     }
-    case EVT_QUIT:
-    case EVT_KILL: {
-        /*
-         *  We need to deauth this user if they're authed.
-         *  Also, clean up their custom data memory.
-         */
 
-        iClient* tmpUser =
-            (theEvent == EVT_QUIT) ? static_cast<iClient*>(data1) : static_cast<iClient*>(data2);
-
-        sqlUser* tmpSqlUser = isAuthed(tmpUser, false);
-        if (tmpSqlUser) {
-            tmpSqlUser->removeAuthedClient(tmpUser);
-            tmpSqlUser->removeFlag(sqlUser::F_LOGGEDIN);
-            LOG_MSG(TRACE, "Deauthenticated client {client_nick} from user: {user_name}")
-                .with("client", tmpUser)
-                .with("user", tmpSqlUser)
-                .with("quit_event", (theEvent == EVT_QUIT) ? "QUIT" : "KILL")
-                .logStructured();
-        }
-
-        // Clear up the custom data structure we appended to
-        // this iClient.
-        networkData* tmpData = static_cast<networkData*>(tmpUser->getCustomData(this));
-        tmpUser->removeCustomData(this);
-
-        delete (tmpData);
-        customDataAlloc--;
-
-        break;
-    } // case EVT_KILL/case EVT_QUIT
-
-    case EVT_NICK: {
-        /*
-         *  Give this new user a custom data structure!
-         */
-        iClient* tmpUser = static_cast<iClient*>(data1);
-        networkData* newData = new (std::nothrow) networkData();
-        assert(newData != 0);
-
-        customDataAlloc++;
-
-        // Not authed.. (yet!)
-        newData->currentUser = NULL;
-        tmpUser->setCustomData(this, static_cast<void*>(newData));
-
-        /*
-         * Well.. they might be already auth'd.
-         * In which case, we'll receieve mode r and accountname for
-         * this person.
-         */
-        if (tmpUser->isModeR()) {
-            /* Lookup this user account, if its not there.. trouble */
-            sqlUser* theUser = getUserRecord(tmpUser->getAccount());
-            if (theUser) {
-                /* This function check whether the account flags are correct, if not send update. */
-                sendAccountFlags(theUser, tmpUser);
-            }
-
-            iServer* tmpServer = Network->findServer(tmpUser->getIntYY());
-            if ((this->getUplink()->isBursting() || tmpServer->isBursting()) && theUser) {
-                newData->currentUser = theUser;
-                theUser->addAuthedClient(tmpUser);
-            } else
-                doCommonAuth(tmpUser);
-        }
-        break;
-    } // case EVT_NICK
-    case EVT_GLINE: {
-        if (!data1) // TODO: find out how we get this (Do we even ever get this?)
-        {
+    csGline* newGline = findGline(newG->getUserHost());
+    if (!newGline) {
+        newGline = new (std::nothrow) csGline(this);
+        assert(newGline != NULL);
+        iServer* serverAdded = Network->findServer(newG->getSetBy());
+        if (serverAdded)
+            newGline->setAddedBy(serverAdded->getName());
+        else
+            newGline->setAddedBy("Unknown");
+    } else {
+        if (newGline->getLastUpdated() >= newG->getLastmod()) {
             return;
         }
-        Gline* newG = static_cast<Gline*>(data1);
+    }
+    newGline->setAddedOn(::time(0));
+    newGline->setHost(newG->getUserHost());
+    newGline->setReason(newG->getReason());
+    newGline->setExpires(newG->getExpiration());
 
-        csGline* newGline = findGline(newG->getUserHost());
-        if (!newGline) {
-            newGline = new (std::nothrow) csGline(this);
-            assert(newGline != NULL);
-            iServer* serverAdded = Network->findServer(newG->getSetBy());
-            if (serverAdded)
-                newGline->setAddedBy(serverAdded->getName());
-            else
-                newGline->setAddedBy("Unknown");
-        } else {
-            if (newGline->getLastUpdated() >= newG->getLastmod()) {
-                return;
-            }
-        }
-        newGline->setAddedOn(::time(0));
-        newGline->setHost(newG->getUserHost());
-        newGline->setReason(newG->getReason());
-        newGline->setExpires(newG->getExpiration());
+    newGline->Insert();
+    newGline->loadData(newGline->getHost());
 
-        newGline->Insert();
-        newGline->loadData(newGline->getHost());
+    addGline(newGline);
+}
 
-        addGline(newGline);
+void cservice::OnRemGline(Gline* newG) {
+    if (!newG) {
+        return;
+    }
 
-        break;
-    } // case EVT_GLINE
-    case EVT_REMGLINE: {
-        if (!data1) {
-            return;
-        }
-
-        Gline* newG = static_cast<Gline*>(data1);
-        csGline* newGline = findGline(newG->getUserHost());
-        if (newGline) {
-            remGline(newGline);
-            newGline->Delete();
-            delete newGline;
-        }
-        break;
-    } // case EVT_REMGLINE
-    } // switch()
-    xClient::OnEvent(theEvent, data1, data2, data3, data4);
+    csGline* newGline = findGline(newG->getUserHost());
+    if (newGline) {
+        remGline(newGline);
+        newGline->Delete();
+        delete newGline;
+    }
 }
 
 /**
@@ -4842,247 +4830,234 @@ void cservice::doTheRightThing(Channel* tmpChan) {
     return;
 }
 
+void cservice::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
+    handleChannelJoin(theChan, theClient, true);
+}
+
+void cservice::OnCreate(Channel* theChan, iClient* theClient, ChannelUser*) {
+    handleChannelJoin(theChan, theClient, false);
+}
+
+void cservice::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
+    handleChannelJoin(theChan, theClient, false);
+}
+
 /**
- * Handler for registered channel events.
+ * Handler for a client appearing on a registered channel, by joining it, by
+ * creating it, or with the burst of the server it is on.
  * Performs a number of functions, autoop, autovoice, bankicks, etc.
  */
-void cservice::OnChannelEvent(const channelEventType& whichEvent, Channel* theChan, void* data1,
-                              void* data2, void* data3, void* data4) {
-    iClient* theClient = 0;
-    bool burstJoin = false;
+void cservice::handleChannelJoin(Channel* theChan, iClient* theClient, bool burstJoin) {
+    /*
+     * We should only ever recieve events for registered channels, or those
+     * that are 'pending'. If we do get past the pending check, there must be
+     * some kind of database inconsistancy.
+     */
 
-    switch (whichEvent) {
-    case EVT_BURST:
-        burstJoin = true;
-        // fall through
-    case EVT_CREATE:
-    case EVT_JOIN: {
+    pendingChannelListType::iterator ptr = pendingChannelList.find(theChan->getName());
+
+    if (ptr != pendingChannelList.end() && (!isDBRegisteredChannel(theChan->getName()))) {
         /*
-         * We should only ever recieve events for registered channels, or those
-         * that are 'pending'. If we do get past the pending check, there must be
-         * some kind of database inconsistancy.
+         * Firstly, is this join a result of a server bursting onto the network?
+         * If this is the case, its not a manual /join.
          */
 
-        theClient = static_cast<iClient*>(data1);
-
-        pendingChannelListType::iterator ptr = pendingChannelList.find(theChan->getName());
-
-        if (ptr != pendingChannelList.end() && (!isDBRegisteredChannel(theChan->getName()))) {
+        if (!burstJoin) {
             /*
-             * Firstly, is this join a result of a server bursting onto the network?
-             * If this is the case, its not a manual /join.
+             *  Yes, this channel is pending registration, update join count
+             *  and check out this user joining.
              */
 
-            if (!burstJoin) {
-                /*
-                 *  Yes, this channel is pending registration, update join count
-                 *  and check out this user joining.
-                 */
+            ptr->second->join_count++;
 
-                ptr->second->join_count++;
+            /*
+             *  Now, has this users IP joined this channel before?
+             *  If not - we keep a record of it.
+             */
 
-                /*
-                 *  Now, has this users IP joined this channel before?
-                 *  If not - we keep a record of it.
-                 */
+            string NumericIP = fixToCIDR64(theClient->getNumericIP());
 
-                string NumericIP = fixToCIDR64(theClient->getNumericIP());
+            sqlPendingChannel::trafficListType::iterator Tptr =
+                ptr->second->trafficList.find(NumericIP);
 
-                sqlPendingChannel::trafficListType::iterator Tptr =
-                    ptr->second->trafficList.find(NumericIP);
+            sqlPendingTraffic* trafRecord;
 
-                sqlPendingTraffic* trafRecord;
+            /*
+             * If we have more than 50 unique IP's join, we don't bother
+             * recording anymore.
+             */
 
-                /*
-                 * If we have more than 50 unique IP's join, we don't bother
-                 * recording anymore.
-                 */
+            if (ptr->second->unique_join_count < 50) {
+                if (Tptr == ptr->second->trafficList.end()) {
+                    /* New IP, create and write the record. */
 
-                if (ptr->second->unique_join_count < 50) {
-                    if (Tptr == ptr->second->trafficList.end()) {
-                        /* New IP, create and write the record. */
+                    trafRecord = new (std::nothrow) sqlPendingTraffic(this);
+                    trafRecord->ip_number = NumericIP;
+                    trafRecord->join_count = 1;
+                    trafRecord->channel_id = ptr->second->channel_id;
+                    trafRecord->insertRecord();
 
-                        trafRecord = new (std::nothrow) sqlPendingTraffic(this);
-                        trafRecord->ip_number = NumericIP;
-                        trafRecord->join_count = 1;
-                        trafRecord->channel_id = ptr->second->channel_id;
-                        trafRecord->insertRecord();
-
-                        ptr->second->trafficList.insert(
-                            sqlPendingChannel::trafficListType::value_type(NumericIP, trafRecord));
-                        LOG_MSG(DEBUG, "Created a new IP traffic record for IP#{ip} "
-                                       "({client_userhost}) on {chan_name}")
-                            .with("ip", NumericIP)
-                            .with("client", theClient)
-                            .with("chan", theChan)
-                            .logStructured();
-                    } else {
-                        /* Already cached, update and save. */
-                        trafRecord = Tptr->second;
-                        trafRecord->join_count++;
-                        trafRecord->commit();
-                    }
-
-                    ptr->second->unique_join_count = ptr->second->trafficList.size();
-                    ptr->second->commit();
-
-                    // logDebugMessage("New total for IP#%u on %s is %i",
-                    //	theClient->getIP(), theChan->getName().c_str(),
-                    //	trafRecord->join_count);
-                }
-
-                sqlUser* theUser = isAuthed(theClient, false);
-                if (!theUser) {
-                    /*
-                     *  If this user isn't authed, he can't possibly be flagged
-                     *  as one of the valid supporters, so we drop out.
-                     */
-
-                    xClient::OnChannelEvent(whichEvent, theChan, data1, data2, data3, data4);
-                    return;
-                }
-
-                /*
-                 * Now, if this guy is a supporter, we bump his join count up.
-                 */
-
-                sqlPendingChannel::supporterListType::iterator Supptr =
-                    ptr->second->supporterList.find(theUser->getID());
-                if (Supptr != ptr->second->supporterList.end()) {
-                    Supptr->second++;
-                    ptr->second->commitSupporter(Supptr->first, Supptr->second);
-                    LOG_MSG(DEBUG, "New total for Supporter #{user_id} ({user_name}) on "
-                                   "{chan_name} is {supporters}.")
-                        .with("user_id", theUser->getID())
-                        .with("user_name", theUser->getUserName())
+                    ptr->second->trafficList.insert(
+                        sqlPendingChannel::trafficListType::value_type(NumericIP, trafRecord));
+                    LOG_MSG(DEBUG, "Created a new IP traffic record for IP#{ip} "
+                                   "({client_userhost}) on {chan_name}")
+                        .with("ip", NumericIP)
+                        .with("client", theClient)
                         .with("chan", theChan)
-                        .with("supporters", Supptr->second)
                         .logStructured();
+                } else {
+                    /* Already cached, update and save. */
+                    trafRecord = Tptr->second;
+                    trafRecord->join_count++;
+                    trafRecord->commit();
                 }
 
-                xClient::OnChannelEvent(whichEvent, theChan, data1, data2, data3, data4);
+                ptr->second->unique_join_count = ptr->second->trafficList.size();
+                ptr->second->commit();
+
+                // logDebugMessage("New total for IP#%u on %s is %i",
+                //	theClient->getIP(), theChan->getName().c_str(),
+                //	trafRecord->join_count);
+            }
+
+            sqlUser* theUser = isAuthed(theClient, false);
+            if (!theUser) {
+                /*
+                 *  If this user isn't authed, he can't possibly be flagged
+                 *  as one of the valid supporters, so we drop out.
+                 */
+
                 return;
+            }
 
-            } /* Is server bursting? */
-        } /* Is channel on pending list */
+            /*
+             * Now, if this guy is a supporter, we bump his join count up.
+             */
 
-        sqlChannel* reggedChan = getChannelRecord(theChan->getName());
-        if (!reggedChan) {
-            //			elog	<< "cservice::OnChannelEvent> WARNING, "
-            //				<< "unable to locate channel record"
-            //				<< " for registered channel event: "
-            //				<< theChan->getName()
-            //				<< endl;
+            sqlPendingChannel::supporterListType::iterator Supptr =
+                ptr->second->supporterList.find(theUser->getID());
+            if (Supptr != ptr->second->supporterList.end()) {
+                Supptr->second++;
+                ptr->second->commitSupporter(Supptr->first, Supptr->second);
+                LOG_MSG(DEBUG, "New total for Supporter #{user_id} ({user_name}) on "
+                               "{chan_name} is {supporters}.")
+                    .with("user_id", theUser->getID())
+                    .with("user_name", theUser->getUserName())
+                    .with("chan", theChan)
+                    .with("supporters", Supptr->second)
+                    .logStructured();
+            }
+
             return;
-        }
 
-        /* This is a registered channel, check it is set +R.
-         * If not, set it to +R (channel creation)
-         */
-        if (!theChan->getMode(Channel::MODE_REGISTERED)) {
-            // With the time the channel was registered with: if that is older
-            // than the channel's, the network takes it over
-            MyUplink->Mode(theChan, "+R", string(), nullptr, reggedChan->getChannelTS());
-        }
+        } /* Is server bursting? */
+    } /* Is channel on pending list */
 
-        /* If this is a registered channel, but we're not in it -
-         * then we're not interested in the following commands!
-         */
-        if (!reggedChan->getInChan()) {
-            break;
-        }
+    sqlChannel* reggedChan = getChannelRecord(theChan->getName());
+    if (!reggedChan) {
+        //			elog	<< "cservice::handleChannelJoin> WARNING, "
+        //				<< "unable to locate channel record"
+        //				<< " for registered channel event: "
+        //				<< theChan->getName()
+        //				<< endl;
+        return;
+    }
 
-        /*
-         * First thing we do - check if this person is banned.
-         * If so, they're booted out.
-         */
+    /* This is a registered channel, check it is set +R.
+     * If not, set it to +R (channel creation)
+     */
+    if (!theChan->getMode(Channel::MODE_REGISTERED)) {
+        // With the time the channel was registered with: if that is older
+        // than the channel's, the network takes it over
+        MyUplink->Mode(theChan, "+R", string(), nullptr, reggedChan->getChannelTS());
+    }
 
-        if (checkBansOnJoin(theChan, reggedChan, theClient)) {
-            break;
-        }
+    /* If this is a registered channel, but we're not in it -
+     * then we're not interested in the following commands!
+     */
+    if (!reggedChan->getInChan()) {
+        return;
+    }
+
+    /*
+     * First thing we do - check if this person is banned.
+     * If so, they're booted out.
+     */
+
+    if (checkBansOnJoin(theChan, reggedChan, theClient)) {
+        return;
+    }
 
 #ifdef USE_WELCOME
-        if (strlen(reggedChan->getWelcome().c_str()) > 0) {
-            Notice(theClient, "(%s) %s", theChan->getName().c_str(),
-                   reggedChan->getWelcome().c_str());
-        }
+    if (strlen(reggedChan->getWelcome().c_str()) > 0) {
+        Notice(theClient, "(%s) %s", theChan->getName().c_str(), reggedChan->getWelcome().c_str());
+    }
 #endif
 
-        /* Is it time to set an autotopic? */
-        if (reggedChan->getFlag(sqlChannel::F_AUTOTOPIC) &&
-            (reggedChan->getLastTopic() + topic_duration <= currentTime())) {
-            doAutoTopic(reggedChan);
-        }
-
-        sqlUser* theUser = isAuthed(theClient, false);
-        /**
-         * Check if JOINLIM is enabled, and this is a unidented host,
-         * user is not logged in, and the nick is not from a bursting server.
-         */
-        if (!theUser && theClient->getUserName()[0] == '~' &&
-            reggedChan->getFlag(sqlChannel::F_JOINLIM) && !burstJoin)
-            doJoinLimit(reggedChan, theChan);
-
-        /* Deal with auto-op first - check this users access level. */
-        if (!theUser) {
-            /* If not authed, bye. */
-            break;
-        }
-
-        /* Check access in this channel. */
-        int accessLevel = getEffectiveAccessLevel(theUser, reggedChan, false);
-        if (!accessLevel) {
-            /* No access.. */
-            break;
-        }
-
-        sqlLevel* theLevel = getLevelRecord(theUser, reggedChan);
-        if (!theLevel) {
-            break;
-        }
-
-        /* Auto voice? */
-        if (theLevel->getFlag(sqlLevel::F_AUTOVOICE)) {
-            if (!reggedChan->getFlag(sqlChannel::F_NOVOICE))
-                Voice(theChan, theClient);
-            break;
-        }
-
-        /* Check noop isn't set */
-        if (reggedChan->getFlag(sqlChannel::F_NOOP)) {
-            break;
-        }
-
-        /* Check strictop isn't on, and this user is < 100 */
-        if (reggedChan->getFlag(sqlChannel::F_STRICTOP)) {
-            if (!(accessLevel >= level::op)) {
-                break;
-            }
-        }
-
-        /* Next, see if they have auto op set. */
-        if (theLevel->getFlag(sqlLevel::F_AUTOOP)) {
-            Op(theChan, theClient);
-            break;
-        }
-        break;
+    /* Is it time to set an autotopic? */
+    if (reggedChan->getFlag(sqlChannel::F_AUTOTOPIC) &&
+        (reggedChan->getLastTopic() + topic_duration <= currentTime())) {
+        doAutoTopic(reggedChan);
     }
-    case EVT_PART: {
-        theClient = static_cast<iClient*>(data1);
-        string partMsg;
-        if (data2 != NULL)
-            partMsg = string(*(static_cast<string*>(data2)));
-        LOG_MSG(TRACE, "{} Part {chan} ({})", theClient->getNickName(), partMsg)
-            .with("chan", theChan)
-            .log();
-        handleChannelPart(theClient, theChan, partMsg);
-        break;
-    }
-    default:
-        break;
-    } // switch()
 
-    xClient::OnChannelEvent(whichEvent, theChan, data1, data2, data3, data4);
+    sqlUser* theUser = isAuthed(theClient, false);
+    /**
+     * Check if JOINLIM is enabled, and this is a unidented host,
+     * user is not logged in, and the nick is not from a bursting server.
+     */
+    if (!theUser && theClient->getUserName()[0] == '~' &&
+        reggedChan->getFlag(sqlChannel::F_JOINLIM) && !burstJoin)
+        doJoinLimit(reggedChan, theChan);
+
+    /* Deal with auto-op first - check this users access level. */
+    if (!theUser) {
+        /* If not authed, bye. */
+        return;
+    }
+
+    /* Check access in this channel. */
+    int accessLevel = getEffectiveAccessLevel(theUser, reggedChan, false);
+    if (!accessLevel) {
+        /* No access.. */
+        return;
+    }
+
+    sqlLevel* theLevel = getLevelRecord(theUser, reggedChan);
+    if (!theLevel) {
+        return;
+    }
+
+    /* Auto voice? */
+    if (theLevel->getFlag(sqlLevel::F_AUTOVOICE)) {
+        if (!reggedChan->getFlag(sqlChannel::F_NOVOICE))
+            Voice(theChan, theClient);
+        return;
+    }
+
+    /* Check noop isn't set */
+    if (reggedChan->getFlag(sqlChannel::F_NOOP)) {
+        return;
+    }
+
+    /* Check strictop isn't on, and this user is < 100 */
+    if (reggedChan->getFlag(sqlChannel::F_STRICTOP)) {
+        if (!(accessLevel >= level::op)) {
+            return;
+        }
+    }
+
+    /* Next, see if they have auto op set. */
+    if (theLevel->getFlag(sqlLevel::F_AUTOOP)) {
+        Op(theChan, theClient);
+    }
+}
+
+void cservice::OnPart(Channel* theChan, iClient* theClient, std::string_view message) {
+    const string partMsg(message);
+    LOG_MSG(TRACE, "{} Part {chan} ({})", theClient->getNickName(), partMsg)
+        .with("chan", theChan)
+        .log();
+    handleChannelPart(theClient, theChan, partMsg);
 }
 
 /**

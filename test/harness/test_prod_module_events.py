@@ -35,12 +35,13 @@ import pytest
 import ccontrol_client as cc
 import cservice_client as cs
 from conftest import (
+    _prepare_conf_dir,
     link_ccontrol_logging,
     link_cservice_logging,
     link_module,
     require_module,
 )
-from gnuworld_proc import COMPOSE_FILE, HARNESS_DIR
+from gnuworld_proc import COMPOSE_FILE, CONTAINER_UPLINK, HARNESS_DIR, GnuworldProc
 from p10 import p10_token, strip_msg_tags
 
 PERMIT_ACCOUNT = "MrIron"  # the account mod.debug's harness config permits
@@ -381,6 +382,65 @@ async def test_cservice_sees_a_part_of_a_registered_channel(docker_stack, fake_h
         finally:
             await cs.run(hub, admin, f"purge {chan} pinning events")
             unregister(chan)
+
+
+@pytest.mark.asyncio
+async def test_cservice_takes_an_account_for_a_client_it_never_saw_arrive(
+        docker_stack, fake_hub_p11, tmp_path):
+    """EVT_ACCOUNT for a client that was already on the network at OnAttach().
+
+    X hangs its per-client record off the client in its EVT_NICK handler, so a
+    client whose N was posted before X registered for EVT_NICK has none.  A
+    module ahead of X in GNUWorld.conf has exactly such a client:
+    xServer::AttachClient() posts the N for a module's own client, and it
+    attaches that module first.  An AC for that client then reaches X's account
+    handler with no record to write the account through.
+    """
+    require_module("cservice")
+    require_module("gnutest")
+    require_module("debug")
+    docker_stack.up()  # Postgres
+    hub = fake_hub_p11
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
+    GnuworldProc.write_cservice_config(conf_dir / "cservice.conf")
+    GnuworldProc.write_debug_config(conf_dir / "debug.conf")
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        # mod.gnutest first: its client is on the network before X attaches
+        module_lines=f"module = libgnutest.la {root}/gnutest.conf\n"
+        f"module = libcservice.la {root}/cservice.conf\n"
+        f"module = libdebug.la {root}/debug.conf",
+    )
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=90.0)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        assert hub.get_user_numnick("X"), "mod.cservice did not introduce X"
+        older = hub.get_user_numnick("gnutest")
+        assert older, "mod.gnutest did not introduce a client of its own"
+
+        # The account has to be one X can look up, or its handler stops before
+        # the record it would have written through
+        admin = await cs.login(hub)
+        assert await authed_nicks(hub, admin) == {"adminone"}
+
+        # X's one consequence here is that nothing happens: there is no record
+        # to put the account in.  A crash is what used to happen instead, so
+        # let the process be reaped and read alive() before the wire, which
+        # would otherwise report a link that closed and not why.
+        await hub.send_account(older, "Admin")
+        await asyncio.sleep(1.0)
+        alive(proc)
+        assert await authed_nicks(hub, admin) == {"adminone"}
+    finally:
+        await proc.terminate()
 
 
 # ==========================================================================
