@@ -4821,16 +4821,8 @@ void cservice::doTheRightThing(Channel* tmpChan) {
     return;
 }
 
-void cservice::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
-    handleChannelJoin(theChan, theClient, true);
-}
-
-void cservice::OnCreate(Channel* theChan, iClient* theClient, ChannelUser*) {
-    handleChannelJoin(theChan, theClient, false);
-}
-
-void cservice::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
-    handleChannelJoin(theChan, theClient, false);
+void cservice::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*, JoinKind kind) {
+    handleChannelJoin(theChan, theClient, kind);
 }
 
 /**
@@ -4838,7 +4830,7 @@ void cservice::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
  * creating it, or with the burst of the server it is on.
  * Performs a number of functions, autoop, autovoice, bankicks, etc.
  */
-void cservice::handleChannelJoin(Channel* theChan, iClient* theClient, bool burstJoin) {
+void cservice::handleChannelJoin(Channel* theChan, iClient* theClient, JoinKind kind) {
     /*
      * We should only ever recieve events for registered channels, or those
      * that are 'pending'. If we do get past the pending check, there must be
@@ -4853,7 +4845,7 @@ void cservice::handleChannelJoin(Channel* theChan, iClient* theClient, bool burs
          * If this is the case, its not a manual /join.
          */
 
-        if (!burstJoin) {
+        if (JoinKind::Burst != kind) {
             /*
              *  Yes, this channel is pending registration, update join count
              *  and check out this user joining.
@@ -4997,7 +4989,7 @@ void cservice::handleChannelJoin(Channel* theChan, iClient* theClient, bool burs
      * user is not logged in, and the nick is not from a bursting server.
      */
     if (!theUser && theClient->getUserName()[0] == '~' &&
-        reggedChan->getFlag(sqlChannel::F_JOINLIM) && !burstJoin)
+        reggedChan->getFlag(sqlChannel::F_JOINLIM) && JoinKind::Burst != kind)
         doJoinLimit(reggedChan, theChan);
 
     /* Deal with auto-op first - check this users access level. */

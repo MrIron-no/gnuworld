@@ -63,14 +63,11 @@ class nickserv : public xClient, public logging::logTarget {
     /** This is called when we have attached to the xServer */
     virtual void OnAttach() override;
 
-    /** This is called when a client joins a channel we watch during a burst */
-    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
-
     /** This is called when we receive a CTCP */
     virtual void OnCTCP(iClient*, const string&, const string&, bool) override;
 
-    /** This is called when a client joins a channel we watch */
-    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    /** This is called when a client joins a channel we watch, in a burst or not */
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*, JoinKind) override;
 
     /** This is called when a client is killed */
     virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;

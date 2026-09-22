@@ -96,6 +96,37 @@ enum ChannelEvent : int {
 constexpr std::size_t channelEventCount = EVT_BURST - EVT_JOIN + 1;
 
 /**
+ * How a client came to be on a channel.  One virtual, xClient::OnJoin(),
+ * delivers all three; this says which of them arrived, because that is a
+ * property of the arrival and not of what it carries - the three had identical
+ * payloads.
+ */
+enum class JoinKind {
+    Join,   ///< the channel already existed
+    Create, ///< theClient created theChan, and is opped in it
+    Burst   ///< the membership arrived in a net burst
+};
+
+/**
+ * Which channel event one arrival is.  The three events stayed three when the
+ * virtuals became one: mod.stats counts each separately and mod.gnutest reports
+ * each under its own name.  One switch with no default, as eventName() is, so
+ * that a fourth kind added without a mapping is a -Wswitch warning; the return
+ * after it is what the compiler wants, not a case.
+ */
+constexpr ChannelEvent channelEventOf(JoinKind whichKind) {
+    switch (whichKind) {
+    case JoinKind::Join:
+        return EVT_JOIN;
+    case JoinKind::Create:
+        return EVT_CREATE;
+    case JoinKind::Burst:
+        return EVT_BURST;
+    }
+    return EVT_JOIN;
+}
+
+/**
  * The types used to represent an event.  They are an int and not the enums
  * above because the untyped API is registered for, posted and delivered by
  * number; a listener registration is still indexed by it.

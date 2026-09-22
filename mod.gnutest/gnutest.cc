@@ -388,19 +388,9 @@ void gnutest::OnRemNetConf(iServer* theServer, std::string_view key) {
     xClient::OnRemNetConf(theServer, key);
 }
 
-void gnutest::OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    membership(EVT_JOIN, theChan, theClient, theUser);
-    xClient::OnJoin(theChan, theClient, theUser);
-}
-
-void gnutest::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    membership(EVT_BURST, theChan, theClient, theUser);
-    xClient::OnBurstJoin(theChan, theClient, theUser);
-}
-
-void gnutest::OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    membership(EVT_CREATE, theChan, theClient, theUser);
-    xClient::OnCreate(theChan, theClient, theUser);
+void gnutest::OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser, JoinKind kind) {
+    membership(channelEventOf(kind), theChan, theClient, theUser);
+    xClient::OnJoin(theChan, theClient, theUser, kind);
 }
 
 void gnutest::OnPart(Channel* theChan, iClient* theClient, std::string_view message) {

@@ -427,27 +427,11 @@ void xServer::postRemNetConf(iServer* theServer, std::string_view key) {
     });
 }
 
-void xServer::postJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
+void xServer::postJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser, JoinKind kind) {
     assert(theChan != 0);
 
-    notifyChannel(theChan->getName(), [theChan, theClient, theUser](xClient* listener) {
-        listener->OnJoin(theChan, theClient, theUser);
-    });
-}
-
-void xServer::postBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    assert(theChan != 0);
-
-    notifyChannel(theChan->getName(), [theChan, theClient, theUser](xClient* listener) {
-        listener->OnBurstJoin(theChan, theClient, theUser);
-    });
-}
-
-void xServer::postCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    assert(theChan != 0);
-
-    notifyChannel(theChan->getName(), [theChan, theClient, theUser](xClient* listener) {
-        listener->OnCreate(theChan, theClient, theUser);
+    notifyChannel(theChan->getName(), [theChan, theClient, theUser, kind](xClient* listener) {
+        listener->OnJoin(theChan, theClient, theUser, kind);
     });
 }
 

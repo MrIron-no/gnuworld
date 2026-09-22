@@ -657,11 +657,13 @@ void chanfix::opJoiningOper(Channel* theChan, iClient* theClient) {
     }
 }
 
-void chanfix::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
-    opJoiningOper(theChan, theClient);
-}
+void chanfix::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*, JoinKind kind) {
+    if (JoinKind::Create == kind) {
+        // Preserving what the three separate handlers did: OnCreate() was not
+        // overridden, so a create went nowhere.
+        return;
+    }
 
-void chanfix::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
     opJoiningOper(theChan, theClient);
 }
 

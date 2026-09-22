@@ -134,7 +134,7 @@ class dronescan : public xClient {
     virtual void OnQuit(iClient*, std::string_view) override;
 
     /** Receive the channel events we care about. */
-    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*, JoinKind) override;
     virtual void OnPart(Channel*, iClient*, std::string_view) override;
 
     /** Receive channel messages (PRIVMSG to a channel, main service client only). */

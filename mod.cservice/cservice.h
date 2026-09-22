@@ -427,7 +427,7 @@ class cservice : public xClient {
     virtual void OnChannelCTCP(iClient*, Channel*, const string&, const string&) override;
     virtual void OnChannelMessage(iClient*, Channel*, const string&) override;
     virtual void OnChannelNotice(iClient*, Channel*, const string&) override;
-    void handleChannelJoin(Channel*, iClient*, bool burstJoin);
+    void handleChannelJoin(Channel*, iClient*, JoinKind kind);
     void handleChannelPart(iClient*, Channel*, const string&);
     void handleClientExit(iClient*, const string& quitEvent);
     virtual void OnAttach() override;
@@ -442,9 +442,7 @@ class cservice : public xClient {
      * These are invoked for each of the channel events this client has
      * registered to receive, on one of the channels it watches.
      */
-    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
-    virtual void OnCreate(Channel*, iClient*, ChannelUser*) override;
-    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*, JoinKind) override;
     virtual void OnPart(Channel*, iClient*, std::string_view) override;
 
     /**

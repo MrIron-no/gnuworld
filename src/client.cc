@@ -450,11 +450,7 @@ void xClient::OnNetConf(iServer*, std::string_view) {}
 
 void xClient::OnRemNetConf(iServer*, std::string_view) {}
 
-void xClient::OnJoin(Channel*, iClient*, ChannelUser*) {}
-
-void xClient::OnBurstJoin(Channel*, iClient*, ChannelUser*) {}
-
-void xClient::OnCreate(Channel*, iClient*, ChannelUser*) {}
+void xClient::OnJoin(Channel*, iClient*, ChannelUser*, JoinKind) {}
 
 void xClient::OnPart(Channel*, iClient*, std::string_view) {}
 
