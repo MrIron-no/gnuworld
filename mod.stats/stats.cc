@@ -447,7 +447,12 @@ void stats::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destCli
 }
 
 void stats::dumpStats(iClient* theClient) {
-    time_t countingTime = ::time(0) - startTime;
+    // startTime is 0 until the first event arrives, so counting from it before
+    // then would make the elapsed time the whole Unix epoch.  Average over at
+    // least a second, because a dump in the same second as the first event
+    // would otherwise divide by 0 and make every average inf.
+    time_t countingTime = (0 == startTime) ? 0 : ::time(nullptr) - startTime;
+    time_t averageTime = (countingTime > 0) ? countingTime : 1;
 
     Notice(theClient, "I have been counting for %d seconds", countingTime);
     Notice(theClient, "Total Network Users: %d, Total Network Channels: %d",
@@ -587,14 +592,14 @@ void stats::dumpStats(iClient* theClient) {
         ss.str(string());
         ss.width(15);
         ss.setf(std::ios::left);
-        ss << ((double)eventTotal[whichEvent] / (double)countingTime);
+        ss << ((double)eventTotal[whichEvent] / (double)averageTime);
         writeMe += ss.str();
 
         Notice(theClient, "%s", writeMe.c_str());
     }
 
     Notice(theClient, "Total Events: %d, Total Average Events/Second: %f", totalEvents,
-           (double)totalEvents / (double)countingTime);
+           (double)totalEvents / (double)averageTime);
 }
 
 bool stats::hasAccess(const string& accountName) const {
