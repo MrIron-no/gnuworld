@@ -104,75 +104,84 @@ class dronescan : public xClient {
      ***********************************************************/
 
     /** This method is called when we have attached to the xServer. */
-    virtual void OnAttach();
+    virtual void OnAttach() override;
 
     /** This method is called after server connection. */
-    virtual void BurstChannels();
+    virtual void BurstChannels() override;
 
     /** This is called when we receive a CTCP */
-    virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool);
+    virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool) override;
 
     /** This is called when a fake client receives a CTCP */
     virtual void OnFakeCTCP(iClient* Sender, iClient* Target, const std::string& CTCP,
-                            const std::string& Message, bool Secure);
+                            const std::string& Message, bool Secure) override;
 
     /** This is called when we receive a channel CTCP */
     virtual void OnChannelCTCP(iClient* Sender, Channel* theChan, const std::string& CTCPCommand,
-                               const std::string& Message);
+                               const std::string& Message) override;
 
     /** This is called when a fake client receives a channel CTCP */
     virtual void OnFakeChannelCTCP(iClient* Sender, iClient* Target, Channel* theChan,
-                                   const std::string& CTCPCommand, const std::string& Message);
+                                   const std::string& CTCPCommand,
+                                   const std::string& Message) override;
 
-    /** Receive network events. */
-    virtual void OnEvent(const eventType&, void*, void*, void*, void*);
+    /** Receive the network events we are registered for. */
+    virtual void OnBurstComplete(iServer*) override;
+    virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;
+    virtual void OnNetBreak(iServer*, const iServer*, std::string_view) override;
+    virtual void OnNetJoin(iServer*, const iServer*) override;
+    virtual void OnNick(iClient*) override;
+    virtual void OnQuit(iClient*, std::string_view) override;
 
-    /** Receive channel events. */
-    virtual void OnChannelEvent(const channelEventType&, Channel*, void*, void*, void*, void*);
+    /** Receive the channel events we care about. */
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnPart(Channel*, iClient*, std::string_view) override;
 
     /** Receive channel messages (PRIVMSG to a channel, main service client only). */
-    virtual void OnChannelMessage(iClient* Sender, Channel* theChan, const std::string& Message);
+    virtual void OnChannelMessage(iClient* Sender, Channel* theChan,
+                                  const std::string& Message) override;
 
     /** Receive fake channel messages (PRIVMSG to a channel caught by a fake client). */
     virtual void OnFakeChannelMessage(iClient* Sender, iClient* Target, Channel* theChan,
-                                      const std::string& Message);
+                                      const std::string& Message) override;
 
     /** Receive channel notices (NOTICE to a channel). */
-    virtual void OnChannelNotice(iClient* Sender, Channel* theChan, const std::string& Message);
+    virtual void OnChannelNotice(iClient* Sender, Channel* theChan,
+                                 const std::string& Message) override;
 
     /** Receive fake channel notices (NOTICE to a channel caught by a fake client). */
     virtual void OnFakeChannelNotice(iClient* Sender, iClient* Target, Channel* theChan,
-                                     const std::string& Message);
+                                     const std::string& Message) override;
 
     /** Receive private messages. */
-    virtual void OnPrivateMessage(iClient*, const std::string&, bool);
+    virtual void OnPrivateMessage(iClient*, const std::string&, bool) override;
 
     /** Receive fake private messages (PRIVMSG caught by a fake client). */
     virtual void OnFakePrivateMessage(iClient* Sender, iClient* Target, const std::string& Message,
-                                      bool secure);
+                                      bool secure) override;
 
     /** Receive private notices (NOTICE directly to the bot). */
-    virtual void OnPrivateNotice(iClient*, const std::string&, bool);
+    virtual void OnPrivateNotice(iClient*, const std::string&, bool) override;
 
     /** Receive fake private notices (NOTICE caught by a fake client). */
     virtual void OnFakePrivateNotice(iClient* Sender, iClient* Target, const std::string& Message,
-                                     bool secure);
+                                     bool secure) override;
 
     /** Handle kick events for spy client re-join logic. */
     virtual void OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destClient,
-                               const std::string& kickMessage, bool authoritative);
+                               const std::string& kickMessage, bool authoritative) override;
 
     /** Append channel list and idle/signon time to WHOIS replies. */
-    virtual void OnWhois(iClient* sourceClient, iClient* targetClient);
+    virtual void OnWhois(iClient* sourceClient, iClient* targetClient) override;
 
     /** When we are being detached by the xServer */
-    virtual void OnDetach(const std::string& = std::string("Server Shutdown"));
+    virtual void OnDetach(const std::string& = std::string("Server Shutdown")) override;
 
     /** When the xServer is processing a real shutdown */
-    virtual void OnShutdown(const std::string& reason);
+    virtual void OnShutdown(const std::string& reason) override;
 
     /** Receive our own timed events. */
-    virtual void OnTimer(const xServer::timerID&, void*);
+    virtual void OnTimer(const xServer::timerID&, void*) override;
 
     /*****************************************
      ** D R O N E S C A N   T Y P E D E F S **
@@ -225,6 +234,9 @@ class dronescan : public xClient {
 
     /** This function handles new clients as they connect. */
     void handleNewClient(iClient*);
+
+    /** This function handles a client leaving the network, killed or quit. */
+    void handleClientExit(iClient*, const std::string& quitReason);
 
     /** This function handles nick changes. */
     void handleNickChange(iClient*);
@@ -563,9 +575,9 @@ class dronescan : public xClient {
     /**
      * Common cleanup for a live spy client that is no longer on the
      * network, whether it left voluntarily (handleSpyClientPersonalQuit())
-     * or involuntarily (killed/G-lined/K-lined/timed out - see OnEvent()'s
-     * EVT_KILL/EVT_QUIT handling). Drops scId from every live-tracking map,
-     * scheduling a replacement join for each channel it was covering, then
+     * or involuntarily (killed/G-lined/K-lined/timed out - see OnKill() and
+     * OnQuit()). Drops scId from every live-tracking map, scheduling a
+     * replacement join for each channel it was covering, then
      * schedules it to be reintroduced on the next tick (see
      * pendingSpyReintroduceTimers) rather than calling introduceSpyClient()
      * inline - this can run nested inside in-progress EVT_KILL/EVT_QUIT
