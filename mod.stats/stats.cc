@@ -45,7 +45,8 @@ using std::endl;
 using std::string;
 using std::stringstream;
 
-/// The column dumpStats() pads an event name out to in its table.
+/// The column dumpStats() pads an event name out to, and so the longest an event
+/// name in events.h may be.
 static constexpr std::size_t eventNameColumn = 23;
 
 static constexpr bool everyEventNameFitsColumn() {
