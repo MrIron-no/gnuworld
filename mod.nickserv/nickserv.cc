@@ -186,30 +186,27 @@ void nickserv::OnAttach() {
 }
 
 /**
- * Here we deal with any channel events we want to listen to.
+ * Here we deal with any channel events we want to listen to.  A join and a
+ * burst join are the same thing to us.
  */
-void nickserv::OnChannelEvent(const channelEventType& theEvent, Channel* theChannel, void* data1,
-                              void*, void*, void*) {
-    iClient* theClient = 0;
+void nickserv::opConsoleJoin(Channel* theChannel, iClient* theClient) {
+    if (theChannel->getName() != consoleChannel) {
+        theLogger->log(logging::events::E_WARNING, "Received a JOIN for channel: %s.",
+                       theChannel->getName().c_str());
+        return;
+    }
 
-    switch (theEvent) {
-    case EVT_BURST:
-    case EVT_JOIN: {
-        if (theChannel->getName() != consoleChannel) {
-            theLogger->log(logging::events::E_WARNING, "Received a JOIN for channel: %s.",
-                           theChannel->getName().c_str());
-            return;
-        }
+    sqlUser* theUser = isAuthed(theClient);
+    if (theUser && theUser->getLevel() > 0)
+        Op(theChannel, theClient);
+}
 
-        theClient = static_cast<iClient*>(data1);
+void nickserv::OnBurstJoin(Channel* theChannel, iClient* theClient, ChannelUser*) {
+    opConsoleJoin(theChannel, theClient);
+}
 
-        sqlUser* theUser = isAuthed(theClient);
-        if (theUser && theUser->getLevel() > 0)
-            Op(theChannel, theClient);
-
-        break;
-    } // case EVT_JOIN
-    } // switch (theEvent)
+void nickserv::OnJoin(Channel* theChannel, iClient* theClient, ChannelUser*) {
+    opConsoleJoin(theChannel, theClient);
 }
 
 /**
@@ -236,74 +233,52 @@ void nickserv::OnCTCP(iClient* theClient, const string& CTCP, const string& Mess
 
 /**
  * Here we deal with any network events that we have asked to listen for.
- * The main jobs done are:
- *  EVT_ACCOUNT : If the account is the same as the nick, we remove it from
-                  the warnQueue should it be there.
- *  EVT_NICK    : Instantiate a netData object and assign it to the iClient.
- *                Add the iClient to the process queue.
- *  EVT_CHNICK  : If the new nick is the current account, do nothing.
- *                If the iClient isnt in the process queue, readd it.
- *                We do NOT zero the warning count. This is to prevent someone
- *                  jumping between registered nicks to avoid getting killed.
- *  EVT_KILL    : Delete the netData instance
- *                Remove the iClient from the process queue
- *  EVT_QUIT    : Delete the netData instance
- *                Remove the iClient from the process queue
+ * If the account is the same as the nick, we remove it from the warnQueue
+ * should it be there.
  */
-void nickserv::OnEvent(const eventType& event, void* Data1, void* Data2, void* Data3, void* Data4) {
-    /* The target user of the event */
-    iClient* theClient = static_cast<iClient*>(Data1);
+void nickserv::OnAccount(iClient* theClient) {
+    netData* theData = static_cast<netData*>(theClient->getCustomData(this));
 
-    switch (event) {
-    case EVT_KILL:
-        theClient = static_cast<iClient*>(Data2);
-        /* fall through */
-    case EVT_QUIT: {
-        netData* theData = static_cast<netData*>(theClient->removeCustomData(this));
-        delete theData;
-        removeFromQueue(theClient);
-
-        logUsersType::iterator ptr = find(logUsers.begin(), logUsers.end(), theClient);
-        if (ptr != logUsers.end()) {
-            logUsers.erase(ptr);
+    theData->authedUser = isRegistered(theClient->getAccount());
+    if (theData->authedUser) {
+        if (theData->authedUser->getLogMask()) {
+            logUsers.push_back(theClient);
         }
+        theData->authedUser->commitLastSeen();
+    }
+}
 
-        return;
-        break;
-    } // case EVT_KILL/QUIT
+/**
+ * A kill and a quit are the same thing to us:
+ *  Delete the netData instance
+ *  Remove the iClient from the process queue
+ */
+void nickserv::forgetClient(iClient* theClient) {
+    netData* theData = static_cast<netData*>(theClient->removeCustomData(this));
+    delete theData;
+    removeFromQueue(theClient);
 
-    case EVT_NICK: {
-        netData* theData = new netData();
-        theClient->setCustomData(this, theData);
+    logUsersType::iterator ptr = find(logUsers.begin(), logUsers.end(), theClient);
+    if (ptr != logUsers.end()) {
+        logUsers.erase(ptr);
+    }
+}
 
-        /* If this user has umode +r */
-        if (theClient->isModeR()) {
-            /* Find the sqlUser for their +r and assign it to this iClient */
-            theData->authedUser = isRegistered(theClient->getAccount());
-            if (theData->authedUser) {
-                if (theData->authedUser->getLogMask()) {
-                    logUsers.push_back(theClient);
-                }
-                theData->authedUser->commitLastSeen();
-            }
-        }
+void nickserv::OnKill(const NetworkTarget*, iClient* theClient, std::string_view) {
+    forgetClient(theClient);
+}
 
-        addToQueue(theClient);
+/**
+ * Instantiate a netData object and assign it to the iClient.
+ * Add the iClient to the process queue.
+ */
+void nickserv::OnNick(iClient* theClient) {
+    netData* theData = new netData();
+    theClient->setCustomData(this, theData);
 
-        return;
-        break;
-    } // case EVT_NICK
-
-    case EVT_CHNICK: {
-        addToQueue(theClient);
-
-        return;
-        break;
-    } // case EVT_CHNICK
-
-    case EVT_ACCOUNT: {
-        netData* theData = static_cast<netData*>(theClient->getCustomData(this));
-
+    /* If this user has umode +r */
+    if (theClient->isModeR()) {
+        /* Find the sqlUser for their +r and assign it to this iClient */
         theData->authedUser = isRegistered(theClient->getAccount());
         if (theData->authedUser) {
             if (theData->authedUser->getLogMask()) {
@@ -311,14 +286,20 @@ void nickserv::OnEvent(const eventType& event, void* Data1, void* Data2, void* D
             }
             theData->authedUser->commitLastSeen();
         }
+    }
 
-        return;
-        break;
-    } // case EVT_ACCOUNT
-    } // switch( event )
-
-    xClient::OnEvent(event, Data1, Data2, Data3, Data4);
+    addToQueue(theClient);
 }
+
+/**
+ * If the new nick is the current account, do nothing.
+ * If the iClient isnt in the process queue, readd it.
+ * We do NOT zero the warning count. This is to prevent someone jumping
+ * between registered nicks to avoid getting killed.
+ */
+void nickserv::OnNickChange(iClient* theClient, std::string_view) { addToQueue(theClient); }
+
+void nickserv::OnQuit(iClient* theClient, std::string_view) { forgetClient(theClient); }
 
 /**
  * Here we deal with incoming communications from network clients.
