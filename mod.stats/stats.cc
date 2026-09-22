@@ -45,6 +45,28 @@ using std::endl;
 using std::string;
 using std::stringstream;
 
+/// The column dumpStats() pads an event name out to in its table.
+static constexpr std::size_t eventNameColumn = 23;
+
+static constexpr bool everyEventNameFitsColumn() {
+    for (const std::string_view name : eventNames) {
+        if (name.size() > eventNameColumn) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/*
+ * The table of dumpStats() used to pad by counting down from the column width
+ * to the name's length, so a name one character too long wrapped the count and
+ * hung the dump.  The padding no longer can wrap, and this says a name never
+ * gets that long in the first place.
+ */
+static_assert(everyEventNameFitsColumn(),
+              "an event name in events.h is longer than the stats table column:"
+              " widen eventNameColumn");
+
 /*
  *  Exported function used by moduleLoader to gain an
  *  instance of this module.
@@ -552,15 +574,9 @@ void stats::dumpStats(iClient* theClient) {
         ss << eventNames[whichEvent];
         writeMe = ss.str();
 
-        ss.str(string());
-
-        // For some reason, I can't get the stringstream IO
-        // manipulation stuff to work properly here
-        // *shrug* do it the hard way then...
-        for (size_t i = 23 - eventNames[whichEvent].size(); i > 0; --i) {
-            ss << ' ';
-        }
-        writeMe += ss.str();
+        // Pad the name out to its column.  Growing writeMe to the column
+        // cannot wrap the way subtracting the name's length from it could.
+        writeMe.resize(eventNameColumn, ' ');
 
         ss.str(string());
         ss.width(12);
