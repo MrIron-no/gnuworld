@@ -441,8 +441,7 @@ void stats::OnBurstJoin(Channel*, iClient*, ChannelUser*) { countEvent(EVT_BURST
 
 void stats::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destClient,
                           const string& kickMessage, bool authoritative) {
-    eventMinuteTotal[EVT_KICK]++;
-    eventTotal[EVT_KICK]++;
+    countEvent(EVT_KICK);
 
     xClient::OnNetworkKick(theChan, srcClient, destClient, kickMessage, authoritative);
 }
