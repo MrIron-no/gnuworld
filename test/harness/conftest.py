@@ -501,7 +501,7 @@ async def openchanfix_linked(docker_stack, fake_hub_p11, tmp_path):
     db = harness_db()
     settings = {"sqlHost": db["host"], "sqlPort": db["port"], "sqlDB": "chanfix",
                 "sqlcfUser": db["user"], "sqlPass": db["password"]}
-    async with link_module(docker_stack, fake_hub_p11, tmp_path, "openchanfix", "libchanfix.la",
+    async with link_module(docker_stack, fake_hub_p11, tmp_path, "openchanfix", "libopenchanfix.la",
                            "openchanfix.example.conf", settings) as linked:
         yield linked
 

@@ -1,9 +1,9 @@
 ## Process this file with automake to produce Makefile.in
 # "$Id: Makefile.am,v 1.11 2007/08/28 16:10:21 dan_karrels Exp $"
 
-lib_LTLIBRARIES += libchanfix.la
+lib_LTLIBRARIES += libopenchanfix.la
 
-libchanfix_la_SOURCES = \
+libopenchanfix_la_SOURCES = \
 	mod.openchanfix/chanfix.cc \
 	mod.openchanfix/ADDFLAGCommand.cc \
 	mod.openchanfix/ADDHOSTCommand.cc \
@@ -55,12 +55,12 @@ libchanfix_la_SOURCES = \
 	mod.openchanfix/sqlManager.cc \
 	mod.openchanfix/sqlcfUser.cc
 
-libchanfix_la_CXXFLAGS = -I$(top_srcdir)db -I${top_srcdir}/include \
+libopenchanfix_la_CXXFLAGS = -I$(top_srcdir)db -I${top_srcdir}/include \
 	-I${top_srcdir}/libgnuworld \
 	-I${top_srcdir}/libnotifier \
 	$(threadLib)
-libchanfix_la_LDFLAGS = -module -export-dynamic @BOOST_THREAD_LIB@
-libchanfix_la_LIBADD = libgnuworldDB.la
+libopenchanfix_la_LDFLAGS = -module -export-dynamic @BOOST_THREAD_LIB@
+libopenchanfix_la_LIBADD = libgnuworldDB.la
 
 EXTRA_DIST += \
 	mod.openchanfix/Timer.h \

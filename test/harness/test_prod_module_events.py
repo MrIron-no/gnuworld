@@ -789,7 +789,7 @@ def chanfix_db() -> dict[str, str]:
 @asynccontextmanager
 async def chanfix_tuned(docker_stack, hub, tmp_path, **overrides):
     docker_stack.up()  # Postgres, for the port it was given
-    async with link_module(docker_stack, hub, tmp_path, "openchanfix", "libchanfix.la",
+    async with link_module(docker_stack, hub, tmp_path, "openchanfix", "libopenchanfix.la",
                            "openchanfix.example.conf", {**chanfix_db(), **overrides}) as linked:
         yield linked
 

@@ -514,7 +514,7 @@ void testConfigAndCodeSinks() {
  */
 void testModuleNameFromLibrary() {
     CHECK_EQ(LogManager::moduleNameFromLibrary("libcservice.la"), "cservice");
-    CHECK_EQ(LogManager::moduleNameFromLibrary("libchanfix.la"), "chanfix");
+    CHECK_EQ(LogManager::moduleNameFromLibrary("libopenchanfix.la"), "openchanfix");
     CHECK_EQ(LogManager::moduleNameFromLibrary("/x/y/libdronescan.so.0.0.0"), "dronescan");
     CHECK_EQ(LogManager::moduleNameFromLibrary("cservice"), "cservice");
     CHECK_EQ(LogManager::moduleNameFromLibrary("lib.la"), "");
