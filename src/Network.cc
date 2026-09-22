@@ -475,7 +475,7 @@ iServer* xNetwork::removeServer(const unsigned int& YY, bool postEvent) {
         // is/was connected (the server is no longer in the tables)
         if (postEvent) {
             // Yes, post the event
-            theServer->postQuit(theClient);
+            theServer->postQuit(theClient, "Server split");
         }
 
         // Be sure to deallocate the iClient's allocated heap space

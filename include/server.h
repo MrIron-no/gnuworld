@@ -505,9 +505,10 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
 
     /**
      * Handle the parting of a network client from a channel.  This method
-     * updates internal tables.
+     * updates internal tables.  The reason is what the PART said, where
+     * there was one.
      */
-    virtual void OnPartChannel(iClient* theClient, Channel* theChan);
+    virtual void OnPartChannel(iClient* theClient, Channel* theChan, std::string_view reason = {});
 
     /**
      * OnXQuery is called when an XQ command

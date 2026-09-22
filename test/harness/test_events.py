@@ -164,15 +164,15 @@ CASES = [
         lambda e: ["Quit victim bye now"],
     ),
     # <hub> SQ <leaf> <ts> :<reason> - a squit: the server breaks, and every
-    # client on it quits with no reason at all (xNetwork::removeServer). The
-    # second payload of a net break is the server the broken one was linked to,
-    # which msg_SQ resolves from the numeric on the object; it used to be the
-    # prefix of the SQ line, which nothing could do anything with
+    # client on it quits with it (xNetwork::removeServer). The second payload of
+    # a net break is the server the broken one was linked to, which msg_SQ
+    # resolves from the numeric on the object; it used to be the prefix of the
+    # SQ line, which nothing could do anything with
     (
         "netbreak_and_split_quit",
         leaf,
         lambda e: [f"{e['hub']} SQ {LEAF} {e['ts']} :hub says so"],
-        lambda e: [f"NetBreak {LEAF} hub.testnet hub says so", "Quit leafuser -"],
+        lambda e: [f"NetBreak {LEAF} hub.testnet hub says so", "Quit leafuser Server split"],
     ),
     # <hub> D <victim> :<reason> - a kill by a server (msg_D)
     (
@@ -311,13 +311,13 @@ CASES = [
         lambda e: [command(e, "spawnclient fakeguy")],
         lambda e: ["ClientConnect fakeguy"],
     ),
-    # "removeclient <nick>" - and its quit (xServer::DetachClient), with no
-    # reason passed
+    # "removeclient <nick>" - and its quit (xServer::DetachClient), whose
+    # reason is the one it writes to the network
     (
         "quit_of_a_fake_client",
         lambda e: [command(e, "spawnclient fakeguy")],
         lambda e: [command(e, "removeclient fakeguy")],
-        lambda e: ["Quit fakeguy -"],
+        lambda e: ["Quit fakeguy Requested shutdown"],
     ),
     # <victim> C <chan> <ts> - a client creates a channel (msg_C). A create
     # names the creator and nothing else: xClient::OnCreate() takes no

@@ -1230,8 +1230,11 @@ void xServer::removeClient(xClient* theClient) {
     // Remove this xClient's iClient instance (stealth modules have none)
     iClient* iClientPtr = 0;
     if (theClient->getInstance() != 0) {
+        // Nothing quit if the network did not have it to remove
         iClientPtr = Network->removeClient(theClient->getInstance());
-        postQuit(iClientPtr);
+        if (iClientPtr != 0) {
+            postQuit(iClientPtr);
+        }
     }
 
     // Remove any fake clients and fake servers associated with this
@@ -1245,7 +1248,7 @@ void xServer::removeClient(xClient* theClient) {
         s << fakeClient->getCharYYXXX() << " Q :Exiting";
         Write(s);
 
-        postQuit(fakeClient);
+        postQuit(fakeClient, "Exiting");
 
         // Remove the fake client from all internal tables and
         // deallocate.  xNetwork::removeClient() will do all but
@@ -1352,7 +1355,7 @@ void xServer::PartChannel(xClient* theClient, Channel* theChan, const string& re
     Write(s);
 
     OnPartChannel(theClient, theChan);
-    OnPartChannel(theClient->getInstance(), theChan);
+    OnPartChannel(theClient->getInstance(), theChan, reason);
 }
 
 /**
@@ -1383,14 +1386,14 @@ void xServer::OnPartChannel(iClient* theClient, const string& chanName) {
  * allows an xClient to update the internal tables without
  * needing to know exactly what needs to be done (encapsulation).
  */
-void xServer::OnPartChannel(iClient* theClient, Channel* theChan) {
+void xServer::OnPartChannel(iClient* theClient, Channel* theChan, std::string_view reason) {
     assert(theClient != 0);
     assert(theChan != 0);
 
     theClient->removeChannel(theChan);
     destroy(theChan->removeUser(theClient));
 
-    postPart(theChan, theClient);
+    postPart(theChan, theClient, reason);
 
     if (theChan->empty()) {
         // Empty channel
@@ -2752,7 +2755,7 @@ bool xServer::DetachClient(iClient* fakeClient, const string& quitMessage) {
         Write("{} Q :Exiting", fakeClient->getCharYYXXX());
     }
 
-    postQuit(fakeClient);
+    postQuit(fakeClient, quitMessage.empty() ? std::string_view("Exiting") : quitMessage);
 
     return true;
 }
@@ -2867,7 +2870,7 @@ void xServer::PartChannel(iClient* theClient, const string& chanName, const stri
     }
     Write(s);
 
-    postPart(theChan, theClient);
+    postPart(theChan, theClient, reason);
 }
 
 /// Have the server burst a channel
