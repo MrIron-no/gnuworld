@@ -104,8 +104,10 @@ test_signal_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 
 EXTRA_DIST += \
 	test/testbot.h \
+	test/econfig.conf \
 	test/README.burst \
 	test/README.econfig \
+	test/README.logger \
 	test/README.match \
 	test/README.mtrie \
 	test/README.sanitize \

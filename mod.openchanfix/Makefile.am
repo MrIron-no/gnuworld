@@ -63,6 +63,7 @@ libchanfix_la_LDFLAGS = -module -export-dynamic @BOOST_THREAD_LIB@
 libchanfix_la_LIBADD = libgnuworldDB.la
 
 EXTRA_DIST += \
+	mod.openchanfix/Timer.h \
 	mod.openchanfix/chanfix.h \
 	mod.openchanfix/chanfixCommands.h \
 	mod.openchanfix/chanfix_config.h \
@@ -72,4 +73,5 @@ EXTRA_DIST += \
 	mod.openchanfix/sqlChannel.h \
 	mod.openchanfix/sqlManager.h \
 	mod.openchanfix/sqlcfUser.h \
+	mod.openchanfix/sqlUser.h \
 	mod.openchanfix/migrations/README
