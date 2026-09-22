@@ -295,44 +295,54 @@ class ccontrol : public xClient {
      * This method is called by the xServer when it wants information
      * about the channels this client will be on.
      */
-    virtual void BurstChannels();
+    virtual void BurstChannels() override;
 
     /**
      * This method is called by the xServer when it wants information
      * about the glines this client has in its database;
      */
-    virtual bool BurstGlines();
+    virtual bool BurstGlines() override;
 
     /**
      * This method is invoked each time the client is sent a
      * PRIVMSG.
      */
-    virtual void OnPrivateMessage(iClient*, const string&, bool secure = false);
+    virtual void OnPrivateMessage(iClient*, const string&, bool secure = false) override;
 
-    virtual void OnServerMessage(iServer*, const string&, bool secure = false);
+    virtual void OnServerMessage(iServer*, const string&, bool secure = false) override;
 
     bool Notice(const iClient* Target, const string& Message);
 
     bool Notice(const iClient* Target, const char* Message, ...);
 
-    virtual void OnCTCP(iClient*, const string&, const string&, bool Secure = false);
+    virtual void OnCTCP(iClient*, const string&, const string&, bool Secure = false) override;
 
     /**
-     * This method is invoked each time a network event occurs.
+     * These are invoked for each of the network events this client has
+     * registered to receive.
      */
-    virtual void OnEvent(const eventType&, void* = 0, void* = 0, void* = 0, void* = 0);
+    virtual void OnAccount(iClient*) override;
+    virtual void OnBurstComplete(iServer*) override;
+    virtual void OnGline(Gline*) override;
+    virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;
+    virtual void OnNetBreak(iServer*, const iServer*, std::string_view) override;
+    virtual void OnNetJoin(iServer*, const iServer*) override;
+    virtual void OnNick(iClient*) override;
+    virtual void OnOper(iClient*) override;
+    virtual void OnQuit(iClient*, std::string_view) override;
+    virtual void OnRemGline(Gline*) override;
+    virtual void OnXQuery(iServer*, std::string_view, std::string_view) override;
 
     /**
-     * This method is invoked each time a channel event occurs
-     * for one of the channels for which this client has registered
-     * to receive channel events.
+     * These are invoked for each of the channel events this client has
+     * registered to receive, on one of the channels it watches.
      */
-    virtual void OnChannelEvent(const channelEventType&, Channel*, void* = 0, void* = 0, void* = 0,
-                                void* = 0);
+    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
 
-    virtual void OnTimer(const gnuworld::xServer::timerID&, void*);
+    virtual void OnTimer(const gnuworld::xServer::timerID&, void*) override;
 
-    virtual void OnConnect();
+    virtual void OnConnect() override;
 
     /**
      * This method is called once this client has been attached
@@ -340,13 +350,13 @@ class ccontrol : public xClient {
      * command handlers each require a reference to the xServer
      * for efficiency.
      */
-    virtual void OnAttach();
+    virtual void OnAttach() override;
 
     /**
      * This method is called duringg shutdown.  It unloads the
      * client correctly during a shutdown.
      */
-    virtual void OnShutdown(const std::string& reason);
+    virtual void OnShutdown(const std::string& reason) override;
 
     /**
      * Return true if the given channel name corresponds to a
@@ -363,12 +373,12 @@ class ccontrol : public xClient {
     /**
      * Return true if this client is on the given channel.
      */
-    virtual bool isOnChannel(const string& chanName) const { return isOperChan(chanName); }
+    virtual bool isOnChannel(const string& chanName) const override { return isOperChan(chanName); }
 
     /**
      * Return true if this client is on the given channel.
      */
-    virtual bool isOnChannel(const Channel* theChan) const {
+    virtual bool isOnChannel(const Channel* theChan) const override {
         return isOperChan(theChan->getName());
     }
 
@@ -383,13 +393,14 @@ class ccontrol : public xClient {
      * the given name, if the client is not already on that
      * channel.
      */
-    virtual bool Join(const string&, const string& = string(), const time_t& = 0, bool = false);
+    virtual bool Join(const string&, const string& = string(), const time_t& = 0,
+                      bool = false) override;
 
     /**
      * This method will cause this client to part the given channel,
      * if it is already on that channel.
      */
-    virtual bool Part(const string&, const string& = string());
+    virtual bool Part(const string&, const string& = string()) override;
 
     /**
      * This method will register a given command handler, removing
@@ -1177,6 +1188,17 @@ class ccontrol : public xClient {
     unsigned int glineBurstCount;
 
     bool saveGlines;
+
+  private:
+    /*
+     *  The bodies shared by two event handlers each.
+     */
+
+    /** Drop everything we hold for a client that has left the network */
+    void lostClient(iClient*);
+
+    /** Op a client that has joined one of our oper channels, if it is an oper */
+    void opJoiningOper(Channel*, iClient*);
 };
 
 extern bool dbConnected;
