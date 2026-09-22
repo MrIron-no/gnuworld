@@ -311,7 +311,7 @@ class ccontrol : public xClient {
 
     virtual void OnServerMessage(iServer*, const string&, bool secure = false) override;
 
-    bool Notice(const iClient* Target, const string& Message);
+    bool Notice(const iClient* Target, const string& Message) override;
 
     bool Notice(const iClient* Target, const char* Message, ...);
 
@@ -828,7 +828,7 @@ class ccontrol : public xClient {
     /**
         Signals Commands
      */
-    void OnSignal(int sig);
+    void OnSignal(int sig) override;
 
     void saveServersInfo();
 
