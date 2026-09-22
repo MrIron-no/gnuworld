@@ -1102,3 +1102,71 @@ async def test_openchanfix_ops_an_oper_who_joins_a_channel_it_is_in(docker_stack
         # Chanfix's own Op() is a mode change it then sees, so it has scored the
         # oper on its own channel
         chanfix_forget(chan)
+
+
+# ==========================================================================
+# mod.nickserv
+# ==========================================================================
+
+
+@pytest.mark.asyncio
+async def test_nickserv_takes_an_account_for_a_client_it_never_saw_arrive(
+        docker_stack, fake_hub_p11, tmp_path):
+    """EVT_ACCOUNT for a client that was already on the network at OnAttach().
+
+    NS hangs its per-client netData off the client in its EVT_NICK handler, so
+    a client whose N was posted before NS registered for EVT_NICK has none.  A
+    module ahead of NS in GNUWorld.conf has exactly such a client:
+    xServer::AttachClient() posts the N for a module's own client, and it
+    attaches that module first.  An AC for that client then reaches NS's
+    account handler with no netData to write the user record through.
+
+    The sibling of test_cservice_takes_an_account_for_a_client_it_never_saw_arrive.
+    """
+    require_module("nickserv")
+    require_module("gnutest")
+    docker_stack.up()  # Postgres
+    hub = fake_hub_p11
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
+    GnuworldProc.write_module_config(
+        conf_dir / "nickserv.conf", "nickserv.example.conf",
+        {"dbHost": _HARNESS_DB["host"], "dbPort": _HARNESS_DB["port"], "dbDb": "nickserv",
+         "dbUser": _HARNESS_DB["user"], "dbPass": _HARNESS_DB["password"]})
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        # mod.gnutest first: its client is on the network before NS attaches
+        module_lines=f"module = libgnutest.la {root}/gnutest.conf\n"
+        f"module = libnickserv.la {root}/nickserv.conf",
+    )
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=90.0)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        ns = hub.get_user_numnick("NS")
+        assert ns, "mod.nickserv did not introduce NS (module or database?)"
+        older = hub.get_user_numnick("gnutest")
+        assert older, "mod.gnutest did not introduce a client of its own"
+
+        # A client NS did see arrive, to ask something of it afterwards: NS
+        # answers no command from a client that is not logged in
+        asker = await hub.introduce_nick("nsasker", username="nsasker")
+        await hub.send_account(asker, PERMIT_ACCOUNT)
+        assert await ask(hub, asker, ns, "WHOAMI", "Account:")
+
+        # NS's one consequence here is that nothing happens: there is no netData
+        # to put the user record in.  A crash is what used to happen instead, so
+        # let the process be reaped and read alive() before the wire, which would
+        # otherwise report a link that closed and not why.
+        await hub.send_account(older, PERMIT_ACCOUNT)
+        await asyncio.sleep(1.0)
+        alive(proc)
+        assert await ask(hub, asker, ns, "WHOAMI", "Account:")
+    finally:
+        await proc.terminate()

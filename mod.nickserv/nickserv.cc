@@ -239,6 +239,11 @@ void nickserv::OnCTCP(iClient* theClient, const string& CTCP, const string& Mess
 void nickserv::OnAccount(iClient* theClient) {
     netData* theData = static_cast<netData*>(theClient->getCustomData(this));
 
+    /* A client already here when we attached never met OnNick(), which is the
+     * one place a netData is made and the client put in the warn queue. */
+    if (!theData)
+        return;
+
     theData->authedUser = isRegistered(theClient->getAccount());
     if (theData->authedUser) {
         if (theData->authedUser->getLogMask()) {
