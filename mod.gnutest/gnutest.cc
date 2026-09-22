@@ -119,57 +119,43 @@ static bool findEventByName(const string& name, int& whichEvent, bool& channelEv
     return false;
 }
 
-/* The printable identity of one event payload, by the type that payload has:
- * "-" for one that is null or was not passed at all. */
+/* The printable identity of one thing an event was handed: "-" for one that is
+ * null, and for text that is empty. */
 
-static string nickOf(void* data) {
-    const iClient* theClient = static_cast<iClient*>(data);
-    return (0 == theClient) ? string("-") : theClient->getNickName();
+static string nickOf(const iClient* theClient) {
+    return (nullptr == theClient) ? string("-") : theClient->getNickName();
 }
 
-static string serverNameOf(void* data) {
-    const iServer* theServer = static_cast<iServer*>(data);
-    return (0 == theServer) ? string("-") : theServer->getName();
+static string serverNameOf(const iServer* theServer) {
+    return (nullptr == theServer) ? string("-") : theServer->getName();
 }
 
-static string memberOf(void* data) {
-    const ChannelUser* theUser = static_cast<ChannelUser*>(data);
-    return (0 == theUser) ? string("-") : theUser->getNickName();
+static string memberOf(const ChannelUser* theUser) {
+    return (nullptr == theUser) ? string("-") : theUser->getNickName();
 }
 
-static string glineMaskOf(void* data) {
-    const Gline* theGline = static_cast<Gline*>(data);
-    return (0 == theGline) ? string("-") : theGline->getUserHost();
+static string glineMaskOf(const Gline* theGline) {
+    return (nullptr == theGline) ? string("-") : theGline->getUserHost();
 }
 
-static string stringOf(void* data) {
-    const string* text = static_cast<string*>(data);
-    return (0 == text || text->empty()) ? string("-") : *text;
-}
-
-/// EVT_XQUERY and EVT_XREPLY pass a const char*, not a std::string*
-static string charsOf(void* data) {
-    const char* text = static_cast<const char*>(data);
-    return (0 == text || 0 == *text) ? string("-") : string(text);
-}
+static string stringOf(std::string_view text) { return text.empty() ? string("-") : string(text); }
 
 /**
- * A payload whose type is not the same at every post site: EVT_KILL's source is
- * an iClient*, an iServer* or null, and EVT_NETBREAK's second is a std::string*
- * at two sites and an iServer* at the third.  Nothing in the event says which,
- * so the only way to print one without guessing is to look the pointer up in
- * the network's own tables.  Empty if it is neither.
+ * The source of a kill, which is the one thing an event hands over whose type
+ * is still not said: a client, a server, or null when one of our own modules
+ * did it.  The only way to print one without guessing is to look the pointer up
+ * in the network's own tables.  Empty if it is neither.
  */
-static string knownObjectOf(void* data) {
+static string knownObjectOf(const NetworkTarget* target) {
     for (xNetwork::clientIterator ptr = Network->clients_begin(); ptr != Network->clients_end();
          ++ptr) {
-        if (ptr->second == data) {
+        if (ptr->second == target) {
             return ptr->second->getNickName();
         }
     }
     for (xNetwork::serverIterator ptr = Network->servers_begin(); ptr != Network->servers_end();
          ++ptr) {
-        if (ptr->second == data) {
+        if (ptr->second == target) {
             return ptr->second->getName();
         }
     }
@@ -293,167 +279,149 @@ void gnutest::BurstChannels() {
     return xClient::BurstChannels();
 }
 
-void gnutest::OnChannelEvent(const channelEventType& whichEvent, Channel* theChan, void* data1,
-                             void* data2, void* data3, void* data4) {
-    // EVT_SERVERMODE is the one channel event whose first payload is an
-    // iServer, so it is about no client
-    iClient* const aboutClient = (EVT_SERVERMODE == whichEvent) ? 0 : static_cast<iClient*>(data1);
+/*
+ * One method per event core posts, each handed exactly what that event carries.
+ * Every one of them reports the event and runs whatever "onevent" armed for it,
+ * which is the one call they all begin with, and then hands on to xClient.
+ */
 
-    if (!eventWatcher.empty()) {
-        std::vector<string> args;
-        args.push_back(theChan->getName());
-
-        switch (whichEvent) {
-        case EVT_JOIN:
-        case EVT_BURST:
-        case EVT_CREATE:
-            args.push_back(nickOf(data1));
-            args.push_back(memberOf(data2));
-            break;
-        case EVT_PART:
-            // The part message is passed on one path only
-            args.push_back(nickOf(data1));
-            args.push_back(stringOf(data2));
-            break;
-        case EVT_TOPIC:
-            // The client is null for a topic that arrives in a burst
-            args.push_back(nickOf(data1));
-            args.push_back(stringOf(data2));
-            break;
-        case EVT_SERVERMODE:
-            args.push_back(serverNameOf(data1));
-            break;
-        default:
-            break;
-        }
-
-        reportEvent(eventName(whichEvent, true), args);
-    }
-
-    runArmedAction(whichEvent, true, aboutClient, theChan);
-
-    if (theChan->getName() != operChan) {
-        // Watching every channel is expected; any other channel is not ours
-        if (eventWatcher.empty()) {
-            LOG_MSG(WARN, "Got bad channel: {chan}").with("chan", theChan).log();
-        }
-        return;
-    }
-
-    iClient* theClient = 0;
-
-    switch (whichEvent) {
-    case EVT_BURST:
-    case EVT_CREATE:
-        //		elog	<< "gnutest::OnChannelEvent> EVT_CREATE\n" ;
-    case EVT_JOIN:
-        //		elog	<< "gnutest::OnChannelEvent> Got EVT_JOIN:
-        //			<< endl ;
-        theClient = static_cast<iClient*>(data1);
-
-        if (theClient->isOper()) {
-            Op(theChan, theClient);
-        }
-        break;
-    default:
-        break;
-    }
-
-    xClient::OnChannelEvent(whichEvent, theChan, data1, data2, data3, data4);
+void gnutest::OnOper(iClient* theClient) {
+    eventArrived(EVT_OPER, false, {nickOf(theClient)}, theClient);
+    xClient::OnOper(theClient);
 }
 
-void gnutest::OnEvent(const eventType& whichEvent, void* data1, void* data2, void* data3,
-                      void* data4) {
-    // Which payload is the client the event is about, for an armed action
-    iClient* aboutClient = 0;
-    switch (whichEvent) {
-    case EVT_OPER:
-    case EVT_QUIT:
-    case EVT_NICK:
-    case EVT_CHNICK:
-    case EVT_ACCOUNT:
-    case EVT_ACCOUNT_FLAGS:
-        aboutClient = static_cast<iClient*>(data1);
-        break;
-    case EVT_KILL:
-        aboutClient = static_cast<iClient*>(data2);
-        break;
-    default:
-        break;
-    }
+void gnutest::OnNetBreak(iServer* theServer, const iServer* uplink, std::string_view reason) {
+    eventArrived(EVT_NETBREAK, false,
+                 {serverNameOf(theServer), serverNameOf(uplink), stringOf(reason)});
+    xClient::OnNetBreak(theServer, uplink, reason);
+}
 
-    if (!eventWatcher.empty()) {
-        std::vector<string> args;
+void gnutest::OnNetJoin(iServer* theServer, const iServer* uplink) {
+    eventArrived(EVT_NETJOIN, false, {serverNameOf(theServer), serverNameOf(uplink)});
+    xClient::OnNetJoin(theServer, uplink);
+}
 
-        switch (whichEvent) {
-        case EVT_OPER:
-        case EVT_NICK:
-        case EVT_ACCOUNT:
-        case EVT_ACCOUNT_FLAGS:
-            args.push_back(nickOf(data1));
-            break;
-        case EVT_QUIT:
-            // The reason is passed on one path only
-            args.push_back(nickOf(data1));
-            args.push_back(stringOf(data2));
-            break;
-        case EVT_CHNICK:
-            args.push_back(nickOf(data1));
-            args.push_back(stringOf(data2));
-            break;
-        case EVT_KILL: {
-            const string source = knownObjectOf(data1);
-            args.push_back((0 == data1) ? string("-") : (source.empty() ? string("?") : source));
-            args.push_back(nickOf(data2));
-            args.push_back(stringOf(data3));
-            break;
-        }
-        case EVT_NETBREAK: {
-            args.push_back(serverNameOf(data1));
-            // A cascading squit passes the uplink here, not the source string
-            const string uplink = knownObjectOf(data2);
-            args.push_back(uplink.empty() ? stringOf(data2) : uplink);
-            args.push_back(stringOf(data3));
-            break;
-        }
-        case EVT_NETJOIN:
-            // The uplink is passed at one site of three
-            args.push_back(serverNameOf(data1));
-            args.push_back(serverNameOf(data2));
-            break;
-        case EVT_BURST_CMPLT:
-        case EVT_BURST_ACK:
-        case EVT_EA_SENT:
-            args.push_back(serverNameOf(data1));
-            break;
-        case EVT_GLINE:
-        case EVT_REMGLINE:
-            args.push_back(glineMaskOf(data1));
-            break;
-        case EVT_RAW:
-            args.push_back(stringOf(data1));
-            break;
-        case EVT_XQUERY:
-        case EVT_XREPLY:
-            args.push_back(serverNameOf(data1));
-            args.push_back(charsOf(data2));
-            args.push_back(charsOf(data3));
-            break;
-        case EVT_NETCONF:
-        case EVT_REMNETCONF:
-            args.push_back(serverNameOf(data1));
-            args.push_back(stringOf(data2));
-            break;
-        default:
-            break;
-        }
+void gnutest::OnBurstComplete(iServer* theServer) {
+    eventArrived(EVT_BURST_CMPLT, false, {serverNameOf(theServer)});
+    xClient::OnBurstComplete(theServer);
+}
 
-        reportEvent(eventName(whichEvent, false), args);
-    }
+void gnutest::OnBurstAck(iServer* theServer) {
+    eventArrived(EVT_BURST_ACK, false, {serverNameOf(theServer)});
+    xClient::OnBurstAck(theServer);
+}
 
-    runArmedAction(whichEvent, false, aboutClient, 0);
+void gnutest::OnEndOfBurstAckSent(iServer* theServer) {
+    eventArrived(EVT_EA_SENT, false, {serverNameOf(theServer)});
+    xClient::OnEndOfBurstAckSent(theServer);
+}
 
-    xClient::OnEvent(whichEvent, data1, data2, data3, data4);
+void gnutest::OnGline(Gline* theGline) {
+    eventArrived(EVT_GLINE, false, {glineMaskOf(theGline)});
+    xClient::OnGline(theGline);
+}
+
+void gnutest::OnRemGline(Gline* theGline) {
+    eventArrived(EVT_REMGLINE, false, {glineMaskOf(theGline)});
+    xClient::OnRemGline(theGline);
+}
+
+void gnutest::OnQuit(iClient* theClient, std::string_view reason) {
+    eventArrived(EVT_QUIT, false, {nickOf(theClient), stringOf(reason)}, theClient);
+    xClient::OnQuit(theClient, reason);
+}
+
+void gnutest::OnKill(const NetworkTarget* source, iClient* theClient, std::string_view reason) {
+    const string sourceName = knownObjectOf(source);
+    const string killedBy = (nullptr == source)  ? string("-")
+                            : sourceName.empty() ? string("?")
+                                                 : sourceName;
+
+    eventArrived(EVT_KILL, false, {killedBy, nickOf(theClient), stringOf(reason)}, theClient);
+    xClient::OnKill(source, theClient, reason);
+}
+
+void gnutest::OnNick(iClient* theClient) {
+    eventArrived(EVT_NICK, false, {nickOf(theClient)}, theClient);
+    xClient::OnNick(theClient);
+}
+
+void gnutest::OnNickChange(iClient* theClient, std::string_view oldNick) {
+    eventArrived(EVT_CHNICK, false, {nickOf(theClient), stringOf(oldNick)}, theClient);
+    xClient::OnNickChange(theClient, oldNick);
+}
+
+void gnutest::OnAccount(iClient* theClient) {
+    eventArrived(EVT_ACCOUNT, false, {nickOf(theClient)}, theClient);
+    xClient::OnAccount(theClient);
+}
+
+void gnutest::OnAccountFlags(iClient* theClient) {
+    eventArrived(EVT_ACCOUNT_FLAGS, false, {nickOf(theClient)}, theClient);
+    xClient::OnAccountFlags(theClient);
+}
+
+void gnutest::OnRaw(std::string_view line) {
+    eventArrived(EVT_RAW, false, {stringOf(line)});
+    xClient::OnRaw(line);
+}
+
+void gnutest::OnXQuery(iServer* theServer, std::string_view routing, std::string_view message) {
+    eventArrived(EVT_XQUERY, false,
+                 {serverNameOf(theServer), stringOf(routing), stringOf(message)});
+    xClient::OnXQuery(theServer, routing, message);
+}
+
+void gnutest::OnXReply(iServer* theServer, std::string_view routing, std::string_view message) {
+    eventArrived(EVT_XREPLY, false,
+                 {serverNameOf(theServer), stringOf(routing), stringOf(message)});
+    xClient::OnXReply(theServer, routing, message);
+}
+
+void gnutest::OnNetConf(iServer* theServer, std::string_view key) {
+    eventArrived(EVT_NETCONF, false, {serverNameOf(theServer), stringOf(key)});
+    xClient::OnNetConf(theServer, key);
+}
+
+void gnutest::OnRemNetConf(iServer* theServer, std::string_view key) {
+    eventArrived(EVT_REMNETCONF, false, {serverNameOf(theServer), stringOf(key)});
+    xClient::OnRemNetConf(theServer, key);
+}
+
+void gnutest::OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
+    membership(EVT_JOIN, theChan, theClient, theUser);
+    xClient::OnJoin(theChan, theClient, theUser);
+}
+
+void gnutest::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
+    membership(EVT_BURST, theChan, theClient, theUser);
+    xClient::OnBurstJoin(theChan, theClient, theUser);
+}
+
+void gnutest::OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
+    membership(EVT_CREATE, theChan, theClient, theUser);
+    xClient::OnCreate(theChan, theClient, theUser);
+}
+
+void gnutest::OnPart(Channel* theChan, iClient* theClient, std::string_view message) {
+    // The part message is passed on one path only
+    eventArrived(EVT_PART, true, {theChan->getName(), nickOf(theClient), stringOf(message)},
+                 theClient, theChan);
+    xClient::OnPart(theChan, theClient, message);
+}
+
+void gnutest::OnTopic(Channel* theChan, iClient* theClient, std::string_view topic) {
+    // The client is null for a topic that arrives in a burst
+    eventArrived(EVT_TOPIC, true, {theChan->getName(), nickOf(theClient), stringOf(topic)},
+                 theClient, theChan);
+    xClient::OnTopic(theChan, theClient, topic);
+}
+
+void gnutest::OnServerMode(Channel* theChan, iServer* theServer) {
+    // The one channel event that is about no client
+    eventArrived(EVT_SERVERMODE, true, {theChan->getName(), serverNameOf(theServer)}, nullptr,
+                 theChan);
+    xClient::OnServerMode(theChan, theServer);
 }
 
 /*
@@ -616,6 +584,28 @@ bool gnutest::eventCommand(iClient* requester, const StringTokenizer& st) {
     }
 
     return false;
+}
+
+void gnutest::eventArrived(int whichEvent, bool channelEvent, const std::vector<string>& args,
+                           iClient* aboutClient, Channel* theChan) {
+    if (!eventWatcher.empty()) {
+        reportEvent(eventName(whichEvent, channelEvent), args);
+    } else if (theChan != nullptr && theChan->getName() != operChan) {
+        // Watching every channel is expected; any other channel is not ours
+        LOG_MSG(WARN, "Got bad channel: {chan}").with("chan", theChan).log();
+    }
+
+    runArmedAction(whichEvent, channelEvent, aboutClient, theChan);
+}
+
+void gnutest::membership(int whichEvent, Channel* theChan, iClient* theClient,
+                         ChannelUser* theUser) {
+    eventArrived(whichEvent, true, {theChan->getName(), nickOf(theClient), memberOf(theUser)},
+                 theClient, theChan);
+
+    if (theChan->getName() == operChan && theClient->isOper()) {
+        Op(theChan, theClient);
+    }
 }
 
 void gnutest::reportEvent(const string& name, const std::vector<string>& args) {
