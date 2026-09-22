@@ -1,10 +1,13 @@
 # GNUWorld Event System
 
 Core tells a module about the network through **events**: 19 network events
-and 6 channel events, each delivered by calling one named virtual of
-`xClient`, with typed parameters — `OnQuit(iClient*, std::string_view)`,
-`OnJoin(Channel*, iClient*, ChannelUser*)`, and so on. A module overloads the
-ones it cares about; every other one has an empty default and costs nothing.
+and 6 channel events, delivered by calling a named virtual of `xClient` with
+typed parameters — `OnQuit(iClient*, std::string_view)`,
+`OnJoin(Channel*, iClient*, ChannelUser*, JoinKind)`, and so on. There is one
+virtual per event but for the three ways a membership can arrive: one
+`OnJoin()` delivers all three, and the `JoinKind` it is handed says which. A
+module overloads the ones it cares about; every other one has an empty
+default and costs nothing.
 There is no generic handler and no untyped payload: what used to be one
 `OnEvent(const eventType&, void*, void*, void*, void*)` switched on by hand
 is gone, and with it the four-void* channel counterpart. See
@@ -141,16 +144,23 @@ for them, and registering for them has no effect.
 
 | Virtual | Fires when |
 |---|---|
-| `OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser)` | theClient has joined theChan, which already existed |
-| `OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser)` | the same, for a membership that arrives in a net burst |
-| `OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser)` | theClient has created theChan, and is opped in it |
+| `OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser, JoinKind kind)` | theClient is on theChan. `kind` says how it got there: `JoinKind::Join` — it joined a channel that already existed (`EVT_JOIN`); `JoinKind::Create` — it created theChan and is opped in it (`EVT_CREATE`); `JoinKind::Burst` — the membership arrived in a net burst (`EVT_BURST`). `channelEventOf(kind)` is that event, for a module that reports or counts the three apart |
 | `OnPart(Channel* theChan, iClient* theClient, std::string_view message)` | theClient has left theChan, and is already off it. `message` may be empty — only a PART from the network carries one |
 | `OnTopic(Channel* theChan, iClient* theClient, std::string_view topic)` | the topic of theChan has been set; theClient is null when a server set it, as one arriving in a burst is |
 | `OnServerMode(Channel* theChan, iServer* theServer)` | theServer has changed the modes of theChan; the changes themselves arrive through `OnChannelMode()` and its kin — see below |
 
-That is 19 + 6 = 25 events, each with its own typed `post*` function on
-`xServer` (`postOper`, `postQuit`, `postJoin`, …) — core calls `post*()`,
-`post*()` calls the same-named virtual on every listener.
+That is 19 + 6 = 25 events and 23 typed `post*` functions on `xServer`
+(`postOper`, `postQuit`, `postJoin`, …) — one per event, but for `postJoin()`,
+which posts all three arrivals and takes the `JoinKind` saying which. Core
+calls `post*()`, `post*()` calls the same-named virtual on every listener.
+
+The three arrivals share one virtual because they differ only in how the
+client got there, never in what they carry, and because a channel
+registration is for every channel event anyway: no module can subscribe to
+joins but not creates, so there was no granularity to lose. The three events
+stay three — `mod.stats` counts each separately, `mod.gnutest` reports each
+under its own name — and `channelEventOf()` (`include/events.h`) is the
+mapping from a kind to its event.
 
 ## Delivered Alongside Channel Events, but Not in the Enum
 
@@ -224,7 +234,7 @@ override, not one of the four slots — only `data1..data4` are mapped below.
 | `EVT_XREPLY` | `data1` = `iServer*`, `data2` = routing chars, `data3` = message chars | `OnXReply(iServer*, std::string_view routing, std::string_view message)` |
 | `EVT_NETCONF` | `data1` = `iServer*`, `data2` = key string | `OnNetConf(iServer*, std::string_view key)` |
 | `EVT_REMNETCONF` | `data1` = `iServer*`, `data2` = key string | `OnRemNetConf(iServer*, std::string_view key)` |
-| `EVT_JOIN` / `EVT_BURST` / `EVT_CREATE` | `data1` = `iClient*` theClient, `data2` = `ChannelUser*` theUser | `OnJoin`/`OnBurstJoin`/`OnCreate(Channel*, iClient*, ChannelUser*)` — three events, one shared shape; see [fall-through groups](#a-fall-through-group) |
+| `EVT_JOIN` / `EVT_BURST` / `EVT_CREATE` | `data1` = `iClient*` theClient, `data2` = `ChannelUser*` theUser | `OnJoin(Channel*, iClient*, ChannelUser*, JoinKind)` — three events, one shared shape and so one virtual; the event you switched on is now `channelEventOf(kind)`, see [fall-through groups](#a-fall-through-group) |
 | `EVT_PART` | `data1` = `iClient*` theClient, **`data2` = message string** | `OnPart(Channel*, iClient*, std::string_view message)` |
 | `EVT_TOPIC` | `data1` = `iClient*` theClient (null for a burst), **`data2` = topic string** | `OnTopic(Channel*, iClient*, std::string_view topic)` |
 | `EVT_SERVERMODE` | `data1` = `iServer*` | `OnServerMode(Channel*, iServer*)` |
@@ -261,21 +271,34 @@ case EVT_JOIN: {
 }
 ```
 
-There is no fall-through between virtuals. The replacement is one
-one-line override per event, each calling a shared helper with the right
-flag (real code, `mod.cservice`):
+There is nothing to fall through: the three arrive at one `OnJoin()`, and the
+flag the old `switch` set by hand is the `JoinKind` it is handed (real code,
+`mod.cservice`):
 
 ```cpp
-void cservice::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
-    handleChannelJoin(theChan, theClient, true);
-}
-void cservice::OnCreate(Channel* theChan, iClient* theClient, ChannelUser*) {
-    handleChannelJoin(theChan, theClient, false);
-}
-void cservice::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
-    handleChannelJoin(theChan, theClient, false);
+void cservice::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*, JoinKind kind) {
+    handleChannelJoin(theChan, theClient, kind);
 }
 ```
+
+A module that acted on only some of the three does that with an early return
+on the kinds it does not want — `mod.dronescan` took the plain join and
+nothing else, `mod.ccontrol`, `mod.nickserv` and `mod.openchanfix` take
+everything but a create:
+
+```cpp
+void chanfix::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*, JoinKind kind) {
+    if (JoinKind::Create == kind) {
+        return;
+    }
+
+    opJoiningOper(theChan, theClient);
+}
+```
+
+A module that still wants the three apart asks `channelEventOf(kind)` for the
+event — that is how `mod.stats` keeps a counter per event and `mod.gnutest`
+keeps a name per event.
 
 ### The name-hiding trap
 
@@ -284,7 +307,7 @@ purposes:
 
 | Name | Purpose |
 |---|---|
-| `OnJoin(Channel*, iClient*, ChannelUser*)` | the channel event, above |
+| `OnJoin(Channel*, iClient*, ChannelUser*, JoinKind)` | the channel event, above |
 | `OnJoin(Channel*)`, `OnJoin(const std::string&)` | **the bot itself** has joined a channel (called after `Join()`) |
 | `OnPart(Channel*, iClient*, std::string_view)` | the channel event, above |
 | `OnPart(Channel*)`, `OnPart(const std::string&)` | **the bot itself** has parted a channel |
@@ -294,9 +317,9 @@ purposes:
 In C++, declaring an override of one overload of a name in a derived class
 hides every base-class overload of that name in that derived class's own
 scope, unless a `using` brings them back. Declare only
-`OnJoin(Channel*, iClient*, ChannelUser*)` in your module class, and an
-unqualified call to `OnJoin(someChan)` from *inside that class* no longer
-compiles — the single-argument overload is hidden, not gone.
+`OnJoin(Channel*, iClient*, ChannelUser*, JoinKind)` in your module class,
+and an unqualified call to `OnJoin(someChan)` from *inside that class* no
+longer compiles — the single-argument overload is hidden, not gone.
 
 **In this codebase it was needed nowhere, across nine converted modules.**
 The reason: core always calls these methods through a pointer statically
@@ -308,7 +331,7 @@ finds the right override regardless. And no converted module calls
 self-notification overloads (`OnJoin(Channel*)` and kin) exist to be
 *overridden*, not called, and nothing in this tree does both to the same
 name in the same class. `mod.cservice` overrides both
-`OnJoin(Channel*, iClient*, ChannelUser*)` (the event) and
+`OnJoin(Channel*, iClient*, ChannelUser*, JoinKind)` (the event) and
 `OnJoin(const std::string&)` (the bot's own join) — perfectly fine, since
 declaring both itself means neither is hidden from the other.
 
@@ -401,3 +424,10 @@ the forwarding call to the base class are all gone with the untyped method.
    (`void xClient::OnFoo(...) {}`).
 7. Call the new `post*()` from wherever core or `libircu` learns of the
    condition.
+
+A fourth way for a membership to arrive is not a new event in this sense: it
+is a `JoinKind` enumerator and its `channelEventOf()` case (plus the
+`ChannelEvent` enumerator and `eventName()` case of steps 1 and 2, since the
+three arrivals are three events still). That switch has no `default` either,
+for the same reason: a kind with no event mapped to it is a `-Wswitch`
+warning, and the zero-warning gate is what stops it.
