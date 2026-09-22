@@ -1046,251 +1046,229 @@ void ccontrol::OnCTCP(iClient* theClient, const string& CTCP, const string& Mess
     }
 }
 
-void ccontrol::OnEvent(const eventType& theEvent, void* Data1, void* Data2, void* Data3,
-                       void* Data4) {
-    string client_ip = "";
+/*
+ *  The user disconnected,
+ *  remove his authentication,
+ *  and flood data, and login data
+ */
+void ccontrol::lostClient(iClient* tmpUser) {
+    --curUsers;
+    string tIP = xIP(tmpUser->getIP()).GetNumericIP(true);
+    ipLDropClient(tmpUser);
+    ccUserData* UserData = static_cast<ccUserData*>(tmpUser->getCustomData(this));
+    tmpUser->removeCustomData(this);
 
-    switch (theEvent) {
-    case EVT_QUIT:
-    case EVT_KILL: {
-        /*
-         *  The user disconnected,
-         *  remove his authentication,
-         *  and flood data, and login data
-         */
+    if (UserData) {
+        ccUser* TempAuth = UserData->getDbUser();
+        if (TempAuth) {
+            UserData->setDbUser(NULL);
+            TempAuth->remClient(tmpUser);
+        }
 
-        iClient* tmpUser =
-            (theEvent == EVT_QUIT) ? static_cast<iClient*>(Data1) : static_cast<iClient*>(Data2);
-        --curUsers;
-        string tIP = xIP(tmpUser->getIP()).GetNumericIP(true);
-        ipLDropClient(tmpUser);
-        ccUserData* UserData = static_cast<ccUserData*>(tmpUser->getCustomData(this));
-        tmpUser->removeCustomData(this);
-
-        if (UserData) {
-            ccUser* TempAuth = UserData->getDbUser();
-            if (TempAuth) {
-                UserData->setDbUser(NULL);
-                TempAuth->remClient(tmpUser);
+        ccFloodData* tempLogin = UserData->getFlood();
+        if (tempLogin) {
+            removeLogin(tempLogin);
+            if (tempLogin->getIgnoredHost() != "") {
+                tempLogin->setNumeric("0");
+                tempLogin->resetLogins();
+            } else {
+                delete tempLogin;
             }
-
-            ccFloodData* tempLogin = UserData->getFlood();
-            if (tempLogin) {
-                removeLogin(tempLogin);
-                if (tempLogin->getIgnoredHost() != "") {
-                    tempLogin->setNumeric("0");
-                    tempLogin->resetLogins();
-                } else {
-                    delete tempLogin;
-                }
-            }
-            delete UserData;
         }
-        break;
-    } // case EVT_KILL/case EVT_QUIT
-    case EVT_XQUERY: {
-        iServer* theServer = static_cast<iServer*>(Data1);
-        const char* Routing = reinterpret_cast<char*>(Data2);
-        const char* Message = reinterpret_cast<char*>(Data3);
-        // elog << "ccontrol.cc: XQ> " << theServer->getName() << " " << Routing << " " << Message
-        // << endl;
-        StringTokenizer st(Message);
-        if (st.size() < 2) {
-            // No command or no nick supplied
-            break;
-        }
-        string Command = string_upper(st[0]);
-        // DEBUG start
-        // elog << "ccontrol.EVT_XQUERY Command=" << Command << endl;
-        // DEBUG end
-        if (Command == "CHECK") {
-            iauthXQCheck(theServer, Routing, Message);
-        }
-        break;
+        delete UserData;
     }
-    case EVT_NETJOIN: {
-        /*
-         * We need to update the servers table about the new
-         * server , and check if we know it
-         *
-         */
-        iServer* NewServer = static_cast<iServer*>(Data1);
-        if (NewServer->isJupe()) // Is the server juped?
-        {
-            break;
+}
+
+void ccontrol::OnQuit(iClient* theClient, std::string_view) { lostClient(theClient); }
+
+void ccontrol::OnKill(const NetworkTarget*, iClient* theClient, std::string_view) {
+    lostClient(theClient);
+}
+
+void ccontrol::OnXQuery(iServer* theServer, std::string_view routing, std::string_view message) {
+    const string Routing(routing);
+    const string Message(message);
+    // elog << "ccontrol.cc: XQ> " << theServer->getName() << " " << Routing << " " << Message
+    // << endl;
+    StringTokenizer st(Message);
+    if (st.size() < 2) {
+        // No command or no nick supplied
+        return;
+    }
+    string Command = string_upper(st[0]);
+    // DEBUG start
+    // elog << "ccontrol.EVT_XQUERY Command=" << Command << endl;
+    // DEBUG end
+    if (Command == "CHECK") {
+        iauthXQCheck(theServer, Routing, Message);
+    }
+}
+
+void ccontrol::OnNetJoin(iServer* NewServer, const iServer*) {
+    /*
+     * We need to update the servers table about the new
+     * server , and check if we know it
+     *
+     */
+    if (NewServer->isJupe()) // Is the server juped?
+    {
+        return;
+    }
+    /* use Network->findServer as AttachServer sends an iClient rather
+     * than an iServer object as the uplink.  Either way should work fine.
+     */
+    iServer* UplinkServer = Network->findServer(NewServer->getUplinkIntYY());
+    ccServer* CheckServer = getServer(NewServer->getName());
+    inBurst = true;
+    if (!CheckServer) {
+        MsgChanLog("Unknown server just connected: %s via %s\n", NewServer->getName().c_str(),
+                   UplinkServer->getName().c_str());
+    } else {
+        CheckServer->setLastConnected(::time(0));
+        CheckServer->setUplink(UplinkServer->getName());
+        CheckServer->setLastNumeric(NewServer->getCharYY());
+        CheckServer->setNetServer(NewServer);
+        if (dbConnected) {
+            CheckServer->Update();
         }
-        /* use Network->findServer as AttachServer sends an iClient rather
-         * than an iServer object as Data2.  Either way should work fine.
-         */
-        iServer* UplinkServer = Network->findServer(NewServer->getUplinkIntYY());
+    }
+}
+
+void ccontrol::OnNetBreak(iServer* NewServer, const iServer*, std::string_view reason) {
+    string Reason(reason);
+
+    if (0 == Network->findFakeServer(NewServer))
+    // NOTE: Changed --dan
+    //		if(!getUplink()->isJuped(NewServer))
+    {
         ccServer* CheckServer = getServer(NewServer->getName());
-        inBurst = true;
-        if (!CheckServer) {
-            MsgChanLog("Unknown server just connected: %s via %s\n", NewServer->getName().c_str(),
-                       UplinkServer->getName().c_str());
-        } else {
-            CheckServer->setLastConnected(::time(0));
-            CheckServer->setUplink(UplinkServer->getName());
-            CheckServer->setLastNumeric(NewServer->getCharYY());
-            CheckServer->setNetServer(NewServer);
+        if (CheckServer) {
+            CheckServer->setSplitReason(Reason);
+            CheckServer->setLastSplitted(::time(NULL));
+            CheckServer->setNetServer(NULL);
+            CheckServer->setLastLagRecv(0);
+            CheckServer->setLastLagSent(0);
+            CheckServer->setLagTime(0);
+            CheckServer->setLastLagReport(0);
             if (dbConnected) {
                 CheckServer->Update();
             }
         }
-        break;
     }
-    case EVT_NETBREAK: {
-        iServer* NewServer = static_cast<iServer*>(Data1);
-        string Reason = *(static_cast<string*>(Data3));
-
-        if (0 == Network->findFakeServer(NewServer))
-        // NOTE: Changed --dan
-        //		if(!getUplink()->isJuped(NewServer))
-        {
-            ccServer* CheckServer = getServer(NewServer->getName());
-            if (CheckServer) {
-                CheckServer->setSplitReason(Reason);
-                CheckServer->setLastSplitted(::time(NULL));
-                CheckServer->setNetServer(NULL);
-                CheckServer->setLastLagRecv(0);
-                CheckServer->setLastLagSent(0);
-                CheckServer->setLagTime(0);
-                CheckServer->setLastLagReport(0);
-                if (dbConnected) {
-                    CheckServer->Update();
-                }
-            }
+    inBurst = false;
+    ccServer* curServer;
+    const iServer* curNetServer;
+    for (serversconstiterator ptr = serversMap_begin(); ptr != serversMap_end() && !inBurst;
+         ++ptr) {
+        curServer = ptr->second;
+        curNetServer = curServer->getNetServer();
+        if ((curNetServer) && (curNetServer->isBursting())) {
+            inBurst = true;
         }
-        inBurst = false;
-        ccServer* curServer;
-        const iServer* curNetServer;
-        for (serversconstiterator ptr = serversMap_begin(); ptr != serversMap_end() && !inBurst;
-             ++ptr) {
-            curServer = ptr->second;
-            curNetServer = curServer->getNetServer();
-            if ((curNetServer) && (curNetServer->isBursting())) {
-                inBurst = true;
-            }
-        }
-
-        break;
     }
-    case EVT_BURST_CMPLT: {
-        inBurst = false;
-        ccServer* curServer;
-        // refreshOpersIPMap();
-        const iServer* curNetServer;
-        for (serversconstiterator ptr = serversMap_begin(); ptr != serversMap_end() && !inBurst;
-             ++ptr) {
-            curServer = ptr->second;
-            curNetServer = curServer->getNetServer();
-            if ((curNetServer) && (curNetServer->isBursting())) {
-                inBurst = true;
-            }
-        }
-        checkMaxUsers();
-        //		if(!inBurst)
-        //			{
-        refreshVersions();
-        //			}
-        break;
-    }
-    case EVT_GLINE: {
-        if (!Data1) // TODO: find out how we get this
-        {
-            return;
-        }
-
-        if (!saveGlines) {
-            return;
-        }
-        Gline* newG = static_cast<Gline*>(Data1);
-
-        ccGline* newGline = findGline(newG->getUserHost());
-        if (!newGline) {
-            newGline = new (std::nothrow) ccGline(SQLDb);
-            assert(newGline != NULL);
-            iServer* serverAdded = Network->findServer(newG->getSetBy());
-            if (serverAdded)
-                newGline->setAddedBy(serverAdded->getName());
-            else
-                newGline->setAddedBy("Unknown");
-        } else {
-            if (newGline->getLastUpdated() >= newG->getLastmod()) {
-                return;
-            }
-        }
-        newGline->setAddedOn(::time(0));
-        // newGline->setLastUpdated(::time(0));
-        newGline->setHost(newG->getUserHost());
-        newGline->setReason(newG->getReason());
-        newGline->setExpires(newG->getExpiration());
-        if (saveGlines) {
-            newGline->Insert();
-            // need to load the id
-            newGline->loadData(newGline->getHost());
-        } else {
-            newGline->setId("-1");
-        }
-        addGline(newGline);
-        break;
-    }
-    case EVT_REMGLINE: {
-        if (!Data1) {
-            return;
-        }
-
-        Gline* newG = static_cast<Gline*>(Data1);
-        ccGline* newGline = findGline(newG->getUserHost());
-        if (newGline) {
-            remGline(newGline);
-            newGline->Delete();
-            delete newGline;
-        }
-        break;
-    }
-    case EVT_NICK: {
-        iClient* NewUser = static_cast<iClient*>(Data1);
-        handleNewClient(NewUser);
-        break;
-    }
-    case EVT_OPER: {
-        iClient* theUser = static_cast<iClient*>(Data1);
-        isNowAnOper(theUser);
-        if (theUser->isModeR())
-            handleAC(theUser);
-        break;
-    }
-    case EVT_ACCOUNT: {
-        iClient* theUser = static_cast<iClient*>(Data1);
-        handleAC(theUser);
-        break;
-    }
-    } // switch()
-
-    xClient::OnEvent(theEvent, Data1, Data2, Data3, Data4);
 }
 
-void ccontrol::OnChannelEvent(const channelEventType& theEvent, Channel* theChan, void* Data1,
-                              void* Data2, void* Data3, void* Data4) {
-    switch (theEvent) {
-    case EVT_BURST:
-    case EVT_JOIN:
-        if (!isOperChan(theChan)) {
-            // We really don't care otherwise
-            // Note, this shouldn't happen
-            break;
+void ccontrol::OnBurstComplete(iServer*) {
+    inBurst = false;
+    ccServer* curServer;
+    // refreshOpersIPMap();
+    const iServer* curNetServer;
+    for (serversconstiterator ptr = serversMap_begin(); ptr != serversMap_end() && !inBurst;
+         ++ptr) {
+        curServer = ptr->second;
+        curNetServer = curServer->getNetServer();
+        if ((curNetServer) && (curNetServer->isBursting())) {
+            inBurst = true;
         }
+    }
+    checkMaxUsers();
+    //		if(!inBurst)
+    //			{
+    refreshVersions();
+    //			}
+}
 
-        iClient* theClient = static_cast<iClient*>(Data1);
-        if (theClient->isOper()) {
-            Op(theChan, theClient);
-        }
-        break;
+void ccontrol::OnGline(Gline* newG) {
+    if (!newG) // TODO: find out how we get this
+    {
+        return;
     }
 
-    // Call the base class OnChannelEvent()
-    xClient::OnChannelEvent(theEvent, theChan, Data1, Data2, Data3, Data4);
+    if (!saveGlines) {
+        return;
+    }
+
+    ccGline* newGline = findGline(newG->getUserHost());
+    if (!newGline) {
+        newGline = new (std::nothrow) ccGline(SQLDb);
+        assert(newGline != NULL);
+        iServer* serverAdded = Network->findServer(newG->getSetBy());
+        if (serverAdded)
+            newGline->setAddedBy(serverAdded->getName());
+        else
+            newGline->setAddedBy("Unknown");
+    } else {
+        if (newGline->getLastUpdated() >= newG->getLastmod()) {
+            return;
+        }
+    }
+    newGline->setAddedOn(::time(0));
+    // newGline->setLastUpdated(::time(0));
+    newGline->setHost(newG->getUserHost());
+    newGline->setReason(newG->getReason());
+    newGline->setExpires(newG->getExpiration());
+    if (saveGlines) {
+        newGline->Insert();
+        // need to load the id
+        newGline->loadData(newGline->getHost());
+    } else {
+        newGline->setId("-1");
+    }
+    addGline(newGline);
+}
+
+void ccontrol::OnRemGline(Gline* newG) {
+    if (!newG) {
+        return;
+    }
+
+    ccGline* newGline = findGline(newG->getUserHost());
+    if (newGline) {
+        remGline(newGline);
+        newGline->Delete();
+        delete newGline;
+    }
+}
+
+void ccontrol::OnNick(iClient* NewUser) { handleNewClient(NewUser); }
+
+void ccontrol::OnOper(iClient* theUser) {
+    isNowAnOper(theUser);
+    if (theUser->isModeR())
+        handleAC(theUser);
+}
+
+void ccontrol::OnAccount(iClient* theUser) { handleAC(theUser); }
+
+/* A join and a burst join are the same thing to us. */
+void ccontrol::opJoiningOper(Channel* theChan, iClient* theClient) {
+    if (!isOperChan(theChan)) {
+        // We really don't care otherwise
+        // Note, this shouldn't happen
+        return;
+    }
+
+    if (theClient->isOper()) {
+        Op(theChan, theClient);
+    }
+}
+
+void ccontrol::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
+    opJoiningOper(theChan, theClient);
+}
+
+void ccontrol::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
+    opJoiningOper(theChan, theClient);
 }
 
 void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
