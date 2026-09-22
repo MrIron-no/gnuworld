@@ -11,7 +11,10 @@ noinst_LTLIBRARIES =
 BUILT_SOURCES =
 CLEANFILES =
 
-pkgdata_DATA = bin/server_command_map
+# dist_ because the build needs it: pkgdata_DATA alone installs the file
+# without putting it in the tarball, and then "make" in an unpacked tarball has
+# no rule to make it.
+dist_pkgdata_DATA = bin/server_command_map
 
 # Install migration files for configured modules
 if COND_MODCSERVICE
@@ -65,6 +68,7 @@ EXTRA_DIST = bin/logging.properties \
 	bin/nickserv.example.conf \
 	bin/openchanfix.example.conf \
 	bin/scanner.example.conf \
+	bin/snoop.example.conf \
 	bin/stats.example.conf \
 	bin/debug.example.conf \
 	contrib/00INDEX.TXT \
@@ -76,58 +80,34 @@ EXTRA_DIST = bin/logging.properties \
 	doc/README.ccontrol \
 	doc/README.cservice \
 	doc/README.dronescan \
+	doc/README.events.md \
+	doc/README.logger.md \
+	doc/README.migrations \
 	doc/README.sharedmemory \
-	doc/autokill.sql \
 	doc/ccontrol.addme.sql \
 	doc/ccontrol.commands.sql \
 	doc/ccontrol.help.sql \
 	doc/ccontrol.sql \
 	doc/ccontrol.update.sql \
-	doc/checkvarargs.py \
-	doc/chktrans.py \
-	doc/cparse.py \
 	doc/cservice.addme.sql \
 	doc/cservice.config.sql \
 	doc/cservice.help.sql \
+	doc/cservice.languages.sql \
 	doc/cservice.sql \
+	doc/cservice.thereturn.sql \
+	doc/cservice.translations.sql \
+	doc/cservice.update.sql \
 	doc/cservice.web.sql \
 	doc/dronescan.sql \
-	doc/genhelp.py \
-	doc/grant.sql \
-	doc/greeting.sql \
-	doc/language_christmas.sql \
-	doc/language_dutch.sql \
-	doc/language_easter.sql \
-	doc/language_german.sql \
-	doc/language_greek.sql \
-	doc/language_halloween.sql \
-	doc/language_swedish.sql \
-	doc/language_table.sql \
-	doc/languages.sql \
-	doc/local_db.sql \
-	doc/motd.sql \
 	doc/movetables \
-	doc/notes.sql \
-	doc/README \
-	doc/README.appjudge \
-	doc/README.ccontrol \
-	doc/README.cservice \
-	doc/README.pgsql \
-	doc/README.sharedmemory \
-	doc/update.channels.sql \
-	doc/update_complaints_20031020.sql \
-	doc/update_complaints_20031026.sql \
-	doc/update_complaints.sql \
-	doc/update.delete.sql \
-	doc/update.gfxcode.sql \
-	doc/update.statistics.sql \
-	doc/update_fraud_lists.sql \
-	doc/update.statistics.sql \
-	doc/update_themes.sql \
-	doc/update_tzmove_l.sql \
-	doc/update_tzmove_r.sql \
+	doc/cmaster/checkvarargs.py \
+	doc/cmaster/chktrans.py \
+	doc/cmaster/cparse.py \
+	doc/cmaster/cservice_langdump.sh \
+	doc/cmaster/genhelp.py \
 	doc/cmaster/maint/cleanup_traffic.sql \
 	doc/cmaster/maint/enc_pass.sh \
+	doc/cmaster/maint/expiredIPR.sql \
 	doc/cmaster/maint/fixDOS.sh \
 	doc/cmaster/maint/Manager1K.sh \
 	doc/cmaster/maint/WipeUser.sh \
@@ -145,7 +125,6 @@ EXTRA_DIST = bin/logging.properties \
 	doc/nickserv/nickserv.sql \
 	doc/nickserv/INSTALL \
 	doc/nickserv/USAGE \
-	include/defs.h \
 	include/Channel.h \
 	include/ChannelUser.h \
 	include/Gline.h \
@@ -164,11 +143,9 @@ EXTRA_DIST = bin/logging.properties \
 	include/iServer.h \
 	include/ip.h \
 	include/gnuworld_config.h \
-	include/gw_hashmap.h \
 	include/moduleLoader.h \
 	include/server.h \
-	libltdl/ltdl.h \
-	tools/checkgnuworld.sh
+	libltdl/ltdl.h
 
 if COND_PGSQL
 include db/Makefile.am

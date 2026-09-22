@@ -68,6 +68,9 @@ EXTRA_DIST += \
 	mod.dronescan/dronescanCommands.h \
 	mod.dronescan/dronescan.h \
 	mod.dronescan/dronescanTests.h \
+	mod.dronescan/glineData.h \
+	mod.dronescan/jfChannel.h \
+	mod.dronescan/jfClientData.h \
 	mod.dronescan/levels.h \
 	mod.dronescan/sqlFakeClient.h \
 	mod.dronescan/sqlUser.h \
