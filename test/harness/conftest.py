@@ -490,7 +490,7 @@ async def dronescan_linked(docker_stack, fake_hub_p11, tmp_path):
 async def openchanfix_linked(docker_stack, fake_hub_p11, tmp_path):
     settings = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"], "sqlDB": "chanfix",
                 "sqlcfUser": _HARNESS_DB["user"], "sqlPass": _HARNESS_DB["password"]}
-    async with link_module(docker_stack, fake_hub_p11, tmp_path, "openchanfix", "libchanfix.la",
+    async with link_module(docker_stack, fake_hub_p11, tmp_path, "openchanfix", "libopenchanfix.la",
                            "openchanfix.example.conf", settings) as linked:
         yield linked
 

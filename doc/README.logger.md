@@ -398,14 +398,14 @@ core.notifier   the Pushover and Prometheus clients themselves.  A pushover
 and one logger per module, named after its library file
 (`moduleNameFromLibrary`: the basename, minus a leading `lib`, minus
 everything from the first `.` on — `libcservice.la` → `cservice`,
-`libchanfix.la` → `chanfix`, which is `mod.openchanfix`):
+`libopenchanfix.la` → `openchanfix`):
 
 ```
-cservice  ccontrol  chanfix  dronescan  nickserv  cloner  gnutest  ...
+cservice  ccontrol  openchanfix  dronescan  nickserv  cloner  gnutest  ...
 ```
 
 Every module that opens a `dbHandle` also gets `<module>.sql` below it —
-`cservice.sql`, `ccontrol.sql`, `chanfix.sql`, `dronescan.sql`,
+`cservice.sql`, `ccontrol.sql`, `openchanfix.sql`, `dronescan.sql`,
 `nickserv.sql` — code default `ERROR`, so a failed query is always logged
 and a successful one is not unless the logger is turned up to `DEBUG`. And
 cservice has one more of its own, `cservice.commands`: one INFO record per

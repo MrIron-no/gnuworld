@@ -785,7 +785,7 @@ CHANFIX_DB = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"], "s
 
 @asynccontextmanager
 async def chanfix_tuned(docker_stack, hub, tmp_path, **overrides):
-    async with link_module(docker_stack, hub, tmp_path, "openchanfix", "libchanfix.la",
+    async with link_module(docker_stack, hub, tmp_path, "openchanfix", "libopenchanfix.la",
                            "openchanfix.example.conf", {**CHANFIX_DB, **overrides}) as linked:
         yield linked
 

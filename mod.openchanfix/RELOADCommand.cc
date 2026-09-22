@@ -37,11 +37,10 @@ void RELOADCommand::Exec(iClient* theClient, sqlcfUser* theUser, const std::stri
 
     /* See comment in SHUTDOWNCommand.cc — blocks if background sync is running. */
     if (bot->isUpdateRunning()) {
-        bot->SendTo(theClient,
-                    bot->getResponse(theUser, language::update_in_progress,
-                                     std::string("A SQL sync is currently in progress. "
-                                                 "Please try again in a few seconds."))
-                        .c_str());
+        bot->SendTo(theClient, bot->getResponse(theUser, language::update_in_progress,
+                                                std::string("A SQL sync is currently in progress. "
+                                                            "Please try again in a few seconds."))
+                                   .c_str());
         return;
     }
 
@@ -63,7 +62,7 @@ void RELOADCommand::Exec(iClient* theClient, sqlcfUser* theUser, const std::stri
     else
         server->UnloadClient(bot, st.assemble(1));
 
-    server->LoadClient("libchanfix", bot->getConfigFileName());
+    server->LoadClient("libopenchanfix", bot->getConfigFileName());
 
     bot->logLastComMessage(theClient, Message);
 
