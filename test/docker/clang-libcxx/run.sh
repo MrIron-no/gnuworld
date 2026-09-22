@@ -129,8 +129,14 @@ printf 'warnings in the whole build: %s\n' "$warnings"
 if [ "$warnings" != 0 ]; then
     printf 'what they are, by kind (counted, not fatal):\n'
     grep -o '\[-W[a-z0-9-]*\]' "$BUILD_LOG" | sort | uniq -c | sort -rn | head -20
-    printf 'the first few, in full:\n'
-    grep 'warning:' "$BUILD_LOG" | head -10
+    # Every distinct warning, with how many translation units saw it.  A header
+    # warning is reported once per TU that includes the header, so a two-line
+    # mistake in a header with 67 includers counts as 134; without this list you
+    # cannot tell that from 134 separate mistakes, and the log dies with the
+    # container.
+    printf 'each distinct warning, and how many times it was reported:\n'
+    grep 'warning:' "$BUILD_LOG" | sed 's/^.*\/\([^/]*:[0-9]*\):[0-9]*: warning:/\1: warning:/' \
+        | sort | uniq -c | sort -rn
 fi
 
 # ---------------------------------------------------- really libc++, then?
