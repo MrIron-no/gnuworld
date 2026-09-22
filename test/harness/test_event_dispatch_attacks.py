@@ -15,6 +15,12 @@ squit - whose split delivers a NetBreak and then a Quit through two separate
 top-level dispatches - with a handler nested inside each, and a quit that
 empties a channel as a side effect nobody asked it to report.
 
+The last four go further still, to what an armed action could not name until
+mod.gnutest let it: one instance unloading *another* from inside a handler, a
+handler killing a client and emptying a channel that the event it is running
+inside has nothing to do with, and a chain of five events each posted from the
+handler of the one before it.
+
 Everything reuses two_gnutests_linked_p11 and the drive()/reports()/command()
 machinery of test_event_order.py, which spells out the wire protocol these
 tests speak. A comment above each case says which guarantee it is aimed at.
@@ -33,6 +39,9 @@ from test_event_order import CHAN, alive, command, drive, drive_or_die, logged, 
 
 LEAF = "split.testnet"
 LEAF_NUM = 42
+
+# The channels the five-deep chain walks, one per hop
+CHAIN = ["#chain-a", "#chain-b", "#chain-c"]
 
 
 async def leaf_setup(hub) -> dict[str, str]:
@@ -288,3 +297,208 @@ async def test_a_quit_that_empties_a_channel_reports_no_part(two_gnutests_linked
     out = await command(hub, env["asker"], "gnutest2", f"chaninfo {CHAN}")
     alive(proc)
     assert any("Unable to find channel" in line for line in out)
+
+
+@pytest.mark.asyncio
+async def test_one_instance_detaches_the_other_from_inside_a_handler(two_gnutests_linked_p11):
+    """Guarantee 5 with the asking and the going pulled apart: every other
+    detach test has a module ask for itself, so xServer::DetachClient() has only
+    ever been called on the handler's own frame. Here gnutest, in the middle of
+    its own OnQuit, detaches gnutest2 - a module with no frame on the stack at
+    all, and the one listener still to be called for this very event.
+
+    DetachClient(xClient*) unregisters immediately, so gnutest2 is off the
+    listener list before the dispatch reaches it: it is not told about the quit
+    it was queued to receive, and the deferred half of the removal posts its own
+    quit afterwards, which gnutest - still a listener - reports."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub)
+
+    await command(hub, env["asker"], "gnutest", "onevent Quit detach gnutest2")
+
+    # gnutest2 is what leaves, so both windows end on a message to gnutest, and
+    # are read as one: the departure is deferred past the line that asked for it
+    start = len(hub.received)
+    await drive_to(hub, env, [f"{env['victim']} Q :bye now"], "gnutest", proc, timeout=30.0)
+    alive(proc)
+    await hub.wait_for(lambda line: "EVENT Quit gnutest2 " in line, timeout=30.0)
+
+    out = [strip_msg_tags(line) for line in hub.received[start:]]
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
+        ("gnutest", "Quit gnutest2 -"),
+    ]
+
+
+@pytest.mark.xfail(
+    reason="xServer::UnloadClient(xClient*) turns the object back into the module NAME and "
+    "defers that, and xServer::DetachClient(const string&) then takes the FIRST module of "
+    "that name: with one library loaded twice the two instances share a name, so the unload "
+    "lands on whichever was loaded first, not on the instance that was named",
+)
+@pytest.mark.asyncio
+async def test_one_instance_unloads_the_other_from_inside_a_handler(two_gnutests_linked_p11):
+    """The same attack through UnloadClient() instead of DetachClient(), which
+    is the pair's other half and the one a module is told to use.
+
+    gnutest, from inside its own OnQuit, asks for gnutest2 to be unloaded. What
+    must leave is gnutest2: its client quits, and gnutest - which asked - is
+    still there afterwards to report the next event. That is not what happens,
+    and the wire says so plainly: the client that quits is gnutest's own.
+
+    The detach test above is the control. It names the same instance the same
+    way, reaches xServer::removeClient() for the right module, and passes - so
+    nothing about naming another instance from a handler is at fault here. The
+    difference is entirely in what UnloadClient(xClient*) does with the pointer:
+    it looks the module up, throws the object away, keeps only the module NAME,
+    and hands that to a timer; DetachClient(const string&) then returns the
+    first entry of clientModuleList with that name. Both instances here were
+    loaded from libgnutest.la, so the first entry is gnutest."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub)
+
+    await command(hub, env["asker"], "gnutest", "onevent Quit unload gnutest2")
+
+    named, asked = numnick(hub, "gnutest2"), numnick(hub, "gnutest")
+    start = len(hub.received)
+    await hub.send_raw(f"{env['victim']} Q :bye now")
+
+    # Whichever instance goes, its client quits: waiting for either says which
+    # one it was without waiting out a timeout to find out
+    await hub.wait_for(
+        lambda line: p10_token(strip_msg_tags(line)) == "Q"
+        and strip_msg_tags(line).split(" ", 1)[0] in (named, asked),
+        timeout=30.0,
+    )
+    alive(proc)
+
+    out = [strip_msg_tags(line) for line in hub.received[start:]]
+    assert [line.split(" ", 1)[0] for line in out if p10_token(line) == "Q"] == [named], (
+        "the unload took an instance the handler did not name"
+    )
+
+    # And the instance that asked is still a listener
+    out = await drive_to(hub, env, [f"{env['other']} Q :me too"], "gnutest", proc, timeout=30.0)
+    alive(proc)
+    out = [strip_msg_tags(line) for line in hub.received[start:]]
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
+        ("gnutest", "Quit gnutest2 -"),
+        ("gnutest", "Quit other me too"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_handler_kills_a_client_the_event_was_never_about(two_gnutests_linked_p11):
+    """Guarantee 3 for an object the dispatch never handed anyone. Every
+    existing kill test has the handler kill the client the event is about, which
+    is the client core itself is holding for the line; the holding list and
+    xClient::Kill()'s "is it still there" guard are not written for that case
+    alone.
+
+    gnutest kills other - a client nothing in this dispatch mentions - from
+    inside victim's Quit. The kill is a removal made at dispatchDepth 1 just
+    like any other, so the EVT_KILL it posts is queued behind the quit it
+    interrupted rather than dispatched re-entrantly, both modules are told about
+    it in the round after, and exactly one D goes out for the client that was
+    named."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub)
+
+    await command(hub, env["asker"], "gnutest", "onevent Quit kill other")
+
+    out = await drive_or_die(hub, env, [f"{env['victim']} Q :bye now"], proc)
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
+        ("gnutest", "Kill - other onevent kill"),
+        ("gnutest2", "Kill - other onevent kill"),
+    ]
+
+    killed = [line for line in out if p10_token(line) == "D"]
+    assert len(killed) == 1, killed
+    assert env["other"] in killed[0]
+    assert logged(proc, "Unable to find client numeric") == []
+
+
+@pytest.mark.asyncio
+async def test_a_handler_empties_a_channel_the_event_was_never_about(two_gnutests_linked_p11):
+    """The same again for a Channel, which is the object destroy()'s holding
+    list was written for: test_event_order's kick tests empty the channel the
+    event is about, so the Channel that goes is the one the caller of notify()
+    is still holding a pointer to. Here the Quit being dispatched is about a
+    client on no channel at all, and the channel gnutest empties belongs to
+    nothing in the line being processed - it is reached only because the handler
+    named it.
+
+    It must still come apart in the usual order: the join and the part
+    xServer::kickMembers() needs are posted from inside the quit and so arrive
+    in the round after it, the kick is not an event and reaches both modules as
+    it happens, and the emptied channel is gone by the time anything asks the
+    network for it again."""
+    hub, proc = two_gnutests_linked_p11
+    # other is CHAN's only member, and is not what the quit is about
+    env = await setup(hub, channel_members=["other"])
+
+    await command(hub, env["asker"], "gnutest", f"onevent Quit kick {CHAN} other")
+
+    out = await drive_or_die(hub, env, [f"{env['victim']} Q :bye now"], proc)
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
+        ("gnutest", f"ChannelJoin {CHAN} gnutest gnutest"),
+        ("gnutest2", f"ChannelJoin {CHAN} gnutest gnutest"),
+        ("gnutest", f"ChannelKick {CHAN} gnutest other onevent kick zombie"),
+        ("gnutest2", f"ChannelKick {CHAN} gnutest other onevent kick zombie"),
+        ("gnutest", f"ChannelPart {CHAN} gnutest -"),
+        ("gnutest2", f"ChannelPart {CHAN} gnutest -"),
+    ]
+
+    # "chaninfo" is Network->findChannel(), as a handler would ask it
+    out = await command(hub, env["asker"], "gnutest2", f"chaninfo {CHAN}")
+    alive(proc)
+    assert any("Unable to find channel" in line for line in out)
+
+
+@pytest.mark.asyncio
+async def test_a_chain_of_five_nested_posts_is_breadth_first(two_gnutests_linked_p11):
+    """Guarantee 2 driven as deep as the queue will go. Three was the most one
+    action per instance could reach; five hops, each posted from the handler of
+    the one before it, is where a queue that is really breadth first and one
+    that merely looks it stop agreeing - a re-entrant dispatch would nest five
+    frames deep and print gnutest's whole chain before gnutest2 was told of the
+    quit it is still waiting on.
+
+    gnutest arms one action per hop: the quit parts the first channel, that part
+    parts the second, that part parts the third, and the last posts a Raw.
+    Every round is delivered to both modules before the round it posted, ten
+    reports in five pairs, and gnuworld is still running at the end - a chain
+    this long is also the deepest the module can push whatever recursion core
+    does or does not have."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub, channel_members=["other"])
+    for chan in CHAIN:
+        await command(hub, env["asker"], "gnutest", f"join {chan}")
+
+    await command(hub, env["asker"], "gnutest", f"onevent Quit part {CHAIN[0]}")
+    await command(hub, env["asker"], "gnutest", f"onevent ChannelPart part {CHAIN[1]}")
+    await command(hub, env["asker"], "gnutest", f"onevent ChannelPart part {CHAIN[2]}")
+    await command(hub, env["asker"], "gnutest", "onevent ChannelPart post")
+
+    out = await drive_or_die(hub, env, [f"{env['victim']} Q :bye now"], proc)
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
+        ("gnutest", f"ChannelPart {CHAIN[0]} gnutest -"),
+        ("gnutest2", f"ChannelPart {CHAIN[0]} gnutest -"),
+        ("gnutest", f"ChannelPart {CHAIN[1]} gnutest -"),
+        ("gnutest2", f"ChannelPart {CHAIN[1]} gnutest -"),
+        ("gnutest", f"ChannelPart {CHAIN[2]} gnutest -"),
+        ("gnutest2", f"ChannelPart {CHAIN[2]} gnutest -"),
+        ("gnutest", "Raw onevent post"),
+        ("gnutest2", "Raw onevent post"),
+    ]

@@ -18,6 +18,7 @@
  *
  * $Id: gnutest.cc,v 1.26 2005/01/17 23:09:53 dan_karrels Exp $
  */
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <span>
@@ -543,6 +544,18 @@ void gnutest::OnChannelModeB(Channel* theChan, ChannelUser* sourceUser,
  * channel, and reports each one it receives; "onevent <NAME> <action> [args]"
  * arms one action to run from inside the handler the next time that event
  * arrives.  Both are for the harness's event tests, and do nothing until used.
+ *
+ * The actions, and what their argument names:
+ *   kill [<nick>]                that client, or the one the event is about
+ *   kick [<#channel> <nick>]     that member, or the event's client on the
+ *                                event's own channel
+ *   part <#channel>              a channel of ours to leave
+ *   register <NAME>              the event to register for
+ *   unregister                   the event being dispatched
+ *   post                         (none) post EVT_RAW
+ *   unloadself, detachself       (none) this instance
+ *   unload <nick>, detach <nick> the instance whose client is that nick
+ *
  * Returns false if st[0] is not one of these.
  */
 bool gnutest::eventCommand(iClient* requester, const StringTokenizer& st) {
@@ -568,7 +581,7 @@ bool gnutest::eventCommand(iClient* requester, const StringTokenizer& st) {
         }
         action.action = st[2];
         action.argument = (st.size() > 3) ? st.assemble(3) : string();
-        armed = action;
+        armed.push_back(action);
         Notice(requester, "Armed {} on {}", action.action, st[1]);
         return true;
     }
@@ -621,18 +634,37 @@ void gnutest::reportEvent(const string& name, const std::vector<string>& args) {
 
 void gnutest::runArmedAction(int whichEvent, bool channelEvent, iClient* aboutClient,
                              Channel* theChan) {
-    if (!armed || armed->whichEvent != whichEvent || armed->channelEvent != channelEvent) {
+    const std::vector<armedEvent>::iterator entry =
+        std::find_if(armed.begin(), armed.end(), [&](const armedEvent& candidate) {
+            return candidate.whichEvent == whichEvent && candidate.channelEvent == channelEvent;
+        });
+    if (entry == armed.end()) {
         return;
     }
 
     // Once, whatever the action goes on to do to this module
-    const armedEvent action = *armed;
-    armed.reset();
+    const armedEvent action = *entry;
+    armed.erase(entry);
 
-    if (action.action == "kill" && aboutClient != 0) {
-        Kill(aboutClient, "onevent kill");
-    } else if (action.action == "kick" && aboutClient != 0 && theChan != 0) {
-        Kick(theChan, aboutClient, "onevent kick");
+    /* An action's argument names what it is to act on instead of what the event
+     * was handed, so that a handler can be made to reach for a third object the
+     * dispatch knows nothing about.  With no argument each acts as it always
+     * has, on the event's own payload or on this instance. */
+    const StringTokenizer target(action.argument);
+
+    if (action.action == "kill") {
+        iClient* victim = target.empty() ? aboutClient : Network->findNick(target[0]);
+        if (victim != nullptr) {
+            Kill(victim, "onevent kill");
+        }
+    } else if (action.action == "kick") {
+        Channel* kickChan = target.empty() ? theChan : Network->findChannel(target[0]);
+        iClient* victim = target.empty()        ? aboutClient
+                          : (target.size() > 1) ? Network->findNick(target[1])
+                                                : nullptr;
+        if (kickChan != nullptr && victim != nullptr) {
+            Kick(kickChan, victim, "onevent kick");
+        }
     } else if (action.action == "part") {
         Part(action.argument);
     } else if (action.action == "unregister") {
@@ -653,6 +685,18 @@ void gnutest::runArmedAction(int whichEvent, bool channelEvent, iClient* aboutCl
         MyUplink->UnloadClient(this, "test");
     } else if (action.action == "detachself") {
         MyUplink->DetachClient(this, "test");
+    } else if (action.action == "unload" || action.action == "detach") {
+        /* Another module instance, named by the nickname of its client: the
+         * module name two instances of one library share tells them apart for
+         * nobody, this module included. */
+        xClient* other = target.empty() ? nullptr : Network->findLocalNick(target[0]);
+        if (other != nullptr) {
+            if (action.action == "unload") {
+                MyUplink->UnloadClient(other, "test");
+            } else {
+                MyUplink->DetachClient(other, "test");
+            }
+        }
     }
 }
 
