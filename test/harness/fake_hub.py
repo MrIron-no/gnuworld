@@ -169,7 +169,7 @@ class FakeHub:
         logger.debug("Accepted connection from %s", peer)
 
     async def accept_and_handshake(
-        self, timeout: float = CONNECT_TIMEOUT, burst: list[str] | None = None
+        self, timeout: float = 30.0, burst: list[str] | None = None
     ) -> None:
         """Wait for GNUWorld to connect, then complete the P10 handshake.
 
@@ -182,7 +182,9 @@ class FakeHub:
           << EB / EA from gnuworld (after its empty or module burst)
           >> EA from hub
         """
-        deadline = asyncio.get_event_loop().time() + timeout
+        # Every fixture passes its own budget here, so scaling the default alone
+        # would never be used: scale what the caller gave.
+        deadline = asyncio.get_event_loop().time() + timeout * TIMEOUT_SCALE
 
         # Wait until accept callback fires
         while self._reader is None:
@@ -375,7 +377,7 @@ class FakeHub:
     async def wait_for(
         self,
         match: str | Predicate,
-        timeout: float = RECV_TIMEOUT,
+        timeout: float = 10.0,
         *,
         after: int = 0,
     ) -> str:
@@ -393,7 +395,7 @@ class FakeHub:
         else:
             pred = match
 
-        deadline = asyncio.get_event_loop().time() + timeout
+        deadline = asyncio.get_event_loop().time() + timeout * TIMEOUT_SCALE
         start_idx = max(0, after)
         while True:
             for line in self.received[start_idx:]:
