@@ -529,3 +529,31 @@ async def test_the_uplinks_end_of_burst_acknowledges_itself(gnutest_linked_p11):
     out = await drive(hub, env, [f"{env['hub']} EB"])
     alive(proc)
     assert reports(out, env) == ["BurstComplete hub.testnet", "BurstAcknowledgeSent hub.testnet"]
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        pytest.param(lambda e: e["leafyy"] + int_to_b64(1, 3), id="unknown_numnick"),
+        pytest.param(lambda e: e["leafyy"] + "A", id="three_characters"),
+        pytest.param(lambda e: e["leafyy"], id="unknown_server_numeric"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_xquery_from_a_source_we_cannot_resolve_is_refused(gnutest_linked_p11, prefix):
+    """msg_XQ has to name the server the query came from, because that is what
+    it hands to the modules, and a prefix of three characters or more is a
+    client whose server it looks up. Nothing says the prefix is one we know: an
+    XQ from a numnick of no client of ours, or a source of any length that is
+    neither a client nor a server, must be refused rather than crash the daemon
+    or reach a module with no server at all.
+
+    The leaf of the other cases is never introduced here, so none of these
+    prefixes names anything gnuworld has heard of."""
+    hub, proc = gnutest_linked_p11
+    env = await setup(hub)
+    await gt.run(hub, env["asker"], "events on")
+
+    out = await drive(hub, env, [f"{prefix(env)} XQ {env['us']} tok :from nowhere"])
+    alive(proc)
+    assert reports(out, env) == []

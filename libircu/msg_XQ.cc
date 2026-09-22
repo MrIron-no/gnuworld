@@ -56,18 +56,21 @@ CREATE_HANDLER(msg_XQ)
 bool msg_XQ::Execute(const xParameters& Param) {
     requireParameters(Param, 4);
 
+    // The server the query is from is the whole of what this passes on, so it
+    // is the one thing to find: a prefix of three characters or more is a
+    // client, and the query counts as coming from the server that client is on.
     iServer* serverSource = 0;
-    iClient* clientSource = 0;
-
     if (strlen(Param[0]) >= 3) {
-        clientSource = Network->findClient(Param[0]);
         // This is an oper debugging, treat messages as originated from his server
-        serverSource = Network->findServer(clientSource->getIntYY());
+        const iClient* const clientSource = Network->findClient(Param[0]);
+        if (clientSource != 0) {
+            serverSource = Network->findServer(clientSource->getIntYY());
+        }
     } else {
         serverSource = Network->findServer(Param[0]);
     }
 
-    if ((NULL == clientSource) && (NULL == serverSource)) {
+    if (NULL == serverSource) {
         LOG(WARN, "Unable to find source: {}", std::string(Param[0]));
         return false;
     }
