@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import ssl
 import time
 from collections.abc import Callable
@@ -22,6 +23,16 @@ from p10 import (
 logger = logging.getLogger("fake_hub")
 
 Predicate = Callable[[str], bool]
+
+# How much longer than usual to wait for the daemon, as a multiplier.  A build
+# with AddressSanitizer is several times slower than an ordinary one, enough that
+# the waits below expire while the daemon is still working and every test that
+# waits for a connect fails for no reason of its own.  test/sanitize/run.sh sets
+# this; pytest's own --timeout is a different thing and does not reach these.
+TIMEOUT_SCALE = float(os.environ.get("GNUWORLD_TEST_TIMEOUT_SCALE", "1"))
+
+CONNECT_TIMEOUT = 30.0 * TIMEOUT_SCALE
+RECV_TIMEOUT = 10.0 * TIMEOUT_SCALE
 
 
 def load_capture(path: str | Path, hub_numeric: str = "AB") -> tuple[list[str], list[str]]:
@@ -158,7 +169,7 @@ class FakeHub:
         logger.debug("Accepted connection from %s", peer)
 
     async def accept_and_handshake(
-        self, timeout: float = 30.0, burst: list[str] | None = None
+        self, timeout: float = CONNECT_TIMEOUT, burst: list[str] | None = None
     ) -> None:
         """Wait for GNUWorld to connect, then complete the P10 handshake.
 
@@ -302,7 +313,7 @@ class FakeHub:
             tag_section = tags.lstrip("@")
         await self._send(f"@{tag_section} {line}")
 
-    async def _recv_raw(self, timeout: float = 10.0) -> str:
+    async def _recv_raw(self, timeout: float = RECV_TIMEOUT) -> str:
         if not self._reader:
             raise ConnectionError("Not connected")
         raw = await asyncio.wait_for(self._reader.readline(), timeout=timeout)
@@ -313,7 +324,7 @@ class FakeHub:
         self.received.append(line)
         return line
 
-    async def _recv(self, timeout: float = 10.0) -> str:
+    async def _recv(self, timeout: float = RECV_TIMEOUT) -> str:
         """Read one line, auto-answering PINGs; track peer N lines."""
         while True:
             line = await self._recv_raw(timeout=timeout)
@@ -364,7 +375,7 @@ class FakeHub:
     async def wait_for(
         self,
         match: str | Predicate,
-        timeout: float = 10.0,
+        timeout: float = RECV_TIMEOUT,
         *,
         after: int = 0,
     ) -> str:

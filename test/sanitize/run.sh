@@ -227,6 +227,12 @@ if [ -f "$dir/gnuworld" ]; then
     (
         cd "$dir/test/harness" || exit 1
         harness_status=0
+        # A sanitized daemon is several times slower, enough that the harness's
+        # own waits expire while it is still working: without this, every test
+        # that waits for a connect fails here for no reason of its own, and a
+        # gate with a standing set of failures is one nobody reads.  pytest's
+        # --timeout is a separate thing and does not reach those waits.
+        GNUWORLD_TEST_TIMEOUT_SCALE="${GNUWORLD_TEST_TIMEOUT_SCALE:-4}" \
         python3 -m pytest -q --timeout=180 "$@" 2>&1 || harness_status=$?
         printf '%s\n' "$harness_status" > "$dir/harness.status"
     ) | tee "$dir/harness.log"
