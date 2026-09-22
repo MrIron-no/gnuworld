@@ -389,6 +389,52 @@ constexpr std::size_t formatArgumentCount(std::string_view fmt) noexcept {
     return anyExplicit ? highestExplicit : automatic;
 }
 
+/// The largest width or precision a field may ask for.  LogRender.cc holds
+/// the same bound for a template that is read at run time.
+constexpr std::size_t maxSpecNumber = 4096;
+
+/**
+ * True when a field of fmt asks for a width or a precision above
+ * maxSpecNumber.  Past the ':' a run of decimal digits is a width or a
+ * precision and nothing else - a fill is one character and a type is a
+ * letter - so where it stands does not matter; digits before the ':' are an
+ * argument index, and digits outside a field are text.
+ *
+ * Such a field is well formed, so std::format does not reject it: it is
+ * honoured, and an enormous one is an allocation of that size.  libstdc++
+ * survives it; libc++ throws std::length_error or std::bad_alloc, and
+ * formatMessage() catches neither.  A literal is read here, where it is
+ * compiled, so the answer is the same on both.
+ */
+constexpr bool formatSpecNumberTooLarge(std::string_view fmt) noexcept {
+    for (std::size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] != '{') {
+            continue;
+        }
+        if (i + 1 < fmt.size() && fmt[i + 1] == '{') {
+            ++i;
+            continue;
+        }
+
+        std::size_t value = 0;
+        bool inSpec = false;
+        for (++i; i < fmt.size() && fmt[i] != '}'; ++i) {
+            if (':' == fmt[i]) {
+                inSpec = true;
+                value = 0;
+            } else if (!inSpec || fmt[i] < '0' || fmt[i] > '9') {
+                value = 0; // the run of digits ended
+            } else {
+                value = value * 10 + static_cast<std::size_t>(fmt[i] - '0');
+                if (value > maxSpecNumber) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace detail
 
 namespace detail {
@@ -513,6 +559,13 @@ template <typename... Args> struct BasicCheckedFormat {
         const std::size_t conversions = detail::printfArgumentCount(text);
 
         if (0 == conversions && fields == sizeof...(Args)) {
+            // A width libc++ dies allocating: a typo here, so it is refused
+            // where it was typed.  Before std::format's own check, which each
+            // library words differently and draws in a different place.
+            if (detail::formatSpecNumberTooLarge(text)) {
+                formatAsksForAWidthOrPrecisionAbove4096();
+            }
+
             // Has std::format check the fields against the types
             (void)std::format_string<Args...>(text);
         } else if (0 == fields && conversions == sizeof...(Args)) {
@@ -534,6 +587,7 @@ template <typename... Args> struct BasicCheckedFormat {
 
   private:
     static void formatDoesNotUseExactlyTheArgumentsGiven_orMixesPrintfAndFormatSyntax();
+    static void formatAsksForAWidthOrPrecisionAbove4096();
 };
 
 /// As std::format_string does, keep the parameter out of template argument

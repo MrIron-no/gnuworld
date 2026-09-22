@@ -8,6 +8,10 @@
  *     send("%s is not on %s", nick, chan);   // printf left behind: no fields, two arguments
  *     send("{} only", nick, chan);           // an argument no field uses
  *     send("{} {}", nick);                   // a field with no argument (std::format's own check)
+ *     send("{:99999}", n);                   // a width above 4096, which libc++ dies allocating
+ *
+ * The scan behind the last of those is checked below, where a static_assert
+ * can stand in for the compile error it causes.
  */
 
 #include <iostream>
@@ -48,6 +52,20 @@ static_assert(detail::formatArgumentCount("{:{}}") == 2);       // a dynamic wid
 static_assert(detail::formatArgumentCount("{0:{1}}") == 2);
 // A printf string has no fields at all
 static_assert(detail::formatArgumentCount("%s is not on %s (%d users)") == 0);
+
+// A width or precision a field may not ask for
+static_assert(!detail::formatSpecNumberTooLarge(""));
+static_assert(!detail::formatSpecNumberTooLarge("{:>5} {:.2f} {:04}"));
+static_assert(!detail::formatSpecNumberTooLarge("{:4096}")); // the bound itself is allowed
+static_assert(detail::formatSpecNumberTooLarge("{:4097}"));
+static_assert(detail::formatSpecNumberTooLarge("{:>999999999}"));
+static_assert(detail::formatSpecNumberTooLarge("{:.99999}"));
+static_assert(detail::formatSpecNumberTooLarge("{0:99999}"));
+// Digits that are not a width: an argument index, text, a literal brace
+static_assert(!detail::formatSpecNumberTooLarge("{99999}"));
+static_assert(!detail::formatSpecNumberTooLarge("port 66670000 is open"));
+static_assert(!detail::formatSpecNumberTooLarge("{{:99999}}"));
+static_assert(!detail::formatSpecNumberTooLarge("%99999d")); // printf, counted elsewhere
 
 // How many arguments a printf format consumes
 static_assert(detail::printfArgumentCount("") == 0);
