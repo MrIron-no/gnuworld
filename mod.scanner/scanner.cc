@@ -66,21 +66,7 @@ void scanner::BurstChannels() {
     Join("#some_oper_channel");
 }
 
-void scanner::OnEvent(const eventType& whichEvent, void* arg1, void* arg2, void* arg3, void* arg4) {
-    switch (whichEvent) {
-    case EVT_NICK:
-        handleNewClient(static_cast<iClient*>(arg1));
-        break;
-    case EVT_BURST_CMPLT:
-    case EVT_BURST_ACK:
-        // Delivered to all clients
-        break;
-    default:
-        elog << "scanner::OnEvent> Received unknown event: " << whichEvent << std::endl;
-        break;
-    }
-    xClient::OnEvent(whichEvent, arg1, arg2, arg3, arg4);
-}
+void scanner::OnNick(iClient* newClient) { handleNewClient(newClient); }
 
 /**
  * This method will basically just put the client address into the

@@ -146,20 +146,14 @@ void cloner::OnConnect() {
     xClient::OnConnect();
 }
 
-void cloner::OnEvent(const eventType& theEvent, void* Data1, void* Data2, void* Data3,
-                     void* Data4) {
-    if (EVT_KILL == theEvent) {
-        // Data2 is the victim.  The core deletes it when we return, so a
-        // clone that stayed in the list would be a pointer to nothing, and
-        // the next SAYALL would write through it.
-        iClient* victim = static_cast<iClient*>(Data2);
-        auto pos = std::find(clones.begin(), clones.end(), victim);
-        if (pos != clones.end()) {
-            clones.erase(pos);
-        }
+void cloner::OnKill(const NetworkTarget*, iClient* victim, std::string_view) {
+    // The core deletes the victim when we return, so a clone that stayed in
+    // the list would be a pointer to nothing, and the next SAYALL would write
+    // through it.
+    auto pos = std::find(clones.begin(), clones.end(), victim);
+    if (pos != clones.end()) {
+        clones.erase(pos);
     }
-
-    xClient::OnEvent(theEvent, Data1, Data2, Data3, Data4);
 }
 
 void cloner::OnDetach(const string& reason) {
