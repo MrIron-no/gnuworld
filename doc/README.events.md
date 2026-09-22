@@ -121,7 +121,7 @@ core posts through a typed `post*` function of `xServer`
 | `OnEndOfBurstAckSent(iServer* theServer)` | we have written our own end-of-burst acknowledgement to theServer |
 | `OnGline(Gline* theGline)` | a G-line has been set, by the network or by one of our own clients |
 | `OnRemGline(Gline* theGline)` | a G-line has been removed, or has expired |
-| `OnQuit(iClient* theClient, std::string_view reason)` | theClient has quit, is going with the server it was on, or is one of ours being detached; still fully attached — posted before it is removed. `reason` may be empty |
+| `OnQuit(iClient* theClient, std::string_view reason)` | theClient has quit, is going with the server it was on, or is one of ours being detached. `reason` may be empty. **Attachment differs by cause**: a client that quit is still fully attached, because the event is posted before it is removed; a client going with its server is not — `xNetwork::removeServer()` removes it first and posts afterwards, so the object is live but the network no longer knows it, nor the server it was on |
 | `OnKill(const NetworkTarget* source, iClient* theClient, std::string_view reason)` | theClient has been killed, still fully attached; `source` is the client or server that did it, null when one of our own modules did (`xClient::Kill()`) |
 | `OnNick(iClient* theClient)` | a client has appeared on the network, or a module has spawned a fake one |
 | `OnNickChange(iClient* theClient, std::string_view oldNick)` | theClient has changed nick; it already answers to the new one |
