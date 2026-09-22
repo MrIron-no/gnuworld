@@ -307,7 +307,6 @@ void gnutest::OnChannelEvent(const channelEventType& whichEvent, Channel* theCha
         case EVT_JOIN:
         case EVT_BURST:
         case EVT_CREATE:
-            // The member is passed with a create by everything but msg_C
             args.push_back(nickOf(data1));
             args.push_back(memberOf(data2));
             break;

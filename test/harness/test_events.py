@@ -324,13 +324,12 @@ CASES = [
         lambda e: ["Quit fakeguy Requested shutdown"],
     ),
     # <victim> C <chan> <ts> - a client creates a channel (msg_C). A create
-    # names the creator and nothing else: xClient::OnCreate() takes no
-    # ChannelUser, so all three of its post sites report "-" for one
+    # names the creator and the membership it was opped in, like a join
     (
         "channel_create",
         lambda e: [],
         lambda e: [f"{e['victim']} C {CHAN} {e['ts']}"],
-        lambda e: [f"ChannelCreate {CHAN} victim -"],
+        lambda e: [f"ChannelCreate {CHAN} victim victim"],
     ),
     # <victim> J <chan> <ts> for a channel that does not exist yet is a create,
     # not a join (msg_J)
@@ -338,7 +337,7 @@ CASES = [
         "channel_create_by_join",
         lambda e: [],
         lambda e: [f"{e['victim']} J {CHAN} {e['ts']}"],
-        lambda e: [f"ChannelCreate {CHAN} victim -"],
+        lambda e: [f"ChannelCreate {CHAN} victim victim"],
     ),
     # "join <chan>" for a channel that does not exist: one of our own modules
     # creates it (xServer::JoinChannel)
@@ -346,7 +345,7 @@ CASES = [
         "channel_create_of_our_own_client",
         lambda e: [],
         lambda e: [command(e, f"join {CHAN}")],
-        lambda e: [f"ChannelCreate {CHAN} gnutest -"],
+        lambda e: [f"ChannelCreate {CHAN} gnutest gnutest"],
     ),
     # <other> J <chan> <ts> - a join to a channel that exists (msg_J)
     (

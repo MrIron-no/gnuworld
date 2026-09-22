@@ -324,9 +324,8 @@ class xClient : public TimerHandler, public NetworkTarget {
     /// The same, for a membership that arrives in a net burst
     virtual void OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
 
-    /// theClient has created theChan, and is opped in it.  Its membership is
-    /// theChan->findUser(theClient).
-    virtual void OnCreate(Channel* theChan, iClient* theClient);
+    /// theClient has created theChan, and is opped in it
+    virtual void OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser);
 
     /// theClient has left theChan, and is already off it.  message may be
     /// empty: only a PART from the network carries one.

@@ -1660,7 +1660,7 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
     }
 
     if (EVT_CREATE == whichEvent) {
-        postCreate(theChan, theIClient);
+        postCreate(theChan, theIClient, theChanUser);
     } else {
         postJoin(theChan, theIClient, theChanUser);
     }

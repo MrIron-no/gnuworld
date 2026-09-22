@@ -793,7 +793,7 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     void postRemNetConf(iServer* theServer, std::string_view key);
     void postJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
     void postBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
-    void postCreate(Channel* theChan, iClient* theClient);
+    void postCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser);
     void postPart(Channel* theChan, iClient* theClient, std::string_view message = {});
     void postTopic(Channel* theChan, iClient* theClient, std::string_view topic);
     void postServerMode(Channel* theChan, iServer* theServer);

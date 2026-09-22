@@ -310,8 +310,9 @@ async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutest
     needed are posted from inside the create, and so are reported after it; the
     kick itself is not an event and reaches both modules as it happens.
 
-    msg_C passes no ChannelUser with EVT_CREATE, which is why the member of the
-    create is reported as "-"."""
+    gnutest2 still reports the member of the create after gnutest's kick has
+    taken it off the channel: destroy() holds it for the line, as it does the
+    channel."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
@@ -322,8 +323,8 @@ async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutest
     )
     alive(proc)
     assert reports(hub, out, env) == [
-        ("gnutest", f"ChannelCreate {CHAN} victim -"),
-        ("gnutest2", f"ChannelCreate {CHAN} victim -"),
+        ("gnutest", f"ChannelCreate {CHAN} victim victim"),
+        ("gnutest2", f"ChannelCreate {CHAN} victim victim"),
         ("gnutest", f"ChannelJoin {CHAN} gnutest gnutest"),
         ("gnutest2", f"ChannelJoin {CHAN} gnutest gnutest"),
         ("gnutest", f"ChannelKick {CHAN} gnutest victim onevent kick zombie"),
@@ -348,7 +349,7 @@ async def test_a_kick_that_empties_the_channel_leaves_it_gone(two_gnutests_linke
         hub, env, [f"{env['victim']} C {CHAN} {int(time.time())}"], proc
     )
     alive(proc)
-    assert ("gnutest2", f"ChannelCreate {CHAN} victim -") in reports(hub, out, env)
+    assert ("gnutest2", f"ChannelCreate {CHAN} victim victim") in reports(hub, out, env)
 
     # "chaninfo" is Network->findChannel(), as a handler would ask it
     out = await command(hub, env["asker"], "gnutest2", f"chaninfo {CHAN}")
