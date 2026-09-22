@@ -30,12 +30,7 @@
 namespace gnuworld {
 
 void UnloadClientTimerHandler::OnTimer(const timerID&, void*) {
-    // elog	<< "UnloadClientTimerHandler::OnTimer("
-    //	<< moduleName
-    //	<< ")"
-    //	<< std::endl ;
-
-    theServer->DetachClient(moduleName, reason);
+    theServer->DetachClientIfLoaded(theClient, reason);
 
     delete this;
 }

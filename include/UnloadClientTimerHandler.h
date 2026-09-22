@@ -30,6 +30,7 @@
 
 namespace gnuworld {
 
+class xClient;
 class xServer;
 
 /**
@@ -40,8 +41,14 @@ class xServer;
 class UnloadClientTimerHandler : public ServerTimerHandler {
 
   protected:
-    /// The xClient module name
-    std::string moduleName;
+    /**
+     * The instance to unload, and not the name of the module it came from:
+     * one library can be loaded more than once, and every instance of it
+     * answers to the same module name, so a name cannot say which of them
+     * was asked for.  The pointer is never followed here - it is handed
+     * back to the server, which acts on it only while it is still loaded.
+     */
+    xClient* theClient;
 
     /// The reason for the unload, will be delivered to the xClient
     std::string reason;
@@ -50,12 +57,11 @@ class UnloadClientTimerHandler : public ServerTimerHandler {
     /**
      * The constructor receives the follow arguments:
      * - A pointer to the global xServer instance
-     * - The xClient module name
+     * - The xClient to unload
      * - The reason for unloading the client.
      */
-    UnloadClientTimerHandler(xServer* theServer, const std::string& _moduleName,
-                             const std::string& _reason)
-        : ServerTimerHandler(theServer, 0), moduleName(_moduleName), reason(_reason) {}
+    UnloadClientTimerHandler(xServer* theServer, xClient* _theClient, const std::string& _reason)
+        : ServerTimerHandler(theServer, 0), theClient(_theClient), reason(_reason) {}
 
     /**
      * Destructor, not much to talk about here.
