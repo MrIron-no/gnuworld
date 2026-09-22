@@ -260,8 +260,13 @@ class xClient : public TimerHandler, public NetworkTarget {
     virtual void OnRemGline(Gline* theGline);
 
     /// A client has quit, or is going with the server it was on, or is a client
-    /// of ours being detached.  It is still fully attached: this is posted
-    /// before it is removed.  reason may be empty.
+    /// of ours being detached.  reason may be empty.
+    ///
+    /// A client that quit is still fully attached, because this is posted before
+    /// it is removed.  A client going with its server is NOT: xNetwork::
+    /// removeServer() removes it first and posts afterwards, so the object is
+    /// live but the network no longer knows it, nor the server it was on.  Ask
+    /// the network about anything before you act on it.
     virtual void OnQuit(iClient* theClient, std::string_view reason);
 
     /// theClient has been killed, and is still fully attached.  source is the
