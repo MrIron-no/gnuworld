@@ -1268,3 +1268,86 @@ async def test_nickserv_queues_a_nick_change_for_a_client_it_never_saw_arrive(
         assert await ask(hub, asker, ns, "WHOAMI", "Account:")
     finally:
         await proc.terminate()
+
+
+@pytest.mark.asyncio
+async def test_nickserv_registers_a_client_it_never_saw_arrive(
+        docker_stack, fake_hub_p11, tmp_path):
+    """REGISTER from a client that was already on the network at OnAttach().
+
+    The third of the netData siblings and the only one a user reaches on
+    purpose: OnPrivateMessage() lets a command through on umode +r alone, and
+    REGISTER writes the new user record straight into the netData.  So a +r
+    client NS never saw arrive crashes the daemon on the line after the account
+    is inserted, with no timer and no queue in between.
+
+    Same lever as the other two for a client NS never saw arrive - mod.gnutest
+    ahead of it in GNUWorld.conf, whose own client's N is posted by
+    xServer::AttachClient() before NS registers for EVT_NICK - plus what
+    REGISTER needs to get that far: an AC, for the +r the gate tests, naming an
+    account the users table does not have, or the command answers "already
+    registered" and returns before it touches the record.
+    """
+    require_module("nickserv")
+    require_module("gnutest")
+    docker_stack.up()  # Postgres
+    db = harness_db()
+    hub = fake_hub_p11
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
+    GnuworldProc.write_module_config(
+        conf_dir / "nickserv.conf", "nickserv.example.conf",
+        {"dbHost": db["host"], "dbPort": db["port"], "dbDb": "nickserv",
+         "dbUser": db["user"], "dbPass": db["password"]})
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        # mod.gnutest first: its client is on the network before NS attaches
+        module_lines=f"module = libgnutest.la {root}/gnutest.conf\n"
+        f"module = libnickserv.la {root}/nickserv.conf",
+    )
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+    try:
+        await hub.accept_and_handshake(timeout=90.0)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        ns = hub.get_user_numnick("NS")
+        assert ns, "mod.nickserv did not introduce NS (module or database?)"
+        older = hub.get_user_numnick("gnutest")
+        assert older, "mod.gnutest did not introduce a client of its own"
+
+        # A client NS did see arrive, to ask something of it afterwards: NS
+        # answers no command from a client that is not logged in
+        asker = await hub.introduce_nick("nsasker", username="nsasker")
+        await hub.send_account(asker, PERMIT_ACCOUNT)
+        assert await ask(hub, asker, ns, "WHOAMI", "Account:")
+
+        # An account of its own, so REGISTER has something to register and no
+        # row to find: unique(), because a run that reaches the insert leaves one
+        await hub.send_account(older, unique("nsr"))
+
+        after = len(hub.received)
+        await hub.send_privmsg(older, ns, "REGISTER")
+        # A crash is what used to happen here, so let the process be reaped and
+        # read alive() before the wire, which would otherwise report a link that
+        # closed and not why
+        await asyncio.sleep(1.0)
+        alive(proc)
+
+        # NS still answers, and draining the wire for that brings whatever it
+        # said to the record-less client with it
+        assert await ask(hub, asker, ns, "WHOAMI", "Account:")
+        told = [text for text in (_reply_to(ns, older, line) for line in hub.received[after:])
+                if text is not None]
+        assert told, "NS said nothing to a client it could not register"
+        # Registering the account and saying so, with nowhere to put the record,
+        # would leave a row this session is not logged in to
+        assert not any("successfully registered" in text for text in told), (
+            f"NS registered a client it has no record of: {told}"
+        )
+    finally:
+        await proc.terminate()
