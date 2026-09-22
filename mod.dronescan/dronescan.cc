@@ -492,89 +492,75 @@ void dronescan::OnFakeChannelCTCP(iClient* Sender, iClient* Target, Channel* the
 }
 
 /**
- * Here we receive network events that we are registered for.
+ * Here we receive the network events that we are registered for.
  */
-void dronescan::OnEvent(const eventType& theEvent, void* Data1, void* Data2, void* Data3,
-                        void* Data4) {
-    switch (theEvent) {
-    case EVT_BURST_CMPLT: {
-        log(DBG, "Caught EOB. Resetting frequencies.");
-        updateState();
-        break;
-    } // EVT_BURST_CMPLT
-    case EVT_NETJOIN: {
-        changeState(BURST);
-        break;
-    }
-    case EVT_NETBREAK: {
-        lastSplitTime = ::time(0);
-        updateState();
-        break;
-    }
-    case EVT_NICK: {
-        handleNewClient(static_cast<iClient*>(Data1));
-        break;
-    } // EVT_NICK
-    case EVT_CHNICK: {
-        handleNickChange(static_cast<iClient*>(Data1));
-        break;
-    }
-
-    case EVT_KILL: /* Intentional drop through */
-    case EVT_QUIT: {
-        iClient* theClient = static_cast<iClient*>(theEvent == EVT_KILL ? Data2 : Data1);
-
-        // A spy client leaving the network for a reason outside our own
-        // control (oper /kill, G-line/K-line, ping timeout - anything not
-        // routed through detachSpyClient()/handleSpyClientPersonalQuit())
-        // needs the same live-tracking cleanup those paths do. The core
-        // deletes theClient right after this event, so this must not touch
-        // it (no DetachClient/PartChannel calls here) - just drop our own
-        // references to it before they go stale.
-        int deadSpyClientId = getSpyClientId(theClient);
-        if (deadSpyClientId >= 0)
-            retireAndReplaceSpyClient(deadSpyClientId);
-
-        // QUIT-only: feed the quit reason into per-channel spam scoring for
-        // every monitored channel the user was on. msg_Q.cc posts this event
-        // before removing the client from the network, so theClient is still
-        // attached to its channels here.
-        if (theEvent == EVT_QUIT && currentState == RUN && !isSpyClient(theClient)) {
-            const std::string* quitReason = static_cast<const std::string*>(Data2);
-            if (quitReason && !quitReason->empty()) {
-                for (iClient::const_channelIterator ci = theClient->channels_begin();
-                     ci != theClient->channels_end(); ++ci) {
-                    if (monitoredChannelsMap.count(string_lower((*ci)->getName())))
-                        processSpamText(theClient, *quitReason, spam_target::QUIT, (*ci)->getName(),
-                                        nullptr);
-                }
-            }
-        }
-
-        /* Store usercount per IPs to a map */
-        string IP = xIP(theClient->getIP()).GetNumericIP();
-        if (clientsIPMap[IP] <= 1)
-            clientsIPMap.erase(IP);
-        else
-            clientsIPMap[IP]--;
-
-        clientData* theData = static_cast<clientData*>(theClient->removeCustomData(this));
-
-        delete (theData);
-        --customDataCounter;
-        break;
-    }
-    } // switch( theEvent )
-
-    xClient::OnEvent(theEvent, Data1, Data2, Data3, Data4);
+void dronescan::OnBurstComplete(iServer*) {
+    log(DBG, "Caught EOB. Resetting frequencies.");
+    updateState();
 }
 
-/** Receive channel events. */
-void dronescan::OnChannelEvent(const channelEventType& theEvent, Channel* theChannel, void* Data1,
-                               void* Data2, void* Data3, void* Data4) {
-    iClient* theClient = static_cast<iClient*>(Data1);
+void dronescan::OnNetJoin(iServer*, const iServer*) { changeState(BURST); }
 
-    if (theEvent == EVT_JOIN && theClient && theClient->isOper() &&
+void dronescan::OnNetBreak(iServer*, const iServer*, std::string_view) {
+    lastSplitTime = ::time(0);
+    updateState();
+}
+
+void dronescan::OnNick(iClient* theClient) { handleNewClient(theClient); }
+
+/**
+ * A kill and a quit cost us the same client, and only a quit carries a reason
+ * we score: quitReason is empty for a kill.
+ */
+void dronescan::handleClientExit(iClient* theClient, const string& quitReason) {
+    // A spy client leaving the network for a reason outside our own
+    // control (oper /kill, G-line/K-line, ping timeout - anything not
+    // routed through detachSpyClient()/handleSpyClientPersonalQuit())
+    // needs the same live-tracking cleanup those paths do. The core
+    // deletes theClient right after this event, so this must not touch
+    // it (no DetachClient/PartChannel calls here) - just drop our own
+    // references to it before they go stale.
+    int deadSpyClientId = getSpyClientId(theClient);
+    if (deadSpyClientId >= 0)
+        retireAndReplaceSpyClient(deadSpyClientId);
+
+    // QUIT-only: feed the quit reason into per-channel spam scoring for
+    // every monitored channel the user was on. msg_Q.cc posts this event
+    // before removing the client from the network, so theClient is still
+    // attached to its channels here.
+    if (!quitReason.empty() && currentState == RUN && !isSpyClient(theClient)) {
+        for (iClient::const_channelIterator ci = theClient->channels_begin();
+             ci != theClient->channels_end(); ++ci) {
+            if (monitoredChannelsMap.count(string_lower((*ci)->getName())))
+                processSpamText(theClient, quitReason, spam_target::QUIT, (*ci)->getName(),
+                                nullptr);
+        }
+    }
+
+    /* Store usercount per IPs to a map */
+    string IP = xIP(theClient->getIP()).GetNumericIP();
+    if (clientsIPMap[IP] <= 1)
+        clientsIPMap.erase(IP);
+    else
+        clientsIPMap[IP]--;
+
+    clientData* theData = static_cast<clientData*>(theClient->removeCustomData(this));
+
+    delete (theData);
+    --customDataCounter;
+}
+
+void dronescan::OnKill(const NetworkTarget*, iClient* theClient, std::string_view) {
+    handleClientExit(theClient, string());
+}
+
+void dronescan::OnQuit(iClient* theClient, std::string_view reason) {
+    handleClientExit(theClient, string(reason));
+}
+
+/** Receive the channel events we care about. */
+void dronescan::OnJoin(Channel* theChannel, iClient* theClient, ChannelUser*) {
+    if (theClient && theClient->isOper() &&
         !strcasecmp(theChannel->getName().c_str(), consoleChannel.c_str())) {
         // Auto-op opers joining the console channel. Must run even during
         // burst (see BurstChannels()/introduceSpyClient(), which run while
@@ -586,22 +572,19 @@ void dronescan::OnChannelEvent(const channelEventType& theEvent, Channel* theCha
     if (currentState == BURST)
         return;
 
-    /* If this is not a join and not part, we don't care. */
-    if (theEvent != EVT_JOIN && theEvent != EVT_PART)
+    handleChannelJoin(theChannel, theClient);
+}
+
+void dronescan::OnPart(Channel* theChannel, iClient* theClient, std::string_view message) {
+    /* If we are bursting, we don't want to be checking joins/parts for spam detection. */
+    if (currentState == BURST)
         return;
 
-    if (theEvent == EVT_JOIN) {
-        handleChannelJoin(theChannel, theClient);
-    } else if (theEvent == EVT_PART) {
-        handleChannelPart(theChannel, theClient);
-        // Feed part reason into spam detection (TEXT events with PART target)
-        const string partReason =
-            (Data2 && currentState == RUN) ? *static_cast<string*>(Data2) : string();
-        if (!partReason.empty())
-            processSpamText(theClient, partReason, spam_target::PART, theChannel->getName(),
-                            nullptr);
-    }
-    xClient::OnChannelEvent(theEvent, theChannel, Data1, Data2, Data3, Data4);
+    handleChannelPart(theChannel, theClient);
+    // Feed part reason into spam detection (TEXT events with PART target)
+    const string partReason = (currentState == RUN) ? string(message) : string();
+    if (!partReason.empty())
+        processSpamText(theClient, partReason, spam_target::PART, theChannel->getName(), nullptr);
 }
 
 /**
@@ -3846,7 +3829,7 @@ void dronescan::detachSpyClient(int scId) {
     }
 
     // Drop from live tracking before detaching: DetachClient() below
-    // synchronously re-enters via OnEvent(EVT_QUIT) -> getSpyClientId() ->
+    // synchronously re-enters via OnQuit() -> getSpyClientId() ->
     // retireAndReplaceSpyClient(), which would otherwise still find this id
     // live, erase it out from under our iterator (crashing on the erase
     // below - this matched a production SIGSEGV during SPAM SPYCLIENT DEL),
@@ -4173,10 +4156,10 @@ void dronescan::handleSpyClientPersonalQuit(int scId) {
 /**
  * Common cleanup for a live spy client that is no longer on the network,
  * whether it left voluntarily (handleSpyClientPersonalQuit(), which QUITs
- * it itself before calling this) or involuntarily (OnEvent()'s
- * EVT_KILL/EVT_QUIT handling, for a client killed/G-lined/K-lined/timed out
- * by something outside our control - the iClient is already gone by the
- * time that call reaches here, so this never touches it directly).
+ * it itself before calling this) or involuntarily (OnKill() and OnQuit(), for
+ * a client killed/G-lined/K-lined/timed out by something outside our control -
+ * the iClient is already gone by the time that call reaches here, so this
+ * never touches it directly).
  *
  * Drops scId from every live-tracking map, scheduling a replacement join
  * for each channel it was covering (promoting a 2nd visitor to primary
@@ -4305,7 +4288,7 @@ void dronescan::checkMissingSpyJoins() {
  */
 void dronescan::quitAllSpyClientsForShutdown() {
     // Snapshot first: DetachClient() below synchronously re-enters via
-    // OnEvent(EVT_QUIT) -> retireAndReplaceSpyClient(), which erases from
+    // OnQuit() -> retireAndReplaceSpyClient(), which erases from
     // liveSpyClientsMap - iterating that map directly while detaching would
     // invalidate the very iterator in use.
     std::vector<iClient*> spyClients;
