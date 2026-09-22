@@ -215,8 +215,9 @@ bool msg_K::Execute(const xParameters& Param) {
 
     // Any users or services clients left in the channel?
     if (theChan->empty()) {
-        // Nope, remove the channel
-        destroy(Network->removeChannel(theChan->getName()));
+        // Nope, remove the channel.  A handler of the kick may have removed it
+        // already, so it is this channel that goes, not whatever holds its name
+        destroy(Network->removeChannel(theChan));
 
         // TODO: Post event
     }

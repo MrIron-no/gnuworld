@@ -51,18 +51,22 @@ bool msg_GL::Execute(const xParameters& Params) {
     if ('-' == Params[2][0]) {
         // Removing a gline
 
-        xServer::glineIterator gItr = theServer->findGlineIterator(Params[2] + 1);
+        const xServer::glineIterator gItr = theServer->findGlineIterator(Params[2] + 1);
         if (gItr == theServer->glines_end()) {
             // Unable to find the gline to be removed *shrug*
             return true;
         }
 
-        // Let the modules know that it has been removed
-        theServer->PostEvent(EVT_REMGLINE, static_cast<void*>(gItr->second));
+        // The post below runs module code which may erase from the gline list,
+        // so the iterator may not outlive it
+        Gline* const theGline = gItr->second;
 
-        // Clean up memory
-        destroy(gItr->second);
-        theServer->eraseGline(gItr);
+        // Let the modules know that it has been removed
+        theServer->PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
+
+        // Clean up memory: the gline we hold, unless a handler of the event
+        // above removed it already, in which case this is nothing
+        destroy(theServer->takeGline(theGline));
 
         return true;
     }

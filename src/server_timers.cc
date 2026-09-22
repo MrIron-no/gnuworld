@@ -146,8 +146,18 @@ unsigned int xServer::CheckTimers() {
         // Remove the structure from the timerQueue
         timerQueue.pop();
 
-        // Call the timer handler method for the client
+        /* Call the timer handler method for the client.  A timer handler is
+         * module code like any other, so this counts as a dispatch: a module
+         * that asks to be unloaded from in here is not unmapped under its own
+         * frame, a network object core removes waits for the main loop, and a
+         * post waits its turn.  Same shape as xServer::dispatch(). */
+        ++dispatchDepth;
         info->theHandler->OnTimer(info->ID, info->data);
+        --dispatchDepth;
+
+        if (0 == dispatchDepth) {
+            settle();
+        }
 
         // Remove the timerID from the uniqueTimerMap
         uniqueTimerMap.erase(info->ID);

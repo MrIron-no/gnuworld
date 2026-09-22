@@ -317,6 +317,22 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual void eraseGline(glineIterator removeMe) { glineList.erase(removeMe); }
 
     /**
+     * Erase THIS gline from the internal data structures, and return it.
+     * Returns NULL when the gline list no longer holds it, which is what a
+     * handler of the removal having removed it first looks like from here, and
+     * what a new gline set for the same user@host looks like too.  This does
+     * NOT send a message to the network.
+     *
+     * It is xNetwork::removeChannel(const Channel*) for the one table xNetwork
+     * does not own, and for the same reason: a site that posts the removal
+     * before erasing it cannot hold an iterator across the post, and must not
+     * destroy a gline the list has meanwhile given up - destroying it twice is
+     * a double free.  destroy() takes NULL, so such a site reads
+     * destroy(takeGline(theGline)) and is right either way.
+     */
+    virtual Gline* takeGline(Gline* theGline);
+
+    /**
      * Add a gline to the internal data structures.  This does
      * NOT send a message to the network; for that functionality,
      * use SetGline() instead.
@@ -1521,6 +1537,14 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     std::vector<std::function<void()>> holdingList;
 
     /**
+     * The modules that asked to go while a handler was running, oldest first.
+     * Each is already out of every listener list and every timer; what waits
+     * is the rest of removeClient(), which deletes the xClient and unmaps the
+     * library.  Emptied by releaseHeldObjects().  See removeClient().
+     */
+    std::deque<xClient*> pendingUnloads;
+
+    /**
      * Destroy a network object that the network tables no longer hold: now if
      * nothing is being dispatched, and otherwise on the holding list, which is
      * released before the next line is read.  Every handler of the
@@ -1550,6 +1574,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * whole of the line being processed.  See releaseHeldObjects().
      */
     void settle();
+
+    /**
+     * Take an xClient out of every listener list and out of every timer: from
+     * here on it is told nothing.  This is the half of removeClient() that
+     * happens as it is asked for, whether or not the rest has to wait.
+     */
+    void unregisterClient(xClient* theClient);
 
     /**
      * Append the listeners of a channel event: those registered for every

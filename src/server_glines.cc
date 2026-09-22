@@ -44,24 +44,19 @@ using std::stringstream;
 using std::vector;
 
 bool xServer::removeGline(const string& userHost, const xClient* remClient) {
-    // This method is true if we find the gline in our internal
-    // structure of glines.
-    bool foundGline = false;
-
-    // Perform a search for the gline
-    glineIterator gItr = findGlineIterator(userHost);
-    if (gItr != glines_end()) {
-        foundGline = true;
-    }
+    // The gline being removed, if we have it.  The post below runs module code
+    // which may erase from glineList, so nothing here may hold an iterator
+    // into it across that.
+    const glineIterator gItr = findGlineIterator(userHost);
+    Gline* const theGline = (gItr != glines_end()) ? gItr->second : nullptr;
 
     // Notify the network that we are removing it
     stringstream s;
-    if (foundGline) {
-        s << getCharYY() << " GL * -" << userHost << " "
-          << gItr->second->getExpiration()        // expiration
-          << " " << ::time(0)                     // lastmod
-          << " " << gItr->second->getExpiration() // expiration
-          << " :" << gItr->second->getReason();
+    if (theGline != 0) {
+        s << getCharYY() << " GL * -" << userHost << " " << theGline->getExpiration() // expiration
+          << " " << ::time(0)                                                         // lastmod
+          << " " << theGline->getExpiration()                                         // expiration
+          << " :" << theGline->getReason();
     } else {
         // Even if we didn't find the gline here, it may be present
         // to someone on the network *shrug*
@@ -76,22 +71,22 @@ bool xServer::removeGline(const string& userHost, const xClient* remClient) {
     Write(s);
 
     // Did we find the gline in the interal gline structure?
-    if (foundGline) {
+    if (theGline != 0) {
         // Let all clients know that the gline has been removed
         if (remClient) {
-            PostEvent(EVT_REMGLINE, static_cast<void*>(gItr->second), 0, 0, 0, remClient);
+            PostEvent(EVT_REMGLINE, static_cast<void*>(theGline), 0, 0, 0, remClient);
         } else {
-            PostEvent(EVT_REMGLINE, static_cast<void*>(gItr->second));
+            PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
         }
-        // Deallocate the gline
-        destroy(gItr->second);
 
-        // Remove the gline from the internal gline structure
-        eraseGline(gItr);
+        // Remove the gline from the internal gline structure, and deallocate
+        // it - unless a handler of the event above removed it first, in which
+        // case it is already on its way out and this is nothing
+        destroy(takeGline(theGline));
     }
 
     // Return success
-    return foundGline;
+    return theGline != 0;
 }
 
 // C GL * +~*@209.9.117.131 180 :Banned (~*@209.9.117.131) until 957235403 (On Mon May  1
@@ -152,6 +147,19 @@ xServer::glineIterator xServer::findGlineIterator(const string& userHost) {
     return glineList.find(userHost);
 }
 
+Gline* xServer::takeGline(Gline* theGline) {
+    assert(theGline != 0);
+
+    const glineIterator gItr = glineList.find(theGline->getUserHost());
+    if (gItr == glines_end() || gItr->second != theGline) {
+        // Gone, or a different gline of the same user@host
+        return nullptr;
+    }
+
+    glineList.erase(gItr);
+    return theGline;
+}
+
 void xServer::addGline(Gline* newGline) {
     assert(newGline != 0);
     glineList.insert(glineListType::value_type(newGline->getUserHost(), newGline));
@@ -183,8 +191,10 @@ void xServer::removeMatchingGlines(const string& wildHost) {
 
     for (Gline* theGline : matched) {
         PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
-        glineList.erase(theGline->getUserHost());
-        destroy(theGline);
+
+        // The gline we hold, not its user@host: a handler of the event above
+        // may have removed it already, and destroying it twice is a double free
+        destroy(takeGline(theGline));
     }
 }
 
@@ -210,8 +220,10 @@ void xServer::updateGlines() {
 
     for (Gline* theGline : expired) {
         PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
-        glineList.erase(theGline->getUserHost());
-        destroy(theGline);
+
+        // The gline we hold, not its user@host: a handler of the event above
+        // may have removed it already, and destroying it twice is a double free
+        destroy(takeGline(theGline));
     }
 } // updateGlines()
 

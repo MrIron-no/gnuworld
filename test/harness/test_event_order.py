@@ -35,20 +35,14 @@ from p10 import p10_token, strip_msg_tags
 
 CHAN = "#order"
 
-# The dispatch itself now survives a module detaching itself from inside a
-# handler, and the order below is what it produces. What is still undefined is
-# the module: xServer::removeClient() deletes the xClient whose handler is
-# running and dlcloses its library under it, so the handler returns into freed
-# memory. Nothing catches it today, which is why this is xfail non-strict and
-# not a passing test. Deferring the unload past the dispatch is the next task.
-UB_DETACHED = (
-    "UB: DetachClient() deletes the running handler's own xClient and dlcloses "
-    "its module; deferring the unload past the dispatch is the next task"
-)
-
 
 def alive(proc) -> None:
     assert proc.proc is not None and proc.proc.returncode is None, "gnuworld died"
+
+
+def logged(proc, needle: str) -> list[str]:
+    """Every log record gnuworld wrote that contains needle."""
+    return [line for line in proc.stdout_lines if needle in line]
 
 
 def numnick(hub, nick: str) -> str:
@@ -269,6 +263,44 @@ async def test_a_handler_that_kills_the_client_the_event_is_about(two_gnutests_l
 
 
 @pytest.mark.asyncio
+async def test_a_second_handler_does_not_kill_a_client_the_first_one_removed(
+    two_gnutests_linked_p11,
+):
+    """Both modules kill the joining client from inside the same join. gnutest
+    gets there first, which takes the iClient out of the network; it is alive on
+    the holding list, so gnutest2 is handed something it can read, and it asks
+    for the same kill.
+
+    The uplink has never heard of that client again, so the second kill must not
+    reach it: xClient::Kill() refuses for a client the network no longer holds,
+    one D goes out instead of two, and the one EVT_KILL is the one that
+    happened. Without that, core also asks xNetwork::removeClient() to remove a
+    numeric that is gone, which is what the warning is for."""
+    hub, proc = two_gnutests_linked_p11
+    # other stays behind, so that the channel is not emptied as well
+    env = await setup(hub, channel_members=["other"])
+
+    await command(hub, env["asker"], "gnutest", "onevent ChannelJoin kill")
+    await command(hub, env["asker"], "gnutest2", "onevent ChannelJoin kill")
+
+    out = await drive_or_die(
+        hub, env, [f"{env['victim']} J {CHAN} {int(time.time())}"], proc
+    )
+    alive(proc)
+    assert reports(hub, out, env) == [
+        ("gnutest", f"ChannelJoin {CHAN} victim victim"),
+        ("gnutest2", f"ChannelJoin {CHAN} victim victim"),
+        ("gnutest", "Kill - victim onevent kill"),
+        ("gnutest2", "Kill - victim onevent kill"),
+    ]
+
+    killed = [line for line in out if p10_token(line) == "D"]
+    assert len(killed) == 1, killed
+    assert env["victim"] in killed[0]
+    assert logged(proc, "Unable to find client numeric") == []
+
+
+@pytest.mark.asyncio
 async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutests_linked_p11):
     """gnutest kicks the only member of the channel the event is about, which
     takes the Channel out of the network (xServer::kickMembers parts the module it
@@ -365,6 +397,12 @@ async def test_a_wire_part_whose_handler_empties_the_channel(two_gnutests_linked
     alive(proc)
     assert any("Unable to find channel" in line for line in out)
 
+    # msg_L removes the channel it holds, not its name, so finding the name
+    # gone here is the normal outcome of this scenario and not a complaint:
+    # xNetwork::removeChannel(const Channel*) answers "it is not there" without
+    # a word, and the warning is left to mean what it says.
+    assert logged(proc, "Failed to find channel") == []
+
 
 @pytest.mark.asyncio
 async def test_a_handler_that_parts_a_channel(two_gnutests_linked_p11):
@@ -447,9 +485,14 @@ async def test_a_handler_that_registers_the_event_being_dispatched(two_gnutests_
 @pytest.mark.asyncio
 async def test_a_handler_that_unloads_itself(two_gnutests_linked_p11):
     """xServer::UnloadClient() is deferred to a timer, so the dispatch it was
-    called from finishes untouched and the module goes away afterwards - which
-    is itself an event, posted for the module's own client, and which the module
-    being unloaded is still registered for."""
+    called from finishes untouched and the module goes away from the timer
+    instead - which is itself an event, posted for the module's own client.
+
+    A timer handler is module code too (xServer::CheckTimers counts it as a
+    dispatch), so the unload the timer asks for is deferred once more, past the
+    timer's own frame. The module is out of every listener list from the moment
+    it asked to go, so by the time its own quit is posted it is not a listener:
+    a detached module is told nothing, including of its own departure."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
@@ -472,38 +515,123 @@ async def test_a_handler_that_unloads_itself(two_gnutests_linked_p11):
     assert reports(hub, out, env) == [
         ("gnutest", "Quit victim bye now"),
         ("gnutest2", "Quit victim bye now"),
-        ("gnutest", "Quit gnutest -"),
         ("gnutest2", "Quit gnutest -"),
         ("gnutest2", "Quit other me too"),
     ]
 
 
-@pytest.mark.xfail(strict=False, reason=UB_DETACHED)
 @pytest.mark.asyncio
 async def test_a_handler_that_detaches_itself(two_gnutests_linked_p11):
-    """xServer::DetachClient() is not deferred: xServer::removeClient() posts the
-    module's own quit, takes the module out of every listener list, and then
-    deletes the xClient whose handler is running.
+    """xServer::DetachClient() from inside a handler: the module is taken out of
+    every listener list and every timer at once, so it receives nothing further,
+    and the rest of xServer::removeClient() waits.
 
-    The dispatch survives all three. The quit it was in the middle of still
-    reaches gnutest2, and the module's own quit is delivered after it - by which
-    time the module is no longer a listener, so it is not told of its own
-    departure. That is the whole of what unregistering means here: the module asked
-    to be detached, and a detached module receives nothing.
+    The dispatch survives. The quit it was in the middle of still reaches
+    gnutest2, and the module's own quit is delivered after it - by which time the
+    module is no longer a listener, so it is not told of its own departure. That
+    is the whole of what unregistering means here: the module asked to be
+    detached, and a detached module receives nothing.
 
-    Still xfail: the xClient is deleted and its library dlclosed while its own
-    handler is on the stack, so the handler returns into freed memory. It happens
-    to survive that, here and under the sanitizer both, which is luck and not a
-    contract; deferring the unload past the dispatch is the next task."""
+    What waits is the deletion of the xClient whose handler is running and the
+    unmapping of its library: both happen from xServer::releaseHeldObjects(),
+    once the outermost dispatch has unwound and nothing is queued or held, so no
+    frame of the module is on the stack when its library goes. Before that the
+    handler returned into freed memory and survived only because the same
+    library is loaded twice here, which kept dlclose() from unmapping it."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 
     await command(hub, env["asker"], "gnutest", "onevent Quit detachself")
 
-    out = await drive_or_die(hub, env, [f"{env['victim']} Q :bye now"], proc)
+    # The module's own quit is posted by the deferred half of the removal, at
+    # the top of the next iteration of the main loop, which is after the message
+    # that ends the first window when the two were read together: both windows
+    # are therefore read as one, as in the unload above
+    start = len(hub.received)
+    await drive_or_die(hub, env, [f"{env['victim']} Q :bye now"], proc)
     alive(proc)
+    await hub.wait_for(lambda line: "EVENT Quit gnutest " in line, timeout=30.0)
+
+    # And nothing more reaches the module that went
+    await drive_or_die(hub, env, [f"{env['other']} Q :me too"], proc)
+    alive(proc)
+    out = [strip_msg_tags(line) for line in hub.received[start:]]
     assert reports(hub, out, env) == [
         ("gnutest", "Quit victim bye now"),
         ("gnutest2", "Quit victim bye now"),
         ("gnutest2", "Quit gnutest -"),
+        ("gnutest2", "Quit other me too"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_unload_of_a_detached_module_waits_for_the_whole_line(
+    two_gnutests_linked_p11,
+):
+    """Where in the line the deferred half of the unload happens, pinned by an
+    event that has to come before it.
+
+    gnutest detaches itself from inside the quit; gnutest2, next in the same
+    dispatch, posts an event of its own. The post was made during the line, so
+    it is delivered when the dispatch unwinds; the module's own quit is posted by
+    the deferred removal, which is later still - after the queue is empty and the
+    holding list has been given back. Undeferred, the module's quit was posted
+    where the module asked to go and so came first."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub)
+
+    await command(hub, env["asker"], "gnutest", "onevent Quit detachself")
+    await command(hub, env["asker"], "gnutest2", "onevent Quit post")
+
+    start = len(hub.received)
+    await drive_or_die(hub, env, [f"{env['victim']} Q :bye now"], proc)
+    alive(proc)
+    await hub.wait_for(lambda line: "EVENT Quit gnutest " in line, timeout=30.0)
+
+    out = [strip_msg_tags(line) for line in hub.received[start:]]
+    assert reports(hub, out, env) == [
+        ("gnutest", "Quit victim bye now"),
+        ("gnutest2", "Quit victim bye now"),
+        ("gnutest2", "Raw onevent post"),
+        ("gnutest2", "Quit gnutest -"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_module_unloaded_from_its_own_timer_comes_back(two_gnutests_linked_p11):
+    """mod.gnutest's "reload" is xServer::UnloadClient() followed by
+    LoadClient(), both of which run from a timer: the unload is therefore asked
+    for from inside OnTimer, where the module's own frame is live, and is
+    deferred past it.
+
+    The daemon survives, the xClient is deleted and lt_dlclose() called with
+    nothing of the module's own on the stack, and the load that follows brings
+    the module back and introduces its client. The other instance of the same
+    library is untouched throughout - which is also why this cannot show an
+    unmapping: two instances means dlclose() only drops a reference."""
+    hub, proc = two_gnutests_linked_p11
+    env = await setup(hub)
+
+    gone = numnick(hub, "gnutest")
+    after = len(hub.received)
+    await hub.send_privmsg(env["asker"], gone, "reload")
+    await hub.wait_for(lambda line: line.startswith(f"{gone} Q "), timeout=30.0)
+    alive(proc)
+
+    # The module is loaded again and introduces its client afresh. LoadClient()
+    # is a timer two seconds out, so this is the introduction to wait for and
+    # not the one from gnuworld's own burst
+    await hub.wait_for(
+        lambda line: p10_token(line) == "N" and " gnutest " in line,
+        timeout=60.0, after=after,
+    )
+    alive(proc)
+
+    # The module that came back answers, and the witness never stopped reporting
+    out = await command(hub, env["asker"], "gnutest", f"chaninfo {CHAN}")
+    assert any("Unable to find channel" in line for line in out)
+
+    # A fresh instance has registered for nothing, so only the witness reports
+    out = await drive_or_die(hub, env, [f"{env['victim']} Q :bye now"], proc)
+    alive(proc)
+    assert reports(hub, out, env) == [("gnutest2", "Quit victim bye now")]

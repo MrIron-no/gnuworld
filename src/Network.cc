@@ -517,7 +517,9 @@ Channel* xNetwork::removeChannel(const string& name) {
 Channel* xNetwork::removeChannel(const Channel* theChan) {
     assert(theChan != 0);
 
-    return removeChannel(theChan->getName());
+    // Only this channel, and only if the table still holds it: the name is no
+    // longer enough to identify it
+    return stillHas(theChan) ? removeChannel(theChan->getName()) : nullptr;
 }
 
 void xNetwork::rehashNick(const string& yyxxx, const string& newNick, const time_t& newTS) {
