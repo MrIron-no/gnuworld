@@ -552,9 +552,9 @@ void xClient::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* the
     OnChannelEvent(EVT_BURST, theChan, static_cast<void*>(theClient), static_cast<void*>(theUser));
 }
 
-void xClient::OnCreate(Channel* theChan, iClient* theClient) {
+void xClient::OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
     // bridge: removed by events-remove-legacy
-    OnChannelEvent(EVT_CREATE, theChan, static_cast<void*>(theClient));
+    OnChannelEvent(EVT_CREATE, theChan, static_cast<void*>(theClient), static_cast<void*>(theUser));
 }
 
 void xClient::OnPart(Channel* theChan, iClient* theClient, std::string_view message) {

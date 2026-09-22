@@ -200,7 +200,7 @@ bool msg_C::Execute(const xParameters& Param) {
         }
 
         // Notify all listening xClients of this event
-        theServer->postCreate(theChan, theClient);
+        theServer->postCreate(theChan, theClient, theUser);
 
     } // for()
 

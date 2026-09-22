@@ -279,13 +279,10 @@ bool msg_J::Execute(const xParameters& Param) {
         // Post the event to the clients listening for events on this
         // channel, if any.
         if (EVT_CREATE == whichEvent) {
-            theServer->postCreate(theChan, Target);
+            theServer->postCreate(theChan, Target, theUser);
         } else {
             theServer->postJoin(theChan, Target, theUser);
         }
-
-        // TODO: Update event posting so that CREATE is also
-        // passed the client who created the channel
 
     } // for()
 

@@ -443,11 +443,11 @@ void xServer::postBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* t
     });
 }
 
-void xServer::postCreate(Channel* theChan, iClient* theClient) {
+void xServer::postCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
     assert(theChan != 0);
 
-    notifyChannel(theChan->getName(), [theChan, theClient](xClient* listener) {
-        listener->OnCreate(theChan, theClient);
+    notifyChannel(theChan->getName(), [theChan, theClient, theUser](xClient* listener) {
+        listener->OnCreate(theChan, theClient, theUser);
     });
 }
 
@@ -580,7 +580,7 @@ void xServer::PostChannelEvent(const channelEventType& theEvent, Channel* theCha
         postBurstJoin(theChan, static_cast<iClient*>(Data1), static_cast<ChannelUser*>(Data2));
         break;
     case EVT_CREATE:
-        postCreate(theChan, static_cast<iClient*>(Data1));
+        postCreate(theChan, static_cast<iClient*>(Data1), static_cast<ChannelUser*>(Data2));
         break;
     case EVT_PART:
         postPart(theChan, static_cast<iClient*>(Data1), textOf(Data2));
