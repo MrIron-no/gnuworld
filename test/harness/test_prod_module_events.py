@@ -1170,3 +1170,96 @@ async def test_nickserv_takes_an_account_for_a_client_it_never_saw_arrive(
         assert await ask(hub, asker, ns, "WHOAMI", "Account:")
     finally:
         await proc.terminate()
+
+
+@pytest.mark.asyncio
+async def test_nickserv_queues_a_nick_change_for_a_client_it_never_saw_arrive(
+        docker_stack, fake_hub_p11, tmp_path):
+    """EVT_CHNICK for a client that was already on the network at OnAttach().
+
+    The sibling of test_nickserv_takes_an_account_for_a_client_it_never_saw_arrive,
+    one step removed: NS's nick-change handler does not touch the netData
+    itself, it only puts the client in the warn queue.  processQueue(), on the
+    checkFreq timer, then writes through the record of every entry it walks.
+    So the queuing and the crash are two separate ticks of the clock.
+
+    Same lever as the sibling for a client NS never saw arrive - mod.gnutest
+    ahead of it in GNUWorld.conf, whose own client's N is posted by
+    xServer::AttachClient() before NS registers for EVT_NICK - plus a checkFreq
+    short enough that the walk happens while the test is still watching.  The
+    nick it changes to is not in the users table, which is the first of the
+    five places the walk dereferences the record.
+    """
+    require_module("nickserv")
+    require_module("gnutest")
+    docker_stack.up()  # Postgres
+    hub = fake_hub_p11
+    conf_dir = _prepare_conf_dir(tmp_path)
+    root = GnuworldProc.conf_root(conf_dir)
+    GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
+    GnuworldProc.write_module_config(
+        conf_dir / "nickserv.conf", "nickserv.example.conf",
+        {"dbHost": _HARNESS_DB["host"], "dbPort": _HARNESS_DB["port"], "dbDb": "nickserv",
+         "dbUser": _HARNESS_DB["user"], "dbPass": _HARNESS_DB["password"],
+         # Walk the queue every two seconds, starting two seconds after we
+         # link: the default pair is a minute each and the crash is on the walk
+         "startDelay": "2", "checkFreq": "2"})
+    GnuworldProc.write_config(
+        conf_dir / "GNUWorld.conf",
+        uplink=CONTAINER_UPLINK,
+        port=hub.port,
+        password=hub.password,
+        # mod.gnutest first: its client is on the network before NS attaches
+        module_lines=f"module = libgnutest.la {root}/gnutest.conf\n"
+        f"module = libnickserv.la {root}/nickserv.conf",
+    )
+
+    proc = GnuworldProc(conf_dir=conf_dir)
+    await proc.start()
+
+    async def walks(count: int, after: int, timeout: float = 40.0) -> None:
+        """Wait until NS has said on its console that it is walking its queue.
+
+        It says so before it touches the first entry, so a walk that dies part
+        way through may never flush the line it already wrote: read alive()
+        every time round, or a crash reads as a timeout or a closed link.
+        """
+        deadline = time.monotonic() + timeout
+        while sum(1 for line in hub.received[after:] if "Processing queue" in line) < count:
+            alive(proc)
+            assert time.monotonic() < deadline, "NS never walked its queue"
+            try:
+                await hub.drain_messages(timeout=0.3)
+            except ConnectionError:
+                await asyncio.sleep(1.0)  # let the process be reaped
+                alive(proc)
+                raise
+
+    try:
+        await hub.accept_and_handshake(timeout=90.0)
+        await proc.wait_for_stdout("Connected", timeout=60.0)
+        ns = hub.get_user_numnick("NS")
+        assert ns, "mod.nickserv did not introduce NS (module or database?)"
+        older = hub.get_user_numnick("gnutest")
+        assert older, "mod.gnutest did not introduce a client of its own"
+
+        # A client NS did see arrive, to ask something of it afterwards: NS
+        # answers no command from a client that is not logged in
+        asker = await hub.introduce_nick("nsasker", username="nsasker")
+        await hub.send_account(asker, PERMIT_ACCOUNT)
+        assert await ask(hub, asker, ns, "WHOAMI", "Account:")
+
+        # The timer is running before the nick change, so that what follows
+        # measures the walk and not the wait for the first tick
+        await walks(1, 0)
+
+        after = len(hub.received)
+        await hub.send_raw(f"{older} N gtrenamed {int(time.time())}")
+        # Two walks: the first may be a tick already in flight when the N went
+        # out, the second is certainly a queue the nick change has been through
+        await walks(2, after)
+
+        alive(proc)
+        assert await ask(hub, asker, ns, "WHOAMI", "Account:")
+    finally:
+        await proc.terminate()
