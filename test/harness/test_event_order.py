@@ -307,7 +307,8 @@ async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutest
     joined to kick with, and a channel left empty goes with it). It is held until
     the line being processed is done with it, so gnutest2, next in the same
     dispatch, is handed a Channel it can still read. The join and the part the kick
-    needed are posted from inside the create, and so are reported after it.
+    needed are posted from inside the create, and so are reported after it; the
+    kick itself is not an event and reaches both modules as it happens.
 
     msg_C passes no ChannelUser with EVT_CREATE, which is why the member of the
     create is reported as "-"."""
@@ -325,6 +326,8 @@ async def test_a_handler_that_empties_the_channel_the_event_is_about(two_gnutest
         ("gnutest2", f"ChannelCreate {CHAN} victim -"),
         ("gnutest", f"ChannelJoin {CHAN} gnutest gnutest"),
         ("gnutest2", f"ChannelJoin {CHAN} gnutest gnutest"),
+        ("gnutest", f"ChannelKick {CHAN} gnutest victim onevent kick zombie"),
+        ("gnutest2", f"ChannelKick {CHAN} gnutest victim onevent kick zombie"),
         ("gnutest", f"ChannelPart {CHAN} gnutest -"),
         ("gnutest2", f"ChannelPart {CHAN} gnutest -"),
     ]

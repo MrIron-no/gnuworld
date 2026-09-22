@@ -26,6 +26,10 @@ on its own.
 Three of the events in events.h are posted nowhere at all: EVT_JUPE and
 EVT_UNJUPE (a jupe is posted as a net join and its removal as nothing) and
 EVT_KICK (a kick goes to xClient::OnNetworkKick() instead).
+
+A kick and a channel mode change are not events, and gnutest overrides the
+methods they do arrive at as well, so ``events on`` reports those the same way:
+"ChannelKick", and "ChannelMode" and its lettered kin for each kind of mode.
 """
 
 from __future__ import annotations
@@ -358,12 +362,19 @@ CASES = [
         lambda e: [command(e, f"join {CHAN}")],
         lambda e: [f"ChannelJoin {CHAN} gnutest gnutest"],
     ),
-    # <hub> B <chan> <ts> +tn <members> - a channel in a net burst (msg_B)
+    # <hub> B <chan> <ts> +tn <members> - a channel in a net burst (msg_B): the
+    # modes of the line come first, each membership next, and the ops the
+    # members carry last, all from a server and so with no member as the source
     (
         "channel_burst",
         lambda e: [],
         lambda e: [f"{e['hub']} B {CHAN} {e['ts']} +tn {e['victim']}:o,{e['other']}"],
-        lambda e: [f"ChannelBurst {CHAN} victim victim", f"ChannelBurst {CHAN} other other"],
+        lambda e: [
+            f"ChannelMode {CHAN} - +t +n",
+            f"ChannelBurst {CHAN} victim victim",
+            f"ChannelBurst {CHAN} other other",
+            f"ChannelModeO {CHAN} - +victim +other",
+        ],
     ),
     # <victim> L <chan> :<message> - a part, the one path with a part message
     (
@@ -412,24 +423,29 @@ CASES = [
         lambda e: [command(e, f"spawnpart fakeguy {CHAN}")],
         lambda e: [f"ChannelPart {CHAN} fakeguy -"],
     ),
-    # "kick <chan> <nick> <reason>" - a kick by one of our own modules posts no
-    # event about the victim at all (xServer::kickMembers takes the member off
-    # the channel itself and reports the kick through OnNetworkKick): what the
-    # events say is that the module joined the channel to kick from it and then
-    # parted again, the part with no message (xServer::OnPartChannel)
+    # "kick <chan> <nick> <reason>" - a kick by one of our own modules
+    # (xServer::kickMembers): the module joins the channel to kick from it,
+    # kicks, and parts again with no message.  The kick itself is not an event:
+    # it goes to xClient::OnNetworkKick(), which says the victim is left a
+    # zombie because its own server has still to confirm the part.
     (
-        "kick_by_our_own_client_is_a_join_and_a_part_of_the_module",
+        "kick_by_our_own_client",
         channel,
         lambda e: [command(e, f"kick {CHAN} victim get out")],
-        lambda e: [f"ChannelJoin {CHAN} gnutest gnutest", f"ChannelPart {CHAN} gnutest -"],
+        lambda e: [
+            f"ChannelJoin {CHAN} gnutest gnutest",
+            f"ChannelKick {CHAN} gnutest victim get out zombie",
+            f"ChannelPart {CHAN} gnutest -",
+        ],
     ),
     # <hub> M <chan> +m - a mode change by a server (msg_M): the one channel
-    # event whose payload is an iServer and not an iClient
+    # event whose payload is an iServer and not an iClient, and then the mode
+    # change itself, which is not an event either
     (
         "channel_servermode",
         channel,
         lambda e: [f"{e['hub']} M {CHAN} +m"],
-        lambda e: [f"ChannelModeByServer {CHAN} hub.testnet"],
+        lambda e: [f"ChannelModeByServer {CHAN} hub.testnet", f"ChannelMode {CHAN} - +m"],
     ),
     # <hub> CM <chan> <modes> - clearmode by a server (msg_CM), the same event
     (
@@ -437,6 +453,61 @@ CASES = [
         channel,
         lambda e: [f"{e['hub']} CM {CHAN} b"],
         lambda e: [f"ChannelModeByServer {CHAN} hub.testnet"],
+    ),
+    # <victim> M <chan> +i-n - the simple modes of one line arrive as one batch,
+    # in the order they were given, with the member who set them as the source
+    (
+        "channel_mode_flags",
+        channel,
+        lambda e: [f"{e['victim']} M {CHAN} +i-n"],
+        lambda e: [f"ChannelMode {CHAN} victim +i -n"],
+    ),
+    # A mode with an argument arrives as soon as it is met, and so before the
+    # flags of the same line: the limit and the key have a handler each
+    (
+        "channel_mode_limit_and_key",
+        channel,
+        lambda e: [f"{e['victim']} M {CHAN} +lki 42 secret"],
+        lambda e: [
+            f"ChannelModeL {CHAN} victim +42",
+            f"ChannelModeK {CHAN} victim +secret",
+            f"ChannelMode {CHAN} victim +i",
+        ],
+    ),
+    # -l carries no argument, and is reported as a limit of zero
+    (
+        "channel_mode_limit_removed",
+        lambda e: channel(e) + [f"{e['victim']} M {CHAN} +l 42"],
+        lambda e: [f"{e['victim']} M {CHAN} -l"],
+        lambda e: [f"ChannelModeL {CHAN} victim -0"],
+    ),
+    # The op and voice changes of a line are one batch each, after the flags
+    (
+        "channel_mode_op_and_voice",
+        channel,
+        lambda e: [f"{e['victim']} M {CHAN} -o+v {e['victim']} {e['other']}"],
+        lambda e: [
+            f"ChannelModeO {CHAN} victim -victim",
+            f"ChannelModeV {CHAN} victim +other",
+        ],
+    ),
+    # And the bans last of all
+    (
+        "channel_mode_ban",
+        channel,
+        lambda e: [f"{e['victim']} M {CHAN} +b *!*@bad.example"],
+        lambda e: [f"ChannelModeB {CHAN} victim +*!*@bad.example"],
+    ),
+    # The two passwords of the ircu op levels, which have a handler each of
+    # their own for no other reason than that they always have had
+    (
+        "channel_mode_apass_and_upass",
+        channel,
+        lambda e: [f"{e['victim']} M {CHAN} +AU adminpass userpass"],
+        lambda e: [
+            f"ChannelModeA {CHAN} victim +adminpass",
+            f"ChannelModeU {CHAN} victim +userpass",
+        ],
     ),
 ]
 
@@ -479,11 +550,12 @@ async def test_nothing_is_reported_until_events_are_on(gnutest_linked_p11):
 
 
 @pytest.mark.asyncio
-async def test_a_kick_from_the_network_posts_no_channel_event(gnutest_linked_p11):
+async def test_a_kick_from_the_network_is_not_a_channel_event(gnutest_linked_p11):
     """EVT_KICK is never posted anywhere, and a kick is not a part either: core
     delivers a kick to the modules through xClient::OnNetworkKick(), which is
-    not an event and which gnutest does not report. The kick was handled all the
-    same - for a client of ours core confirms it with an L line (msg_K)."""
+    not an event. A module hears about it all the same, source and victim and
+    reason and all, and for a client of ours core confirms the kick to the
+    network with an L line (msg_K)."""
     hub, proc = gnutest_linked_p11
     env = await setup(hub)
 
@@ -495,7 +567,8 @@ async def test_a_kick_from_the_network_posts_no_channel_event(gnutest_linked_p11
     out = await drive(hub, env, [f"{env['hub']} K {CHAN} {env['gnutest']} :kicked"])
     alive(proc)
     assert [line for line in out if p10_token(line) == "L"] == [f"{env['gnutest']} L {CHAN}"]
-    assert reports(out, env) == []
+    # The source is a server, so there is no client to name
+    assert reports(out, env) == [f"ChannelKick {CHAN} - gnutest kicked zombie"]
 
 
 @pytest.mark.asyncio

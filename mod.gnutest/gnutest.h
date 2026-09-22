@@ -100,6 +100,26 @@ class gnutest : public xClient {
     virtual void OnEvent(const eventType& theEvent, void* data1 = 0, void* data2 = 0,
                          void* data3 = 0, void* data4 = 0);
 
+    /*
+     * A kick and a channel mode change are the notifications core has never
+     * sent as an event: they go to a method of their own, and so "events on"
+     * could not see them.  These report them the same way, so that what a
+     * module is told about them is pinned from the outside too.
+     */
+
+    virtual void OnNetworkKick(Channel*, iClient* srcClient, iClient* destClient,
+                               const std::string& kickMessage, bool authoritative) override;
+
+    virtual void OnChannelMode(Channel*, ChannelUser*, const xServer::modeVectorType&) override;
+    virtual void OnChannelModeL(Channel*, bool polarity, ChannelUser*,
+                                const unsigned int&) override;
+    virtual void OnChannelModeK(Channel*, bool polarity, ChannelUser*, const std::string&) override;
+    virtual void OnChannelModeA(Channel*, bool polarity, ChannelUser*, const std::string&) override;
+    virtual void OnChannelModeU(Channel*, bool polarity, ChannelUser*, const std::string&) override;
+    virtual void OnChannelModeO(Channel*, ChannelUser*, const xServer::opVectorType&) override;
+    virtual void OnChannelModeV(Channel*, ChannelUser*, const xServer::voiceVectorType&) override;
+    virtual void OnChannelModeB(Channel*, ChannelUser*, const xServer::banVectorType&) override;
+
     /**
      * This method is called for the client to burst all channels
      * once the server connects to the network.
