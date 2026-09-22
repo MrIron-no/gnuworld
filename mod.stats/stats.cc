@@ -45,6 +45,28 @@ using std::endl;
 using std::string;
 using std::stringstream;
 
+/// The column dumpStats() pads an event name out to in its table.
+static constexpr std::size_t eventNameColumn = 23;
+
+static constexpr bool everyEventNameFitsColumn() {
+    for (const std::string_view name : eventNames) {
+        if (name.size() > eventNameColumn) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/*
+ * The table of dumpStats() used to pad by counting down from the column width
+ * to the name's length, so a name one character too long wrapped the count and
+ * hung the dump.  The padding no longer can wrap, and this says a name never
+ * gets that long in the first place.
+ */
+static_assert(everyEventNameFitsColumn(),
+              "an event name in events.h is longer than the stats table column:"
+              " widen eventNameColumn");
+
 /*
  *  Exported function used by moduleLoader to gain an
  *  instance of this module.
@@ -92,8 +114,8 @@ stats::stats(const string& fileName) : xClient(fileName) {
     partMessage = conf.Require("part_message")->second;
     startTime = 0;
 
-    channelInfoFileName = "users_per_channel";
-    userInfoFileName = "channels_per_user";
+    channelInfoFileName = data_path + "users_per_channel";
+    userInfoFileName = data_path + "channels_per_user";
 
     openLogFiles();
 
@@ -425,7 +447,12 @@ void stats::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destCli
 }
 
 void stats::dumpStats(iClient* theClient) {
-    time_t countingTime = ::time(0) - startTime;
+    // startTime is 0 until the first event arrives, so counting from it before
+    // then would make the elapsed time the whole Unix epoch.  Average over at
+    // least a second, because a dump in the same second as the first event
+    // would otherwise divide by 0 and make every average inf.
+    time_t countingTime = (0 == startTime) ? 0 : ::time(nullptr) - startTime;
+    time_t averageTime = (countingTime > 0) ? countingTime : 1;
 
     Notice(theClient, "I have been counting for %d seconds", countingTime);
     Notice(theClient, "Total Network Users: %d, Total Network Channels: %d",
@@ -552,15 +579,9 @@ void stats::dumpStats(iClient* theClient) {
         ss << eventNames[whichEvent];
         writeMe = ss.str();
 
-        ss.str(string());
-
-        // For some reason, I can't get the stringstream IO
-        // manipulation stuff to work properly here
-        // *shrug* do it the hard way then...
-        for (size_t i = 23 - eventNames[whichEvent].size(); i > 0; --i) {
-            ss << ' ';
-        }
-        writeMe += ss.str();
+        // Pad the name out to its column.  Growing writeMe to the column
+        // cannot wrap the way subtracting the name's length from it could.
+        writeMe.resize(eventNameColumn, ' ');
 
         ss.str(string());
         ss.width(12);
@@ -571,14 +592,14 @@ void stats::dumpStats(iClient* theClient) {
         ss.str(string());
         ss.width(15);
         ss.setf(std::ios::left);
-        ss << ((double)eventTotal[whichEvent] / (double)countingTime);
+        ss << ((double)eventTotal[whichEvent] / (double)averageTime);
         writeMe += ss.str();
 
         Notice(theClient, "%s", writeMe.c_str());
     }
 
     Notice(theClient, "Total Events: %d, Total Average Events/Second: %f", totalEvents,
-           (double)totalEvents / (double)countingTime);
+           (double)totalEvents / (double)averageTime);
 }
 
 bool stats::hasAccess(const string& accountName) const {
