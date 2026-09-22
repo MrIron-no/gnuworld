@@ -59,6 +59,35 @@ const LogField* findField(const std::vector<LogField>& fields, std::string_view 
 
 } // namespace
 
+/// The largest width or precision a placeholder may ask for
+static constexpr std::size_t maxSpecNumber = 4096;
+
+/// True when a number in spec is larger than maxSpecNumber.  A run of digits
+/// in a format spec is a width or a precision and nothing else - a fill is one
+/// character and a type is a letter - so where it stands does not matter.
+///
+/// Such a spec is well formed, so std::vformat does not reject it: it tries to
+/// honour it, and an enormous one is an allocation of that size.  libstdc++
+/// survives it; libc++ throws std::length_error or std::bad_alloc, neither of
+/// them the std::format_error renderTemplate() guards against.  Deciding here,
+/// before the allocation, is the same answer on both.
+static bool specNumberTooLarge(std::string_view spec) {
+    std::size_t value = 0;
+
+    for (const char c : spec) {
+        if (c < '0' || c > '9') {
+            value = 0; // the run of digits ended
+            continue;
+        }
+
+        value = value * 10 + static_cast<std::size_t>(c - '0');
+        if (value > maxSpecNumber)
+            return true;
+    }
+
+    return false;
+}
+
 RenderResult renderTemplate(std::string_view tmpl, const std::vector<LogArg>& args,
                             const std::vector<LogField>& fields) {
     RenderResult result;
@@ -125,6 +154,14 @@ RenderResult renderTemplate(std::string_view tmpl, const std::vector<LogArg>& ar
 
             const LogArg& arg = args[nextArg++];
             const std::string_view spec = body.empty() ? std::string_view() : body.substr(1);
+
+            if (specNumberTooLarge(spec)) {
+                // More than any log line wants: the same answer as for a spec
+                // std::format rejects, and the argument is spent either way
+                result.text += placeholder;
+                pos = close + 1;
+                continue;
+            }
 
             try {
                 substitute(arg(spec));
