@@ -145,8 +145,11 @@ class iClient : public NetworkTarget {
 
     /**
      * Destruct the iClient.
-     * This will call xClient::deleteCustomData() for each
-     * xClient which is storing a data element in this iClient.
+     * This deletes the custom-data map, and nothing a module put in it: the
+     * map holds void*, so it cannot know how to free one.  A module that calls
+     * setCustomData() owns what it stored and must release it itself, both when
+     * it is done with a client and when the module detaches while clients are
+     * still connected.
      */
     virtual ~iClient();
 
