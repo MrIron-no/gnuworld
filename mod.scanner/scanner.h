@@ -62,26 +62,25 @@ class scanner : public xClient {
      * and the second argument is the actual message (minus
      * all of the server command stuff).
      */
-    virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false);
+    virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false) override;
 
     /**
      * This method is invoked when the module is fully loaded
      * and it is safe to interact with the xServer.
      */
-    virtual void OnAttach();
+    virtual void OnAttach() override;
 
     /**
      * This method is called by the server when a server connection
      * is established.  The purpose of this method is to inform
      * the xServer of the channels this client wishes to burst.
      */
-    virtual void BurstChannels();
+    virtual void BurstChannels() override;
 
     /**
-     * The event handler method, all network events will cause this
-     * method to be invoked.
+     * A client has connected to the network.
      */
-    virtual void OnEvent(const eventType&, void* = 0, void* = 0, void* = 0, void* = 0);
+    virtual void OnNick(iClient*) override;
 
     /* For use by scanner modules */
 
