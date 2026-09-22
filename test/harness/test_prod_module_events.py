@@ -981,6 +981,95 @@ async def test_openchanfix_drops_a_client_that_quits_from_its_op_tracking(docker
 
 
 @pytest.mark.asyncio
+async def test_openchanfix_sees_an_op_kicked(docker_stack, fake_hub_p11, tmp_path):
+    """OnNetworkKick, which this module gained so that a kicked client loses the
+    op record a parting one has always lost.
+
+    Core posts a kick by name and never through the numbered channel-event
+    switch these handlers were converted from, so the EVT_KICK case that sat
+    beside EVT_PART in that switch was dead from the day it was written: only
+    the part half ever ran.
+
+    Two kicks, because the handler's lookup runs for every kick on the network
+    and not only for an op it knows: the first victim has no op record and the
+    second has one.  Both are kicked out of a channel that is still at
+    minClients afterwards, which is the size the gate the part path shares
+    reads.  The client then quits, so the walk over the channels it is opped in
+    runs with the kick already accounted for.
+
+    What the kick costs the client is a set the module keeps on the client
+    itself, and nothing outside the module reads it: gotOpped() skips an insert
+    it has already made and lostClient() walks it to clear it, and neither tells
+    anybody.  A command's answer about the channel comes from the core's own
+    membership, and the score the module keeps for the account is not what a
+    lost op touches.  So this test passes on the code that had no kick handler
+    too, and says so rather than pretending otherwise: it pins the path, not the
+    set.  OPNICKS names the opped client before the kick and none after, the
+    lookup runs for a victim of each kind, and gnuworld is still running each
+    time, which these paths do not always manage.
+
+    numServers is dropped to 1 for the same reason as the test above: chanfix
+    scores nothing in SPLIT, and it has to be out of it before a channel with
+    no scores gets any.
+    """
+    chan, ts = "#" + unique("cfkick"), int(time.time()) - 3600
+    try:
+        async with chanfix_tuned(docker_stack, fake_hub_p11, tmp_path,
+                                 numServers="1") as (hub, proc):
+            oper = await chanfix_oper(hub, "cfkicker")
+            c = hub.get_user_numnick("C")
+            await hub.introduce_leaf("channels.undernet.org", 60)
+            status = await chanfix_status(hub, oper)
+            assert "Channel service linked. New channels will be scored." in status
+
+            account = unique("CFKICK")
+            opped = await hub.introduce_nick("cfvictim", username="cfvictim",
+                                            modes=f"+ir {account}")
+            # minClients is 4 and the victim is off the channel before the
+            # module hears, so six go in and four are left after two kicks
+            fillers = []
+            for index in range(5):
+                nick = f"cfstay{index}"
+                fillers.append(await hub.introduce_nick(nick, username=nick))
+            await hub.send_raw(f"{hub.server_numnick} B {chan} {ts} +tn "
+                               f"{','.join([opped] + fillers)}")
+            await hub.drain_messages(timeout=1.0)
+
+            # A client the module has no op record for, which is every kick on
+            # a real network bar a handful
+            await hub.send_raw(f"{fillers[0]} K {chan} {fillers[1]} :nothing owed")
+            await hub.drain_messages(timeout=1.0)
+            alive(proc)
+
+            # Opped, so the module has a score for the account and the channel
+            # on the client
+            await hub.send_raw(f"{hub.server_numnick} M {chan} +o {opped} {ts}")
+            scored = await chanfix_score(hub, oper, chan, account)
+            assert scored.startswith(f"Score for account {account} in channel {chan}:"), scored
+            named = await ask(hub, oper, c, f"OPNICKS {chan}", "opped client")
+            assert f"I see 1 opped client in {chan}." in named, named
+            assert "cfvictim" in named, named
+
+            # The kicker is on the victim's server, so the kick is
+            # authoritative and the core has taken the member off already
+            await hub.send_raw(f"{fillers[0]} K {chan} {opped} :out")
+            await hub.drain_messages(timeout=1.0)
+            alive(proc)
+            gone = await ask(hub, oper, c, f"OPNICKS {chan}", "opped client")
+            assert f"I see 0 opped clients in {chan}." in gone, gone
+
+            # EVT_QUIT, with the kick accounted for: the score the module keeps
+            # for the account is not what the kick took, so it is still there
+            await hub.send_raw(f"{opped} Q :gone")
+            await asyncio.sleep(0.5)
+            alive(proc)
+            assert await chanfix_score(hub, oper, chan, account) == scored
+            alive(proc)
+    finally:
+        chanfix_forget(chan)
+
+
+@pytest.mark.asyncio
 async def test_openchanfix_ops_an_oper_who_joins_a_channel_it_is_in(docker_stack, fake_hub_p11,
                                                                     tmp_path):
     """EVT_JOIN on one of chanfix's own channels: an oper is opped.  EVT_KILL

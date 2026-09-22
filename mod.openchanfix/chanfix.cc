@@ -665,6 +665,20 @@ void chanfix::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
     opJoiningOper(theChan, theClient);
 }
 
+/* A kick loses op the way a part does.  It arrives by name and never came
+ * through the numbered channel-event switch these handlers were converted from,
+ * which is why the EVT_KICK case of that switch never ran.  The victim is off
+ * the channel by the time we hear, as a parting client is, so the channel name
+ * is all lostOp() has of it either way.
+ */
+void chanfix::OnNetworkKick(Channel* theChan, iClient*, iClient* destClient, const std::string&,
+                            bool) {
+    if (!watchingChannel(theChan))
+        return;
+
+    lostOp(theChan->getName(), destClient, nullptr);
+}
+
 void chanfix::OnPart(Channel* theChan, iClient* theClient, std::string_view) {
     if (!watchingChannel(theChan))
         return;
