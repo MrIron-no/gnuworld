@@ -1198,14 +1198,15 @@ async def test_nickserv_queues_a_nick_change_for_a_client_it_never_saw_arrive(
     require_module("nickserv")
     require_module("gnutest")
     docker_stack.up()  # Postgres
+    db = harness_db()
     hub = fake_hub_p11
     conf_dir = _prepare_conf_dir(tmp_path)
     root = GnuworldProc.conf_root(conf_dir)
     GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
     GnuworldProc.write_module_config(
         conf_dir / "nickserv.conf", "nickserv.example.conf",
-        {"dbHost": _HARNESS_DB["host"], "dbPort": _HARNESS_DB["port"], "dbDb": "nickserv",
-         "dbUser": _HARNESS_DB["user"], "dbPass": _HARNESS_DB["password"],
+        {"dbHost": db["host"], "dbPort": db["port"], "dbDb": "nickserv",
+         "dbUser": db["user"], "dbPass": db["password"],
          # Walk the queue every two seconds, starting two seconds after we
          # link: the default pair is a minute each and the crash is on the walk
          "startDelay": "2", "checkFreq": "2"})
