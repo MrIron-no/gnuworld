@@ -4426,6 +4426,12 @@ void cservice::OnEvent(const eventType& theEvent, void* data1, void* data2, void
     case EVT_ACCOUNT: {
         iClient* tmpUser = static_cast<iClient*>(data1);
         networkData* tmpData = static_cast<networkData*>(tmpUser->getCustomData(this));
+
+        if (!tmpData) {
+            /* A client already here when we attached never met EVT_NICK. */
+            break;
+        }
+
         /* Lookup this user account, if its not there.. trouble */
         sqlUser* theUser = getUserRecord(tmpUser->getAccount());
         if (theUser) {
