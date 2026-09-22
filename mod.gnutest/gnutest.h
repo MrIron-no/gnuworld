@@ -24,6 +24,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "client.h"
@@ -85,20 +86,43 @@ class gnutest : public xClient {
      */
     virtual void OnDisconnect() override;
 
-    /**
-     * This method is called when a channel event occurs on one
-     * of the channels for which this client has requested to
-     * be notified of events.
+    /*
+     * One override per event core posts, network events first and then the
+     * channel ones, each reporting what it was handed under the name the
+     * harness knows that event by.  EVT_JUPE and EVT_UNJUPE have no method of
+     * their own because nothing posts either.
      */
-    virtual void OnChannelEvent(const channelEventType&, Channel*, void* data1 = 0, void* data2 = 0,
-                                void* data3 = 0, void* data4 = 0) override;
 
-    /**
-     * This method is called when a network event occurs, and
-     * the client has registered for that event.
-     */
-    virtual void OnEvent(const eventType& theEvent, void* data1 = 0, void* data2 = 0,
-                         void* data3 = 0, void* data4 = 0) override;
+    virtual void OnOper(iClient* theClient) override;
+    virtual void OnNetBreak(iServer* theServer, const iServer* uplink,
+                            std::string_view reason) override;
+    virtual void OnNetJoin(iServer* theServer, const iServer* uplink) override;
+    virtual void OnBurstComplete(iServer* theServer) override;
+    virtual void OnBurstAck(iServer* theServer) override;
+    virtual void OnEndOfBurstAckSent(iServer* theServer) override;
+    virtual void OnGline(Gline* theGline) override;
+    virtual void OnRemGline(Gline* theGline) override;
+    virtual void OnQuit(iClient* theClient, std::string_view reason) override;
+    virtual void OnKill(const NetworkTarget* source, iClient* theClient,
+                        std::string_view reason) override;
+    virtual void OnNick(iClient* theClient) override;
+    virtual void OnNickChange(iClient* theClient, std::string_view oldNick) override;
+    virtual void OnAccount(iClient* theClient) override;
+    virtual void OnAccountFlags(iClient* theClient) override;
+    virtual void OnRaw(std::string_view line) override;
+    virtual void OnXQuery(iServer* theServer, std::string_view routing,
+                          std::string_view message) override;
+    virtual void OnXReply(iServer* theServer, std::string_view routing,
+                          std::string_view message) override;
+    virtual void OnNetConf(iServer* theServer, std::string_view key) override;
+    virtual void OnRemNetConf(iServer* theServer, std::string_view key) override;
+
+    virtual void OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) override;
+    virtual void OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) override;
+    virtual void OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) override;
+    virtual void OnPart(Channel* theChan, iClient* theClient, std::string_view message) override;
+    virtual void OnTopic(Channel* theChan, iClient* theClient, std::string_view topic) override;
+    virtual void OnServerMode(Channel* theChan, iServer* theServer) override;
 
     /*
      * A kick and a channel mode change are the notifications core has never
@@ -236,6 +260,24 @@ class gnutest : public xClient {
      * Returns false if st[0] is not one of these.
      */
     virtual bool eventCommand(iClient* requestingClient, const StringTokenizer& st);
+
+    /**
+     * Report one event and then run what "onevent" armed for it, which is what
+     * every event handler above comes down to.  args are the printable
+     * identities of what that event was handed, aboutClient the client it is
+     * about and theChan the channel; either of those two may be null.
+     */
+    virtual void eventArrived(int whichEvent, bool channelEvent,
+                              const std::vector<std::string>& args, iClient* aboutClient = nullptr,
+                              Channel* theChan = nullptr);
+
+    /**
+     * A join, a burst join and a create are one membership arriving under
+     * three names: report it and op the arriving client if it is an oper and
+     * this is the channel our config names.
+     */
+    virtual void membership(int whichEvent, Channel* theChan, iClient* theClient,
+                            ChannelUser* theUser);
 
     /**
      * Send one "EVENT <NAME> <arg1> <arg2> ..." notice to whoever turned
