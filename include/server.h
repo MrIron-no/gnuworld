@@ -700,8 +700,8 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * RegisterEvent is called by xClient's wishing
      * to receive a particular event.
      * When a particular event occurs, the server will call
-     * OnEvent for each xClient registered to receive that
-     * event.
+     * the method named for that event on each xClient
+     * registered to receive it.
      */
     virtual bool RegisterEvent(const eventType&, xClient*);
 
@@ -714,10 +714,9 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * The channel event distribution system is rather
      * expensive...such is the nature of IRC.
      * Each channel name is converted to lower case.
-     * When a channel event occurs, the server will call
-     * each OnChannelEvent() with the event type
-     * and channel name for each xClient registered for
-     * that <event,channel> pair.
+     * When a channel event occurs, the server will call the
+     * method named for that event, with the channel, on each
+     * xClient registered for that <event,channel> pair.
      */
     virtual bool RegisterChannelEvent(const std::string&, xClient*);
 
@@ -797,24 +796,6 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     void postPart(Channel* theChan, iClient* theClient, std::string_view message = {});
     void postTopic(Channel* theChan, iClient* theClient, std::string_view topic);
     void postServerMode(Channel* theChan, iServer* theServer);
-
-    /**
-     * Post a system event by number, with its payloads as void*: a switch onto
-     * the post method for that event and nothing else.  Only a module that has
-     * not been converted to those still calls this.
-     *
-     * bridge: removed by events-remove-legacy
-     */
-    virtual void PostEvent(const eventType&, void* = 0, void* = 0, void* = 0, void* = 0,
-                           const xClient* ourClient = 0);
-
-    /**
-     * The same for a channel event.
-     *
-     * bridge: removed by events-remove-legacy
-     */
-    virtual void PostChannelEvent(const channelEventType&, Channel* theChan, void* = 0, void* = 0,
-                                  void* = 0, void* = 0);
 
     /**
      * This method is called when a kick occurs on a channel
@@ -1533,8 +1514,8 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * This is the vector of lists of xClient pointers.
      * When clients register to receive an event, that xClient's
      * pointer is added to eventListType[ theEvent ].
-     * When an event of that type occurs, each xClient in the
-     * list is called (OnEvent()).
+     * When an event of that type occurs, the method named for
+     * that event is called on each xClient in the list.
      */
     eventListType eventList;
 

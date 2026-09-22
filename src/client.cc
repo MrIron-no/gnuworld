@@ -51,7 +51,6 @@
 #ifdef HAVE_PGSQL
 #include "MigrationChecker.h"
 #endif
-#include "events.h"
 
 GNUWORLD_CORE_LOGGER(Modules);
 
@@ -413,166 +412,55 @@ void xClient::OnChannelCTCP(iClient*, Channel*, const string&, const string&) {}
 
 void xClient::OnFakeChannelCTCP(iClient*, iClient*, Channel*, const string&, const string&) {}
 
-void xClient::OnEvent(const eventType&, void*, void*, void*, void*) {}
+void xClient::OnOper(iClient*) {}
 
-void xClient::OnChannelEvent(const channelEventType&, Channel*, void*, void*, void*, void*) {}
+void xClient::OnNetBreak(iServer*, const iServer*, std::string_view) {}
 
-/*
- * The bridge: every named event method forwards to the untyped one a module
- * may still override, with the payloads that event has always carried.  Text
- * goes as the address of a local std::string or of its characters, which is
- * what the untyped API passes and what a module casts back; the call below is
- * synchronous, so that local outlives every reader of it.
- *
- * bridge: removed by events-remove-legacy
- */
+void xClient::OnNetJoin(iServer*, const iServer*) {}
 
-/// One event payload: the address of text the call below reads and no longer
-static void* textAddress(std::string& text) { return static_cast<void*>(&text); }
+void xClient::OnBurstComplete(iServer*) {}
 
-void xClient::OnOper(iClient* theClient) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_OPER, static_cast<void*>(theClient));
-}
+void xClient::OnBurstAck(iServer*) {}
 
-void xClient::OnNetBreak(iServer* theServer, const iServer* uplink, std::string_view reason) {
-    // bridge: removed by events-remove-legacy
-    string reasonText(reason);
-    OnEvent(EVT_NETBREAK, static_cast<void*>(theServer),
-            static_cast<void*>(const_cast<iServer*>(uplink)), textAddress(reasonText));
-}
+void xClient::OnEndOfBurstAckSent(iServer*) {}
 
-void xClient::OnNetJoin(iServer* theServer, const iServer* uplink) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_NETJOIN, static_cast<void*>(theServer),
-            static_cast<void*>(const_cast<iServer*>(uplink)));
-}
+void xClient::OnGline(Gline*) {}
 
-void xClient::OnBurstComplete(iServer* theServer) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_BURST_CMPLT, static_cast<void*>(theServer));
-}
+void xClient::OnRemGline(Gline*) {}
 
-void xClient::OnBurstAck(iServer* theServer) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_BURST_ACK, static_cast<void*>(theServer));
-}
+void xClient::OnQuit(iClient*, std::string_view) {}
 
-void xClient::OnEndOfBurstAckSent(iServer* theServer) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_EA_SENT, static_cast<void*>(theServer));
-}
+void xClient::OnKill(const NetworkTarget*, iClient*, std::string_view) {}
 
-void xClient::OnGline(Gline* theGline) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_GLINE, static_cast<void*>(theGline));
-}
+void xClient::OnNick(iClient*) {}
 
-void xClient::OnRemGline(Gline* theGline) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_REMGLINE, static_cast<void*>(theGline));
-}
+void xClient::OnNickChange(iClient*, std::string_view) {}
 
-void xClient::OnQuit(iClient* theClient, std::string_view reason) {
-    // bridge: removed by events-remove-legacy
-    string reasonText(reason);
-    OnEvent(EVT_QUIT, static_cast<void*>(theClient), textAddress(reasonText));
-}
+void xClient::OnAccount(iClient*) {}
 
-void xClient::OnKill(const NetworkTarget* source, iClient* theClient, std::string_view reason) {
-    // bridge: removed by events-remove-legacy
-    string reasonText(reason);
-    OnEvent(EVT_KILL, static_cast<void*>(const_cast<NetworkTarget*>(source)),
-            static_cast<void*>(theClient), textAddress(reasonText));
-}
+void xClient::OnAccountFlags(iClient*) {}
 
-void xClient::OnNick(iClient* theClient) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_NICK, static_cast<void*>(theClient));
-}
+void xClient::OnRaw(std::string_view) {}
 
-void xClient::OnNickChange(iClient* theClient, std::string_view oldNick) {
-    // bridge: removed by events-remove-legacy
-    string oldNickText(oldNick);
-    OnEvent(EVT_CHNICK, static_cast<void*>(theClient), textAddress(oldNickText));
-}
+void xClient::OnXQuery(iServer*, std::string_view, std::string_view) {}
 
-void xClient::OnAccount(iClient* theClient) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_ACCOUNT, static_cast<void*>(theClient));
-}
+void xClient::OnXReply(iServer*, std::string_view, std::string_view) {}
 
-void xClient::OnAccountFlags(iClient* theClient) {
-    // bridge: removed by events-remove-legacy
-    OnEvent(EVT_ACCOUNT_FLAGS, static_cast<void*>(theClient));
-}
+void xClient::OnNetConf(iServer*, std::string_view) {}
 
-void xClient::OnRaw(std::string_view line) {
-    // bridge: removed by events-remove-legacy
-    string lineText(line);
-    OnEvent(EVT_RAW, textAddress(lineText));
-}
+void xClient::OnRemNetConf(iServer*, std::string_view) {}
 
-void xClient::OnXQuery(iServer* theServer, std::string_view routing, std::string_view message) {
-    // bridge: removed by events-remove-legacy
-    // These two are a const char* and not a std::string*, as they always were
-    string routingText(routing);
-    string messageText(message);
-    OnEvent(EVT_XQUERY, static_cast<void*>(theServer), static_cast<void*>(routingText.data()),
-            static_cast<void*>(messageText.data()));
-}
+void xClient::OnJoin(Channel*, iClient*, ChannelUser*) {}
 
-void xClient::OnXReply(iServer* theServer, std::string_view routing, std::string_view message) {
-    // bridge: removed by events-remove-legacy
-    string routingText(routing);
-    string messageText(message);
-    OnEvent(EVT_XREPLY, static_cast<void*>(theServer), static_cast<void*>(routingText.data()),
-            static_cast<void*>(messageText.data()));
-}
+void xClient::OnBurstJoin(Channel*, iClient*, ChannelUser*) {}
 
-void xClient::OnNetConf(iServer* theServer, std::string_view key) {
-    // bridge: removed by events-remove-legacy
-    string keyText(key);
-    OnEvent(EVT_NETCONF, static_cast<void*>(theServer), textAddress(keyText));
-}
+void xClient::OnCreate(Channel*, iClient*, ChannelUser*) {}
 
-void xClient::OnRemNetConf(iServer* theServer, std::string_view key) {
-    // bridge: removed by events-remove-legacy
-    string keyText(key);
-    OnEvent(EVT_REMNETCONF, static_cast<void*>(theServer), textAddress(keyText));
-}
+void xClient::OnPart(Channel*, iClient*, std::string_view) {}
 
-void xClient::OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    // bridge: removed by events-remove-legacy
-    OnChannelEvent(EVT_JOIN, theChan, static_cast<void*>(theClient), static_cast<void*>(theUser));
-}
+void xClient::OnTopic(Channel*, iClient*, std::string_view) {}
 
-void xClient::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    // bridge: removed by events-remove-legacy
-    OnChannelEvent(EVT_BURST, theChan, static_cast<void*>(theClient), static_cast<void*>(theUser));
-}
-
-void xClient::OnCreate(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
-    // bridge: removed by events-remove-legacy
-    OnChannelEvent(EVT_CREATE, theChan, static_cast<void*>(theClient), static_cast<void*>(theUser));
-}
-
-void xClient::OnPart(Channel* theChan, iClient* theClient, std::string_view message) {
-    // bridge: removed by events-remove-legacy
-    string messageText(message);
-    OnChannelEvent(EVT_PART, theChan, static_cast<void*>(theClient), textAddress(messageText));
-}
-
-void xClient::OnTopic(Channel* theChan, iClient* theClient, std::string_view topic) {
-    // bridge: removed by events-remove-legacy
-    string topicText(topic);
-    OnChannelEvent(EVT_TOPIC, theChan, static_cast<void*>(theClient), textAddress(topicText));
-}
-
-void xClient::OnServerMode(Channel* theChan, iServer* theServer) {
-    // bridge: removed by events-remove-legacy
-    OnChannelEvent(EVT_SERVERMODE, theChan, static_cast<void*>(theServer));
-}
+void xClient::OnServerMode(Channel*, iServer*) {}
 
 void xClient::OnNetworkKick(Channel*,
                             iClient*,      // srcClient, may be NULL
