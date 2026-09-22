@@ -656,11 +656,9 @@ void gnutest::runArmedAction(int whichEvent, bool channelEvent, iClient* aboutCl
                          : MyUplink->RegisterEvent(newEvent, this);
         }
     } else if (action.action == "post") {
-        /* One nested event that nothing depends on: EVT_RAW's payload is a
-         * std::string* this call owns, it is information only, and core posts
-         * it for every line it reads anyway. */
-        string nested("onevent post");
-        MyUplink->PostEvent(EVT_RAW, static_cast<void*>(&nested));
+        /* One nested event that nothing depends on: EVT_RAW is information
+         * only, and core posts it for every line it reads anyway. */
+        MyUplink->postRaw("onevent post");
     } else if (action.action == "unloadself") {
         MyUplink->UnloadClient(this, "test");
     } else if (action.action == "detachself") {

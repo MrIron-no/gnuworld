@@ -34,7 +34,6 @@
 #include "NetworkTarget.h"
 #include "server.h"
 #include "iClient.h"
-#include "events.h"
 #include "TimerHandler.h"
 #include "logger.h"
 
@@ -225,32 +224,11 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     virtual void OnInvite(iClient* sourceClient, Channel* theChan);
 
-    /**
-     * OnEvent is called when a network event occurs.
-     * To receive a particular event, the client must
-     * first register for that event with the xServer.
-     */
-    virtual void OnEvent(const eventType& theEvent, void* Data1 = NULL, void* Data2 = NULL,
-                         void* Data3 = NULL, void* Data4 = NULL);
-
-    /**
-     * OnChannelEvent is called when a requested channel
-     * event occurs.
-     */
-    virtual void OnChannelEvent(const channelEventType&, Channel*, void* Data1 = NULL,
-                                void* Data2 = NULL, void* Data3 = NULL, void* Data4 = NULL);
-
     /*
      * One named method per event core posts, each called for a client
      * registered for that event: RegisterEvent() for a network event,
-     * RegisterChannelEvent() for a channel one, as before.  Overload the ones
-     * this client cares about; the rest do nothing.
-     *
-     * Every default body forwards to OnEvent()/OnChannelEvent() above, so that
-     * a client that still overrides those keeps receiving everything while the
-     * modules are converted one at a time.  Each such body is marked
-     * "bridge: removed by events-remove-legacy"; when the last one goes, so do
-     * the two untyped methods.
+     * RegisterChannelEvent() for a channel one.  Overload the ones this client
+     * cares about; the rest do nothing.
      */
 
     /// A client has been given +o

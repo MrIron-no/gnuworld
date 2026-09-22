@@ -5091,8 +5091,8 @@ sqlBan* cservice::isBannedOnChan(sqlChannel* theChan, iClient* theClient) {
  * This function compares a client with any active bans set in the DB.
  * If matched, the ban is applied and the user is kicked.
  * Returns true if matched, false if not.
- * N.B: Called from OnChannelEvent, theClient is guarantee'd to be in the
- * channel and netChan will exist.
+ * N.B: Called from a channel event handler, theClient is guarantee'd to be in
+ * the channel and netChan will exist.
  *--------------------------------------------------------------------------*/
 bool cservice::checkBansOnJoin(Channel* netChan, sqlChannel* theChan, iClient* theClient) {
 
@@ -9129,7 +9129,7 @@ void cservice::sendAccountFlags(sqlUser* theUser, iClient* theClient) const {
 
     MyUplink->UpdateAccountFlags(theClient, newFlags);
 
-    MyUplink->PostEvent(EVT_ACCOUNT_FLAGS, static_cast<void*>(theClient), 0, 0, 0, this);
+    MyUplink->postAccountFlags(theClient, this);
 }
 
 /* Translates the sqlUser flags into account flags. */
