@@ -22,7 +22,6 @@
 #ifndef __GNUTEST_H
 #define __GNUTEST_H "$Id: gnutest.h,v 1.14 2005/01/17 23:09:54 dan_karrels Exp $"
 
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -256,7 +255,9 @@ class gnutest : public xClient {
     /**
      * The test-only event commands: "events on|off" reports every event we
      * receive, "onevent <NAME> <action> [args]" arms one action to run from
-     * inside the handler the next time that event arrives.
+     * inside the handler the next time that event arrives.  Arming again adds
+     * an action rather than replacing the one armed, so a chain of handlers can
+     * be driven deeper than one hop per instance.
      * Returns false if st[0] is not one of these.
      */
     virtual bool eventCommand(iClient* requestingClient, const StringTokenizer& st);
@@ -286,9 +287,9 @@ class gnutest : public xClient {
     virtual void reportEvent(const std::string& name, const std::vector<std::string>& args);
 
     /**
-     * Run what "onevent" armed, if this is the event it waits for, and disarm.
-     * aboutClient is the client the event is about and theChan the channel;
-     * either may be null.
+     * Run the first action "onevent" armed for this event, and take it off the
+     * list.  aboutClient is the client the event is about and theChan the
+     * channel; either may be null.
      */
     virtual void runArmedAction(int whichEvent, bool channelEvent, iClient* aboutClient,
                                 Channel* theChan);
@@ -308,7 +309,8 @@ class gnutest : public xClient {
     std::string eventWatcher;
 
     /**
-     * What "onevent" armed, unset when nothing is.
+     * What "onevent" armed, in the order it was armed: each entry runs once,
+     * for the first of its event that arrives.
      */
     struct armedEvent {
         int whichEvent;
@@ -316,7 +318,7 @@ class gnutest : public xClient {
         std::string action;
         std::string argument;
     };
-    std::optional<armedEvent> armed;
+    std::vector<armedEvent> armed;
 
     /// "<#channel> <timestamp> [<modes> [<args>]]" to BurstChannel() during
     /// our burst; empty for none.
