@@ -71,7 +71,9 @@ DEFAULT_SQL_PASS = "gnuworld"
 # is "harness" in every checkout and every worktree on the machine: two runs
 # would then share one Postgres container and volume, and whichever finished
 # first would tear the other's database down mid-run. Naming the project after
-# the tree gives each checkout its own stack.
+# the tree gives each checkout its own stack. It is per checkout and not per
+# run: two pytest invocations in the SAME tree still share this, which is the
+# price of a name the next run in that tree can reuse after one is killed.
 COMPOSE_PROJECT = "gnuworld-harness-" + hashlib.sha1(
     str(REPO_ROOT).encode("utf-8")
 ).hexdigest()[:8]
