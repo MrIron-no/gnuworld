@@ -249,7 +249,7 @@ bool msg_N::Execute(const xParameters& params) {
     //	<< *newClient
     //	<< endl ;
 
-    theServer->PostEvent(EVT_NICK, static_cast<void*>(newClient));
+    theServer->postNick(newClient);
 
     return true;
 }

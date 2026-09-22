@@ -138,8 +138,7 @@ bool msg_L::Execute(const xParameters& Param) {
         // ")" << endl;
         //  Post the event to the clients listening for events on this
         //  channel, if any.
-        theServer->PostChannelEvent(EVT_PART, theChan, static_cast<void*>(theClient),
-                                    static_cast<string*>(&partMsg));
+        theServer->postPart(theChan, theClient, partMsg);
 
         // Is the channel now empty, and no services clients are
         // on the channel?

@@ -136,13 +136,9 @@ bool msg_D::Execute(const xParameters& Param) {
     // numeric, nick all valid).
     string reason(splitPath ? path + ' ' + Param[3] : string(Param[2]));
 
-    if (source != NULL) {
-        theServer->PostEvent(EVT_KILL, static_cast<void*>(source), static_cast<void*>(target),
-                             static_cast<void*>(&reason));
-    } else {
-        theServer->PostEvent(EVT_KILL, static_cast<void*>(serverSource), static_cast<void*>(target),
-                             static_cast<void*>(&reason));
-    }
+    theServer->postKill((source != NULL) ? static_cast<const NetworkTarget*>(source)
+                                         : static_cast<const NetworkTarget*>(serverSource),
+                        target, reason);
 
     // xNetwork::removeClient will remove user<->channel associations
     Network->removeClient(target);

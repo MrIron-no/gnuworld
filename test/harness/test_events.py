@@ -1,9 +1,10 @@
 """What core posts as an event, and what it passes with it.
 
-Every event of include/events.h is delivered as up to four ``void*`` that each
-listener casts back by hand, and nothing anywhere says which type each payload
-has: the only record of that contract is the post sites themselves. These tests
-pin it from the outside. mod.gnutest's ``events on`` registers for every network
+Core posts each event through a named method of xClient with typed parameters
+(``postQuit`` reaching ``OnQuit(iClient*, string_view)``, and so on), and
+delivers it to a module that has not been converted yet as up to four ``void*``
+that the module casts back by hand. These tests pin what arrives, from the
+outside, for either API. mod.gnutest's ``events on`` registers for every network
 event and for channel events on every channel, and reports each one it receives
 as
 
@@ -13,7 +14,7 @@ where every arg is the printable identity of that payload - a client's nick, a
 server's name, a channel's name, a G-line's mask, or the string itself - and
 "-" stands for a payload that is null or was not passed at all. A channel event
 reports its channel first. The names come from one table in gnutest.cc, because
-eventNames[] in events.h is one entry short and misaligned from EVT_RAW up.
+they are spelled without the spaces that eventNames[] in events.h has.
 
 Each case names the wire line that produces the event. The expected list is
 exact: an extra event, a missing one or two in the wrong order all fail - and so
@@ -22,10 +23,9 @@ one event left out of that comparison (core posts it for every line the uplink
 sends, so it would appear in every case); test_raw_is_every_line_read covers it
 on its own.
 
-Four of the events in events.h are posted nowhere at all: EVT_JUPE and
-EVT_UNJUPE (a jupe is posted as a net join and its removal as nothing),
-EVT_KICK (a kick goes to xClient::OnNetworkKick() instead) and EVT_NOOP, which
-is the end marker of the network enum and is not a valid event to register for.
+Three of the events in events.h are posted nowhere at all: EVT_JUPE and
+EVT_UNJUPE (a jupe is posted as a net join and its removal as nothing) and
+EVT_KICK (a kick goes to xClient::OnNetworkKick() instead).
 """
 
 from __future__ import annotations
@@ -164,12 +164,15 @@ CASES = [
         lambda e: ["Quit victim bye now"],
     ),
     # <hub> SQ <leaf> <ts> :<reason> - a squit: the server breaks, and every
-    # client on it quits with no reason at all (xNetwork::removeServer)
+    # client on it quits with no reason at all (xNetwork::removeServer). The
+    # second payload of a net break is the server the broken one was linked to,
+    # which msg_SQ resolves from the numeric on the object; it used to be the
+    # prefix of the SQ line, which nothing could do anything with
     (
         "netbreak_and_split_quit",
         leaf,
         lambda e: [f"{e['hub']} SQ {LEAF} {e['ts']} :hub says so"],
-        lambda e: [f"NetBreak {LEAF} {e['hub']} hub says so", "Quit leafuser -"],
+        lambda e: [f"NetBreak {LEAF} hub.testnet hub says so", "Quit leafuser -"],
     ),
     # <hub> D <victim> :<reason> - a kill by a server (msg_D)
     (
@@ -294,8 +297,7 @@ CASES = [
         lambda e: [f"{e['hub']} AC {e['victim']} testacct 42 0"],
         lambda e: ["AccountLogin victim"],
     ),
-    # the same for a client that is already +r: a change of flags, the event
-    # eventNames[] has no entry for
+    # the same for a client that is already +r: a change of flags
     (
         "account_flags",
         lambda e: [f"{e['victim']} M victim :+r"],
@@ -317,8 +319,9 @@ CASES = [
         lambda e: [command(e, "removeclient fakeguy")],
         lambda e: ["Quit fakeguy -"],
     ),
-    # <victim> C <chan> <ts> - a client creates a channel (msg_C), the one post
-    # site of the three that passes no ChannelUser with it
+    # <victim> C <chan> <ts> - a client creates a channel (msg_C). A create
+    # names the creator and nothing else: xClient::OnCreate() takes no
+    # ChannelUser, so all three of its post sites report "-" for one
     (
         "channel_create",
         lambda e: [],
@@ -326,12 +329,12 @@ CASES = [
         lambda e: [f"ChannelCreate {CHAN} victim -"],
     ),
     # <victim> J <chan> <ts> for a channel that does not exist yet is a create,
-    # not a join (msg_J), and this site does pass the ChannelUser
+    # not a join (msg_J)
     (
         "channel_create_by_join",
         lambda e: [],
         lambda e: [f"{e['victim']} J {CHAN} {e['ts']}"],
-        lambda e: [f"ChannelCreate {CHAN} victim victim"],
+        lambda e: [f"ChannelCreate {CHAN} victim -"],
     ),
     # "join <chan>" for a channel that does not exist: one of our own modules
     # creates it (xServer::JoinChannel)
@@ -339,7 +342,7 @@ CASES = [
         "channel_create_of_our_own_client",
         lambda e: [],
         lambda e: [command(e, f"join {CHAN}")],
-        lambda e: [f"ChannelCreate {CHAN} gnutest gnutest"],
+        lambda e: [f"ChannelCreate {CHAN} gnutest -"],
     ),
     # <other> J <chan> <ts> - a join to a channel that exists (msg_J)
     (

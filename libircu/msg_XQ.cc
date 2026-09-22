@@ -98,10 +98,6 @@ bool msg_XQ::Execute(const xParameters& Param) {
     // string Message = Param[3];
     // elog << "STRINGS:: " << Routing << " " << Message << endl;
 
-    // theServer->PostEvent( EVT_XQUERY,
-    //	static_cast< void* >( serverSource ),
-    //	reinterpret_cast< void* > ( &Routing ), reinterpret_cast< void* >( &Message ));
-
     return true;
 } // msg_XQ
 

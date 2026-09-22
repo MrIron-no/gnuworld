@@ -71,8 +71,8 @@ bool msg_JU::Execute(const xParameters& Param) {
             LOG(ERROR, "error while adding new server :(");
             return false;
         }
-        theServer->PostEvent(EVT_NETJOIN, // TODO add EVT_JUPE
-                             static_cast<void*>(jupeServer), NULL);
+        // TODO add OnJupe()
+        theServer->postNetJoin(jupeServer, nullptr);
 
     } else { // its a removal..
         std::string SName = Param[2];

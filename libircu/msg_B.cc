@@ -372,8 +372,7 @@ void msg_B::parseBurstUsers(Channel* theChan, const string& theUsers, bool incom
 
         // Notify the services clients that a user has
         // joined the channel
-        theServer->PostChannelEvent(EVT_BURST, theChan, static_cast<void*>(theClient),
-                                    static_cast<void*>(chanUser));
+        theServer->postBurstJoin(theChan, theClient, chanUser);
 
         // Apply the current bucket's state to this client.
         if (mode_state & 1) {

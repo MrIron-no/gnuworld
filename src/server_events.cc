@@ -29,8 +29,6 @@
 #include <new>
 #include <string>
 #include <string_view>
-#include <array>
-#include <cstddef>
 #include <cstdlib>
 #include <format>
 #include <functional>
@@ -67,92 +65,6 @@ using std::string;
  * of a log record, but keeps isMainThread() to itself.
  */
 static const std::thread::id mainThread = std::this_thread::get_id();
-
-namespace {
-
-/// What one of a post's four arguments points at
-enum class payloadKind {
-    object, ///< An object of the network: the holding list keeps it alive
-    text,   ///< A std::string
-    chars   ///< A NUL-terminated string, cast to void*
-};
-
-/**
- * Which of an event's four arguments are text.  A post takes void*: only the
- * event says what each argument points at, and a post that has to wait its
- * turn must own its text, because several callers hand it the address of a
- * local of their own.
- */
-payloadKind payloadKindOf(int theEvent, std::size_t which) {
-    switch (theEvent) {
-    case EVT_RAW:
-        return (0 == which) ? payloadKind::text : payloadKind::object;
-    case EVT_QUIT:
-    case EVT_CHNICK:
-    case EVT_NETCONF:
-    case EVT_REMNETCONF:
-    case EVT_PART:
-    case EVT_TOPIC:
-        return (1 == which) ? payloadKind::text : payloadKind::object;
-    case EVT_KILL:
-        return (2 == which) ? payloadKind::text : payloadKind::object;
-    case EVT_NETBREAK:
-        // The source is a std::string at all three of its post sites, and
-        // never the iServer: xNetwork::OnSplit() resolves the server it used
-        // to pass to that server's name, before removing it.
-        return (1 == which || 2 == which) ? payloadKind::text : payloadKind::object;
-    case EVT_XQUERY:
-    case EVT_XREPLY:
-        return (1 == which || 2 == which) ? payloadKind::chars : payloadKind::object;
-    default:
-        return payloadKind::object;
-    }
-}
-
-/**
- * A post's four arguments, with its own copy of whatever text they point at.
- * data() is what a handler is given, and is asked for where the post is
- * delivered rather than where it is made: moving the copies moves the text.
- */
-class ownedPayload {
-  public:
-    ownedPayload(int theEvent, void* data1, void* data2, void* data3, void* data4)
-        : raw{data1, data2, data3, data4} {
-        for (std::size_t which = 0; which < raw.size(); ++which) {
-            if (0 == raw[which]) {
-                // No argument here, and so nothing to own
-                continue;
-            }
-
-            kind[which] = payloadKindOf(theEvent, which);
-            if (payloadKind::text == kind[which]) {
-                text[which] = *static_cast<const string*>(raw[which]);
-            } else if (payloadKind::chars == kind[which]) {
-                text[which] = static_cast<const char*>(raw[which]);
-            }
-        }
-    }
-
-    /// The argument as a handler is to see it, text pointing into here
-    void* data(std::size_t which) {
-        switch (kind[which]) {
-        case payloadKind::text:
-            return static_cast<void*>(&text[which]);
-        case payloadKind::chars:
-            return static_cast<void*>(text[which].data());
-        case payloadKind::object:
-            break;
-        }
-        return raw[which];
-    }
-
-  private:
-    std::array<void*, 4> raw;
-    std::array<payloadKind, 4> kind = {};
-    std::array<string, 4> text;
-};
-
-} // anonymous namespace
 
 /**
  * This method will register the given xClient to receive
@@ -325,6 +237,18 @@ template <typename Listeners, typename Call> void xServer::notify(Listeners list
 }
 
 /**
+ * notify() for a network event, whose listeners are those registered for it.
+ */
+template <typename Call> void xServer::notifyEvent(eventType theEvent, Call call) {
+    notify(
+        [this, theEvent](std::vector<xClient*>& out) {
+            const std::vector<xClient*>& listeners = eventList[theEvent];
+            out.insert(out.end(), listeners.begin(), listeners.end());
+        },
+        std::move(call));
+}
+
+/**
  * notify() for a channel event, whose listeners are those of chanName.
  */
 template <typename Call> void xServer::notifyChannel(const string& chanName, Call call) {
@@ -382,54 +306,296 @@ void xServer::releaseHeldObjects() {
     }
 }
 
-/**
- * This method will distribute to each xClient listening
- * for the given event (theEvent) an event with the proper
- * arguments.
- * Events are not guaranteed to be distributed in any
- * particular order.
+/*
+ * One post function per event.  Each hands its arguments to the named method
+ * of every listener, through the dispatch above.  A closure that has to wait
+ * its turn in pendingEvents owns its text, because a caller may well have
+ * handed a local of its own: that is what copying a string_view into a string
+ * captured by value is for, and why nothing here keeps the view itself.
  */
-void xServer::PostEvent(const eventType& theEvent, void* Data1, void* Data2, void* Data3,
-                        void* Data4, const xClient* excludeMe) {
-    // Make sure the event is valid.
-    if (!validEvent(theEvent)) {
-        LOG(WARN, "Invalid event number: {}", static_cast<int>(theEvent));
-        return;
-    }
 
-    notify(
-        [this, theEvent](std::vector<xClient*>& out) {
-            const std::vector<xClient*>& listeners = eventList[theEvent];
-            out.insert(out.end(), listeners.begin(), listeners.end());
-        },
-        [theEvent, owned = ownedPayload(theEvent, Data1, Data2, Data3, Data4),
-         excludeMe](xClient* theClient) mutable {
-            // Notify this client of the event
-            // if he didnt cause the event to trigger
-            if (theClient != excludeMe) {
-                theClient->OnEvent(theEvent, owned.data(0), owned.data(1), owned.data(2),
-                                   owned.data(3));
-            }
-        });
+void xServer::postOper(iClient* theClient) {
+    notifyEvent(EVT_OPER, [theClient](xClient* listener) { listener->OnOper(theClient); });
 }
 
-/**
- * This method will distribute to any xClient registered to
- *  receive events for the given channel (chanName), case
- *  insensitive, an event with the proper arguments.
- * Events are not guaranteed to be distributed in any
- *  particular order.
- */
-void xServer::PostChannelEvent(const channelEventType& theEvent, Channel* theChan, void* Data1,
-                               void* Data2, void* Data3, void* Data4) {
+void xServer::postNetBreak(iServer* theServer, const iServer* uplink, std::string_view reason) {
+    notifyEvent(EVT_NETBREAK, [theServer, uplink, text = string(reason)](xClient* listener) {
+        listener->OnNetBreak(theServer, uplink, text);
+    });
+}
+
+void xServer::postNetJoin(iServer* theServer, const iServer* uplink) {
+    notifyEvent(EVT_NETJOIN,
+                [theServer, uplink](xClient* listener) { listener->OnNetJoin(theServer, uplink); });
+}
+
+void xServer::postBurstComplete(iServer* theServer) {
+    notifyEvent(EVT_BURST_CMPLT,
+                [theServer](xClient* listener) { listener->OnBurstComplete(theServer); });
+}
+
+void xServer::postBurstAck(iServer* theServer) {
+    notifyEvent(EVT_BURST_ACK, [theServer](xClient* listener) { listener->OnBurstAck(theServer); });
+}
+
+void xServer::postEndOfBurstAckSent(iServer* theServer) {
+    notifyEvent(EVT_EA_SENT,
+                [theServer](xClient* listener) { listener->OnEndOfBurstAckSent(theServer); });
+}
+
+void xServer::postGline(Gline* theGline, const xClient* exclude) {
+    notifyEvent(EVT_GLINE, [theGline, exclude](xClient* listener) {
+        if (listener != exclude) {
+            listener->OnGline(theGline);
+        }
+    });
+}
+
+void xServer::postRemGline(Gline* theGline, const xClient* exclude) {
+    notifyEvent(EVT_REMGLINE, [theGline, exclude](xClient* listener) {
+        if (listener != exclude) {
+            listener->OnRemGline(theGline);
+        }
+    });
+}
+
+void xServer::postQuit(iClient* theClient, std::string_view reason) {
+    notifyEvent(EVT_QUIT, [theClient, text = string(reason)](xClient* listener) {
+        listener->OnQuit(theClient, text);
+    });
+}
+
+void xServer::postKill(const NetworkTarget* source, iClient* theClient, std::string_view reason) {
+    notifyEvent(EVT_KILL, [source, theClient, text = string(reason)](xClient* listener) {
+        listener->OnKill(source, theClient, text);
+    });
+}
+
+void xServer::postNick(iClient* theClient) {
+    notifyEvent(EVT_NICK, [theClient](xClient* listener) { listener->OnNick(theClient); });
+}
+
+void xServer::postNickChange(iClient* theClient, std::string_view oldNick) {
+    notifyEvent(EVT_CHNICK, [theClient, text = string(oldNick)](xClient* listener) {
+        listener->OnNickChange(theClient, text);
+    });
+}
+
+void xServer::postAccount(iClient* theClient, const xClient* exclude) {
+    notifyEvent(EVT_ACCOUNT, [theClient, exclude](xClient* listener) {
+        if (listener != exclude) {
+            listener->OnAccount(theClient);
+        }
+    });
+}
+
+void xServer::postAccountFlags(iClient* theClient, const xClient* exclude) {
+    notifyEvent(EVT_ACCOUNT_FLAGS, [theClient, exclude](xClient* listener) {
+        if (listener != exclude) {
+            listener->OnAccountFlags(theClient);
+        }
+    });
+}
+
+void xServer::postRaw(std::string_view line) {
+    notifyEvent(EVT_RAW, [text = string(line)](xClient* listener) { listener->OnRaw(text); });
+}
+
+void xServer::postXQuery(iServer* theServer, std::string_view routing, std::string_view message) {
+    notifyEvent(EVT_XQUERY, [theServer, routingText = string(routing),
+                             messageText = string(message)](xClient* listener) {
+        listener->OnXQuery(theServer, routingText, messageText);
+    });
+}
+
+void xServer::postXReply(iServer* theServer, std::string_view routing, std::string_view message) {
+    notifyEvent(EVT_XREPLY, [theServer, routingText = string(routing),
+                             messageText = string(message)](xClient* listener) {
+        listener->OnXReply(theServer, routingText, messageText);
+    });
+}
+
+void xServer::postNetConf(iServer* theServer, std::string_view key) {
+    notifyEvent(EVT_NETCONF, [theServer, text = string(key)](xClient* listener) {
+        listener->OnNetConf(theServer, text);
+    });
+}
+
+void xServer::postRemNetConf(iServer* theServer, std::string_view key) {
+    notifyEvent(EVT_REMNETCONF, [theServer, text = string(key)](xClient* listener) {
+        listener->OnRemNetConf(theServer, text);
+    });
+}
+
+void xServer::postJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
+    assert(theChan != 0);
+
+    notifyChannel(theChan->getName(), [theChan, theClient, theUser](xClient* listener) {
+        listener->OnJoin(theChan, theClient, theUser);
+    });
+}
+
+void xServer::postBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser) {
+    assert(theChan != 0);
+
+    notifyChannel(theChan->getName(), [theChan, theClient, theUser](xClient* listener) {
+        listener->OnBurstJoin(theChan, theClient, theUser);
+    });
+}
+
+void xServer::postCreate(Channel* theChan, iClient* theClient) {
+    assert(theChan != 0);
+
+    notifyChannel(theChan->getName(), [theChan, theClient](xClient* listener) {
+        listener->OnCreate(theChan, theClient);
+    });
+}
+
+void xServer::postPart(Channel* theChan, iClient* theClient, std::string_view message) {
     assert(theChan != 0);
 
     notifyChannel(theChan->getName(),
-                  [theEvent, theChan, owned = ownedPayload(theEvent, Data1, Data2, Data3, Data4)](
-                      xClient* theClient) mutable {
-                      theClient->OnChannelEvent(theEvent, theChan, owned.data(0), owned.data(1),
-                                                owned.data(2), owned.data(3));
+                  [theChan, theClient, text = string(message)](xClient* listener) {
+                      listener->OnPart(theChan, theClient, text);
                   });
+}
+
+void xServer::postTopic(Channel* theChan, iClient* theClient, std::string_view topic) {
+    assert(theChan != 0);
+
+    notifyChannel(theChan->getName(),
+                  [theChan, theClient, text = string(topic)](xClient* listener) {
+                      listener->OnTopic(theChan, theClient, text);
+                  });
+}
+
+void xServer::postServerMode(Channel* theChan, iServer* theServer) {
+    assert(theChan != 0);
+
+    notifyChannel(theChan->getName(), [theChan, theServer](xClient* listener) {
+        listener->OnServerMode(theChan, theServer);
+    });
+}
+
+/// One payload of an untyped post that is text: the std::string it points at
+static std::string_view textOf(void* data) {
+    return (0 == data) ? std::string_view() : std::string_view(*static_cast<const string*>(data));
+}
+
+/// The same for the two events whose text is a NUL-terminated char array
+static std::string_view charsOf(void* data) {
+    return (0 == data) ? std::string_view() : std::string_view(static_cast<const char*>(data));
+}
+
+/**
+ * Post an event named by number, with its payloads as void*: which post
+ * function that is, and what each void* points at.
+ *
+ * bridge: removed by events-remove-legacy
+ */
+void xServer::PostEvent(const eventType& theEvent, void* Data1, void* Data2, void* Data3, void*,
+                        const xClient* excludeMe) {
+    switch (theEvent) {
+    case EVT_OPER:
+        postOper(static_cast<iClient*>(Data1));
+        break;
+    case EVT_NETBREAK:
+        postNetBreak(static_cast<iServer*>(Data1), static_cast<const iServer*>(Data2),
+                     textOf(Data3));
+        break;
+    case EVT_NETJOIN:
+        postNetJoin(static_cast<iServer*>(Data1), static_cast<const iServer*>(Data2));
+        break;
+    case EVT_BURST_CMPLT:
+        postBurstComplete(static_cast<iServer*>(Data1));
+        break;
+    case EVT_BURST_ACK:
+        postBurstAck(static_cast<iServer*>(Data1));
+        break;
+    case EVT_EA_SENT:
+        postEndOfBurstAckSent(static_cast<iServer*>(Data1));
+        break;
+    case EVT_GLINE:
+        postGline(static_cast<Gline*>(Data1), excludeMe);
+        break;
+    case EVT_REMGLINE:
+        postRemGline(static_cast<Gline*>(Data1), excludeMe);
+        break;
+    case EVT_QUIT:
+        postQuit(static_cast<iClient*>(Data1), textOf(Data2));
+        break;
+    case EVT_KILL:
+        postKill(static_cast<const NetworkTarget*>(Data1), static_cast<iClient*>(Data2),
+                 textOf(Data3));
+        break;
+    case EVT_NICK:
+        postNick(static_cast<iClient*>(Data1));
+        break;
+    case EVT_CHNICK:
+        postNickChange(static_cast<iClient*>(Data1), textOf(Data2));
+        break;
+    case EVT_ACCOUNT:
+        postAccount(static_cast<iClient*>(Data1), excludeMe);
+        break;
+    case EVT_ACCOUNT_FLAGS:
+        postAccountFlags(static_cast<iClient*>(Data1), excludeMe);
+        break;
+    case EVT_RAW:
+        postRaw(textOf(Data1));
+        break;
+    case EVT_XQUERY:
+        postXQuery(static_cast<iServer*>(Data1), charsOf(Data2), charsOf(Data3));
+        break;
+    case EVT_XREPLY:
+        postXReply(static_cast<iServer*>(Data1), charsOf(Data2), charsOf(Data3));
+        break;
+    case EVT_NETCONF:
+        postNetConf(static_cast<iServer*>(Data1), textOf(Data2));
+        break;
+    case EVT_REMNETCONF:
+        postRemNetConf(static_cast<iServer*>(Data1), textOf(Data2));
+        break;
+    default:
+        // EVT_JUPE and EVT_UNJUPE among them: nothing posts either, and there
+        // is nothing to deliver them to
+        LOG(WARN, "Invalid event number: {}", static_cast<int>(theEvent));
+        break;
+    }
+}
+
+/**
+ * The same for a channel event.
+ *
+ * bridge: removed by events-remove-legacy
+ */
+void xServer::PostChannelEvent(const channelEventType& theEvent, Channel* theChan, void* Data1,
+                               void* Data2, void*, void*) {
+    assert(theChan != 0);
+
+    switch (theEvent) {
+    case EVT_JOIN:
+        postJoin(theChan, static_cast<iClient*>(Data1), static_cast<ChannelUser*>(Data2));
+        break;
+    case EVT_BURST:
+        postBurstJoin(theChan, static_cast<iClient*>(Data1), static_cast<ChannelUser*>(Data2));
+        break;
+    case EVT_CREATE:
+        postCreate(theChan, static_cast<iClient*>(Data1));
+        break;
+    case EVT_PART:
+        postPart(theChan, static_cast<iClient*>(Data1), textOf(Data2));
+        break;
+    case EVT_TOPIC:
+        postTopic(theChan, static_cast<iClient*>(Data1), textOf(Data2));
+        break;
+    case EVT_SERVERMODE:
+        postServerMode(theChan, static_cast<iServer*>(Data1));
+        break;
+    default:
+        // EVT_KICK among them: a kick goes to OnNetworkKick()
+        LOG(WARN, "Invalid channel event number: {}", static_cast<int>(theEvent));
+        break;
+    }
 }
 
 // srcClient may be NULL, when the source is a server

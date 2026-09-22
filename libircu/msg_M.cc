@@ -114,7 +114,7 @@ bool msg_M::Execute(const xParameters& Param) {
         //		<< serverSource->getName()
         //		<< " performed a mode"
         //		<< end1;
-        theServer->PostChannelEvent(EVT_SERVERMODE, theChan, static_cast<void*>(serverSource));
+        theServer->postServerMode(theChan, serverSource);
     }
 
     /* XXX OPMODE FAILS HERE */
@@ -246,7 +246,7 @@ bool msg_M::onUserModeChange(const xParameters& Param) {
         case 'o':
             if (plus) {
                 theClient->setModeO();
-                theServer->PostEvent(EVT_OPER, static_cast<void*>(theClient));
+                theServer->postOper(theClient);
             } else {
                 //				elog	<< "msg_M::onUserModeChange> "
                 //					<< "Caught -o for user: "

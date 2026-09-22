@@ -200,7 +200,7 @@ bool msg_C::Execute(const xParameters& Param) {
         }
 
         // Notify all listening xClients of this event
-        theServer->PostChannelEvent(EVT_CREATE, theChan, static_cast<void*>(theClient));
+        theServer->postCreate(theChan, theClient);
 
     } // for()
 
