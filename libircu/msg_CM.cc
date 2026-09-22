@@ -81,7 +81,7 @@ bool msg_CM::Execute(const xParameters& Param) {
     }
 
     if (serverSource != 0)
-        theServer->PostChannelEvent(EVT_SERVERMODE, tmpChan, static_cast<void*>(serverSource));
+        theServer->postServerMode(tmpChan, serverSource);
 
     theServer->ApplyChannelModes(tmpChan, 0, changes, where);
 

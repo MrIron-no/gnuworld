@@ -79,12 +79,12 @@ bool msg_EB::Execute(const xParameters& params) {
             theServer->setBursting(false);
         }
 
-        // Called PostEvent() here to notify all attached clients
+        // Posted here to notify all attached clients
         // that we are no longer bursting.  This will ensure
         // that all end of burst items are written to the
         // burstOutputBuffer before the burst if officially
         // completed (as seen by the network)
-        theServer->PostEvent(EVT_BURST_CMPLT, static_cast<void*>(theServer->getUplink()));
+        theServer->postBurstComplete(theServer->getUplink());
 
         if (theServer->getSendEB()) {
             // Send our EB
@@ -99,7 +99,7 @@ bool msg_EB::Execute(const xParameters& params) {
         // Is the burstOutputBuffer empty?
         theServer->WriteBurstBuffer();
 
-        theServer->PostEvent(EVT_EA_SENT, static_cast<void*>(theServer->getUplink()));
+        theServer->postEndOfBurstAckSent(theServer->getUplink());
     } else {
         /* Its another server that has just completed its net.burst. */
         iServer* targetServer = Network->findServer(params[0]);
@@ -109,7 +109,7 @@ bool msg_EB::Execute(const xParameters& params) {
         }
 
         targetServer->stopBursting();
-        theServer->PostEvent(EVT_BURST_CMPLT, static_cast<void*>(targetServer));
+        theServer->postBurstComplete(targetServer);
     }
 
     return true;

@@ -258,7 +258,7 @@ void xServer::OnRead(Connection* theConn, const string& line) {
     Process(inputCharBuffer);
 
     // Post the RAW read event
-    PostEvent(EVT_RAW, static_cast<void*>(const_cast<string*>(&line)));
+    postRaw(line);
 }
 
 /**

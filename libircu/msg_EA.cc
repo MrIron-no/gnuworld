@@ -61,7 +61,7 @@ bool msg_EA::Execute(const xParameters& Param) {
         return false;
     }
 
-    theServer->PostEvent(EVT_BURST_ACK, static_cast<void*>(burstServer));
+    theServer->postBurstAck(burstServer);
     //	}
 
     return true;

@@ -78,8 +78,11 @@ bool msg_AC::Execute(const xParameters& Param) {
     theClient->setAccountFlags(account_flags);
 
     // Post event to listening clients
-    theServer->PostEvent(alreadyAuthed ? EVT_ACCOUNT_FLAGS : EVT_ACCOUNT,
-                         static_cast<void*>(theClient));
+    if (alreadyAuthed) {
+        theServer->postAccountFlags(theClient);
+    } else {
+        theServer->postAccount(theClient);
+    }
 
     // Return success
     return true;

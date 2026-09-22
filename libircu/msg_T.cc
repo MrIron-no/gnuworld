@@ -106,8 +106,7 @@ bool msg_T::Execute(const xParameters& Param) {
     // in the theChan
     // For bursted topics, srcClient will be NULL but getTopicWhoSet() will have been updated
     // (>.12.19).
-    theServer->PostChannelEvent(EVT_TOPIC, theChan, static_cast<void*>(srcClient),
-                                static_cast<void*>(&newTopic));
+    theServer->postTopic(theChan, srcClient, newTopic);
 
     return true;
 }

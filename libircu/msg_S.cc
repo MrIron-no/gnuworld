@@ -114,8 +114,7 @@ bool msg_S::Execute(const xParameters& params) {
     //	<< *newServer
     //	<< endl ;
 
-    theServer->PostEvent(EVT_NETJOIN, static_cast<void*>(newServer),
-                         static_cast<void*>(uplinkServer));
+    theServer->postNetJoin(newServer, uplinkServer);
 
     return true;
 }

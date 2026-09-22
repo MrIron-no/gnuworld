@@ -18,6 +18,7 @@ noinst_PROGRAMS = test_burst \
 	test_channelbans \
 	test_checkedformat \
 	test_numbers \
+	test_events_names \
 	test_logger_render \
 	test_logger_format \
 	test_logger_sinks \
@@ -136,6 +137,11 @@ test_numbers_SOURCES = test/numbers.cc
 test_numbers_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_numbers_LDADD = libgnuworld.la
 
+# The event names of include/events.h, which is a header and nothing else: no
+# library is linked at all.
+test_events_names_SOURCES = test/events_names.cc
+test_events_names_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+
 test_logger_render_SOURCES = test/logger_render.cc
 test_logger_render_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
 test_logger_render_LDADD = libgnuworld.la $(threadLib)
@@ -211,7 +217,8 @@ test_pushover_delivery_LDADD = libnotifier.la libgnuworld.la $(threadLib)
 
 # Run by "make check".  The other programs in this directory are
 # interactive or benchmarks, not tests.
-TESTS = test_channelmodes test_channelbans test_checkedformat test_numbers test_logger_render \
+TESTS = test_channelmodes test_channelbans test_checkedformat test_numbers test_events_names \
+	test_logger_render \
 	test_logger_format test_logger_sinks test_logger_basic test_logger_hierarchy \
 	test_logger_config test_logger_ratelimit test_elog_shim test_logger_adversarial \
 	test_pushover_text

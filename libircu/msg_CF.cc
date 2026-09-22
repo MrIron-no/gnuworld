@@ -76,8 +76,11 @@ bool msg_CF::Execute(const xParameters& Param) {
     }
 
     // Post event to listening clients
-    theServer->PostEvent(value.empty() ? EVT_REMNETCONF : EVT_NETCONF,
-                         static_cast<void*>(sourceServer), static_cast<void*>(&key));
+    if (value.empty()) {
+        theServer->postRemNetConf(sourceServer, key);
+    } else {
+        theServer->postNetConf(sourceServer, key);
+    }
 
     // Return success
     return true;

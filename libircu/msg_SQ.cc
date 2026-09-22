@@ -85,11 +85,9 @@ bool msg_SQ::Execute(const xParameters& Param) {
         //		<< " has been squit"
         //		<< endl ;
 
-        string source(Param[0]);
-        string reason(Param[3]);
         squitServer->setBursting(false); // If the server was in bursting state, its not anymore :)
-        theServer->PostEvent(EVT_NETBREAK, static_cast<void*>(squitServer),
-                             static_cast<void*>(&source), static_cast<void*>(&reason));
+        theServer->postNetBreak(squitServer, Network->findServer(squitServer->getUplinkIntYY()),
+                                Param[3]);
 
         // Otherwise, it's just some server.
         // xNetwork::OnSplit() will deallocate all servers

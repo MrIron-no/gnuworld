@@ -29,6 +29,7 @@
 #include <span>
 #include <format>
 #include <string>
+#include <string_view>
 
 #include "NetworkTarget.h"
 #include "server.h"
@@ -238,6 +239,106 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     virtual void OnChannelEvent(const channelEventType&, Channel*, void* Data1 = NULL,
                                 void* Data2 = NULL, void* Data3 = NULL, void* Data4 = NULL);
+
+    /*
+     * One named method per event core posts, each called for a client
+     * registered for that event: RegisterEvent() for a network event,
+     * RegisterChannelEvent() for a channel one, as before.  Overload the ones
+     * this client cares about; the rest do nothing.
+     *
+     * Every default body forwards to OnEvent()/OnChannelEvent() above, so that
+     * a client that still overrides those keeps receiving everything while the
+     * modules are converted one at a time.  Each such body is marked
+     * "bridge: removed by events-remove-legacy"; when the last one goes, so do
+     * the two untyped methods.
+     */
+
+    /// A client has been given +o
+    virtual void OnOper(iClient* theClient);
+
+    /// A server has left the network, as one of a split or by itself.  uplink
+    /// is the server it broke from, and is null for a leaf of a split whose
+    /// root has already been taken out of the tables.
+    virtual void OnNetBreak(iServer* theServer, const iServer* uplink, std::string_view reason);
+
+    /// A server has joined the network, or a jupe of one has been added.
+    /// uplink may be null: only an inbound SERVER names it.
+    virtual void OnNetJoin(iServer* theServer, const iServer* uplink);
+
+    /// theServer has finished its net burst; for our own uplink this is also
+    /// where our burst ends
+    virtual void OnBurstComplete(iServer* theServer);
+
+    /// theServer has acknowledged the end of a burst (EA)
+    virtual void OnBurstAck(iServer* theServer);
+
+    /// We have written our own end of burst acknowledgement to theServer
+    virtual void OnEndOfBurstAckSent(iServer* theServer);
+
+    /// A G-line has been set, by the network or by one of our own clients
+    virtual void OnGline(Gline* theGline);
+
+    /// A G-line has been removed, or has expired
+    virtual void OnRemGline(Gline* theGline);
+
+    /// A client has quit, or is going with the server it was on, or is a client
+    /// of ours being detached.  It is still fully attached: this is posted
+    /// before it is removed.  reason may be empty.
+    virtual void OnQuit(iClient* theClient, std::string_view reason);
+
+    /// theClient has been killed, and is still fully attached.  source is the
+    /// client or the server that did it, and is null when one of our own
+    /// modules did (xClient::Kill()).
+    virtual void OnKill(const NetworkTarget* source, iClient* theClient, std::string_view reason);
+
+    /// A client has appeared on the network, or a module has spawned a fake one
+    virtual void OnNick(iClient* theClient);
+
+    /// theClient has changed nick; it already answers to the new one
+    virtual void OnNickChange(iClient* theClient, std::string_view oldNick);
+
+    /// theClient has logged in to an account
+    virtual void OnAccount(iClient* theClient);
+
+    /// The account flags of theClient, which was logged in already, have changed
+    virtual void OnAccountFlags(iClient* theClient);
+
+    /// One line read from the uplink, after it has been handled
+    virtual void OnRaw(std::string_view line);
+
+    /// An inter-service query from theServer, to be answered with an XR
+    virtual void OnXQuery(iServer* theServer, std::string_view routing, std::string_view message);
+
+    /// The answer to one of those
+    virtual void OnXReply(iServer* theServer, std::string_view routing, std::string_view message);
+
+    /// A network configuration variable has been set by theServer
+    virtual void OnNetConf(iServer* theServer, std::string_view key);
+
+    /// A network configuration variable has been removed by theServer
+    virtual void OnRemNetConf(iServer* theServer, std::string_view key);
+
+    /// theClient has joined a channel that already existed
+    virtual void OnJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
+
+    /// The same, for a membership that arrives in a net burst
+    virtual void OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
+
+    /// theClient has created theChan, and is opped in it.  Its membership is
+    /// theChan->findUser(theClient).
+    virtual void OnCreate(Channel* theChan, iClient* theClient);
+
+    /// theClient has left theChan, and is already off it.  message may be
+    /// empty: only a PART from the network carries one.
+    virtual void OnPart(Channel* theChan, iClient* theClient, std::string_view message);
+
+    /// The topic of theChan has been set.  theClient is null when a server set
+    /// it, as one arriving in a burst is.
+    virtual void OnTopic(Channel* theChan, iClient* theClient, std::string_view topic);
+
+    /// theServer has changed the modes of theChan.  The changes themselves
+    /// arrive through OnChannelMode() and its kin below.
+    virtual void OnServerMode(Channel* theChan, iServer* theServer);
 
     /**
      * This method is called when a kick occurs on a channel

@@ -278,8 +278,11 @@ bool msg_J::Execute(const xParameters& Param) {
 
         // Post the event to the clients listening for events on this
         // channel, if any.
-        theServer->PostChannelEvent(whichEvent, theChan, static_cast<void*>(Target),
-                                    static_cast<void*>(theUser));
+        if (EVT_CREATE == whichEvent) {
+            theServer->postCreate(theChan, Target);
+        } else {
+            theServer->postJoin(theChan, Target, theUser);
+        }
 
         // TODO: Update event posting so that CREATE is also
         // passed the client who created the channel
@@ -313,8 +316,7 @@ void msg_J::userPartAllChannels(iClient* theClient) {
         // structure until the end of this method.
 
         // Post this event to all listeners
-        theServer->PostChannelEvent(EVT_PART, *ptr,
-                                    static_cast<void*>(theClient)); // iClient*
+        theServer->postPart(*ptr, theClient);
 
         // Is the channel empty of all network and services
         // clients?

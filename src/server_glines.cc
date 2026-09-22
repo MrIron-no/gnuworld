@@ -73,11 +73,7 @@ bool xServer::removeGline(const string& userHost, const xClient* remClient) {
     // Did we find the gline in the interal gline structure?
     if (theGline != 0) {
         // Let all clients know that the gline has been removed
-        if (remClient) {
-            PostEvent(EVT_REMGLINE, static_cast<void*>(theGline), 0, 0, 0, remClient);
-        } else {
-            PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
-        }
+        postRemGline(theGline, remClient);
 
         // Remove the gline from the internal gline structure, and deallocate
         // it - unless a handler of the event above removed it first, in which
@@ -114,11 +110,7 @@ bool xServer::setGline(const string& setBy, const string& userHost, const string
     Write(s);
 
     glineList.insert(glineListType::value_type(newGline->getUserHost(), newGline));
-    if (setClient) {
-        PostEvent(EVT_GLINE, static_cast<void*>(newGline), 0, 0, 0, setClient);
-    } else {
-        PostEvent(EVT_GLINE, static_cast<void*>(newGline));
-    }
+    postGline(newGline, setClient);
 
     return true;
 }
@@ -190,7 +182,7 @@ void xServer::removeMatchingGlines(const string& wildHost) {
     }
 
     for (Gline* theGline : matched) {
-        PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
+        postRemGline(theGline);
 
         // The gline we hold, not its user@host: a handler of the event above
         // may have removed it already, and destroying it twice is a double free
@@ -219,7 +211,7 @@ void xServer::updateGlines() {
     }
 
     for (Gline* theGline : expired) {
-        PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
+        postRemGline(theGline);
 
         // The gline we hold, not its user@host: a handler of the event above
         // may have removed it already, and destroying it twice is a double free

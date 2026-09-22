@@ -62,7 +62,7 @@ class gnutest : public xClient {
      * At this point, the server may not yet be connected to the
      * network, so please do not issue join/nick requests.
      */
-    virtual void OnAttach();
+    virtual void OnAttach() override;
 
     /**
      * This method is called when this module is being unloaded from
@@ -70,20 +70,20 @@ class gnutest : public xClient {
      * deallocating timers, closing connections, closing log files,
      * and deallocating private data stored in iClients.
      */
-    virtual void OnDetach(const std::string& = std::string("Server Shutdown"));
+    virtual void OnDetach(const std::string& = std::string("Server Shutdown")) override;
 
     /**
      * This method is called when the server connects to the network.
      * Note that if this module is attached while already connected
      * to a network, this method is still invoked.
      */
-    virtual void OnConnect();
+    virtual void OnConnect() override;
 
     /**
      * This method is invoked when the server disconnects from
      * its uplink.
      */
-    virtual void OnDisconnect();
+    virtual void OnDisconnect() override;
 
     /**
      * This method is called when a channel event occurs on one
@@ -91,80 +91,101 @@ class gnutest : public xClient {
      * be notified of events.
      */
     virtual void OnChannelEvent(const channelEventType&, Channel*, void* data1 = 0, void* data2 = 0,
-                                void* data3 = 0, void* data4 = 0);
+                                void* data3 = 0, void* data4 = 0) override;
 
     /**
      * This method is called when a network event occurs, and
      * the client has registered for that event.
      */
     virtual void OnEvent(const eventType& theEvent, void* data1 = 0, void* data2 = 0,
-                         void* data3 = 0, void* data4 = 0);
+                         void* data3 = 0, void* data4 = 0) override;
+
+    /*
+     * A kick and a channel mode change are the notifications core has never
+     * sent as an event: they go to a method of their own, and so "events on"
+     * could not see them.  These report them the same way, so that what a
+     * module is told about them is pinned from the outside too.
+     */
+
+    virtual void OnNetworkKick(Channel*, iClient* srcClient, iClient* destClient,
+                               const std::string& kickMessage, bool authoritative) override;
+
+    virtual void OnChannelMode(Channel*, ChannelUser*, const xServer::modeVectorType&) override;
+    virtual void OnChannelModeL(Channel*, bool polarity, ChannelUser*,
+                                const unsigned int&) override;
+    virtual void OnChannelModeK(Channel*, bool polarity, ChannelUser*, const std::string&) override;
+    virtual void OnChannelModeA(Channel*, bool polarity, ChannelUser*, const std::string&) override;
+    virtual void OnChannelModeU(Channel*, bool polarity, ChannelUser*, const std::string&) override;
+    virtual void OnChannelModeO(Channel*, ChannelUser*, const xServer::opVectorType&) override;
+    virtual void OnChannelModeV(Channel*, ChannelUser*, const xServer::voiceVectorType&) override;
+    virtual void OnChannelModeB(Channel*, ChannelUser*, const xServer::banVectorType&) override;
 
     /**
      * This method is called for the client to burst all channels
      * once the server connects to the network.
      */
-    virtual void BurstChannels();
+    virtual void BurstChannels() override;
 
     /**
      * This method is called when a network client messages
      * this client.
      */
-    virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false);
+    virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false) override;
 
     /**
      * This method is called when a channel message occurs
      * in a channel in which an xClient resides, and the
      * xClient is user mode -d.
      */
-    virtual void OnChannelMessage(iClient* Sender, Channel* theChan, const std::string& Message);
+    virtual void OnChannelMessage(iClient* Sender, Channel* theChan,
+                                  const std::string& Message) override;
 
     /**
      * This method is invoked when a fake client belonging to this
      * xClient receives a channel message.
      */
     virtual void OnFakeChannelMessage(iClient* srcClient, iClient* destClient, Channel* theChan,
-                                      const std::string& message);
+                                      const std::string& message) override;
 
     /**
      * This method is invoked when a fake client belonging to this
      * xClient receives a channel notice.
      */
     virtual void OnFakeChannelNotice(iClient* srcClient, iClient* destClient, Channel* theChan,
-                                     const std::string& message);
+                                     const std::string& message) override;
 
     /**
      * This method is called when a network message arrives for
      * one of the fake clients owned by this xClient.
      */
     virtual void OnFakePrivateMessage(iClient* srcClient, iClient* destClient,
-                                      const std::string& message, bool secure = false);
+                                      const std::string& message, bool secure = false) override;
 
     /**
      * This method is called when a network notice arrives for
      * one of the fake clients owned by this xClient.
      */
     virtual void OnFakePrivateNotice(iClient* srcClient, iClient* destClient,
-                                     const std::string& message, bool secure = false);
+                                     const std::string& message, bool secure = false) override;
 
     /**
      * Invoked when a fake client of this xClient receives a
      * channel CTCP.
      */
     virtual void OnFakeChannelCTCP(iClient* srcClient, iClient* fakeClient, Channel* theChan,
-                                   const std::string& command, const std::string& message);
+                                   const std::string& command, const std::string& message) override;
 
     /**
      * Invoked when a fake client of this xClient receives a
      * channel CTCP.
      */
     virtual void OnFakeCTCP(iClient* srcClient, iClient* fakeClient, const std::string& command,
-                            const std::string& message, bool secure = false);
+                            const std::string& message, bool secure = false) override;
 
     /**
      * This method is called when a timer expires.
      */
-    virtual void OnTimer(const xServer::timerID&, void*);
+    virtual void OnTimer(const xServer::timerID&, void*) override;
 
   protected:
     /**

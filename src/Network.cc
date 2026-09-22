@@ -475,7 +475,7 @@ iServer* xNetwork::removeServer(const unsigned int& YY, bool postEvent) {
         // is/was connected (the server is no longer in the tables)
         if (postEvent) {
             // Yes, post the event
-            theServer->PostEvent(EVT_QUIT, static_cast<void*>(theClient));
+            theServer->postQuit(theClient, "Server split");
         }
 
         // Be sure to deallocate the iClient's allocated heap space
@@ -555,9 +555,7 @@ void xNetwork::rehashNick(const string& yyxxx, const string& newNick, const time
     // so no need to rehash numeric
 
     // Go ahead and post this event
-    theServer->PostEvent(EVT_CHNICK, static_cast<void*>(theClient), static_cast<void*>(&oldNick));
-
-    // TODO: theServer->PostNickChange() --> OnNickChange()
+    theServer->postNickChange(theClient, oldNick);
 }
 
 void xNetwork::addNick(iClient* theClient) {
@@ -596,14 +594,6 @@ void xNetwork::OnSplit(const unsigned int& intYY) {
     // to be removed.
     yyVector.push_back(intYY);
 
-    // The source every leaf of this split broke from.  Its name is taken now,
-    // while it is still in the table: the loop below removes it on its first
-    // turn, and the notification it posts for a leaf may wait, so the event
-    // carries a string that core owns and not a pointer into here.
-    const iServer* const splitServer = findServer(intYY);
-    assert(splitServer != 0);
-    string splitSource(splitServer->getName());
-
     // Recursive method to find all leaf servers of intYY, and all
     // of each of those servers' leaf servers.
     // This is much simpler than having the entire OnSplit() method
@@ -641,10 +631,9 @@ void xNetwork::OnSplit(const unsigned int& intYY) {
         // Dont post an event for the actual server that is being
         // squit, let the msg_SQ handle that.
         if (intYY != tmpServer->getIntYY()) {
-            string Reason("Uplink Squit");
-
-            theServer->PostEvent(EVT_NETBREAK, static_cast<void*>(tmpServer),
-                                 static_cast<void*>(&splitSource), static_cast<void*>(&Reason));
+            // No uplink to name: the server this one broke from is the root of
+            // the split, which the first turn of this loop has already removed
+            theServer->postNetBreak(tmpServer, nullptr, "Uplink Squit");
         }
         theServer->destroy(tmpServer);
     }

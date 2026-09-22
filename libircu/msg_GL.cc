@@ -62,7 +62,7 @@ bool msg_GL::Execute(const xParameters& Params) {
         Gline* const theGline = gItr->second;
 
         // Let the modules know that it has been removed
-        theServer->PostEvent(EVT_REMGLINE, static_cast<void*>(theGline));
+        theServer->postRemGline(theGline);
 
         // Clean up memory: the gline we hold, unless a handler of the event
         // above removed it already, in which case this is nothing
@@ -98,7 +98,7 @@ bool msg_GL::Execute(const xParameters& Params) {
     }
 
     theServer->addGline(newGline);
-    theServer->PostEvent(EVT_GLINE, static_cast<void*>(newGline));
+    theServer->postGline(newGline);
 
     return true;
 }

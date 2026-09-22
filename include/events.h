@@ -28,16 +28,20 @@
 #ifndef __EVENTS_H
 #define __EVENTS_H "$Id: events.h,v 1.22 2010/09/05 17:26:35 denspike Exp $"
 
-#include <string>
+#include <array>
+#include <cstddef>
+#include <string_view>
 
 namespace gnuworld {
 
 /**
- * This is used to enumerate the possible network (non-channel)
- * events that gnuworld will track and deliver to registered
- * clients.
+ * Which network (non-channel) event this is.  What each one means, when core
+ * posts it and what it carries is said once, at the virtual that delivers it:
+ * see xClient::OnOper() and the named virtuals after it in include/client.h.
+ * Every one of these has a post function of its own, xServer::postOper() and
+ * its kin in include/server.h.
  */
-enum {
+enum NetworkEvent : int {
     EVT_OPER,
     EVT_NETBREAK,
     EVT_NETJOIN,
@@ -58,22 +62,23 @@ enum {
     EVT_XQUERY,
     EVT_XREPLY,
     EVT_NETCONF,
-    EVT_REMNETCONF,
-
-    // EVT_NOOP must always be last
-    EVT_NOOP
+    EVT_REMNETCONF
 };
 
-/**
- * The type used to represent network (non-channel) events.
- */
-typedef int eventType;
+/// How many network events there are: what eventList is indexed by.
+constexpr std::size_t networkEventCount = EVT_REMNETCONF + 1;
 
 /**
- * This enumerates the possible channel events that gnuworld will
- * track and deliver to registered clients.
+ * The old end marker of the network enum, which is also where the channel
+ * enum starts.  Only the untyped API still needs it, and it goes with it.
  */
-enum {
+constexpr int EVT_NOOP = networkEventCount;
+
+/**
+ * Which channel event this is.  As above, each is documented at the virtual
+ * that delivers it: xClient::OnJoin() and its kin in include/client.h.
+ */
+enum ChannelEvent : int {
     EVT_JOIN = EVT_NOOP,
     EVT_PART,
     EVT_SERVERMODE, // when server performs modes.
@@ -83,104 +88,109 @@ enum {
     EVT_BURST
 };
 
+/// How many channel events there are.
+constexpr std::size_t channelEventCount = EVT_BURST - EVT_JOIN + 1;
+
 /**
- * The type used to store possible channel events.
+ * The types used to represent an event.  They are an int and not the enums
+ * above because the untyped API is registered for, posted and delivered by
+ * number; a listener registration is still indexed by it.
  */
+typedef int eventType;
 typedef int channelEventType;
 
-/**
- * Arguments for the various events:
- * EVT_KILL
- *  1) iClient* or iServer* - source, could be NULL
- *  2) iClient* - target
- *  3) string* - reason
- * EVT_QUIT
- *  1) iClient*
- *  2) const std::string* - quit reason (may be empty)
- *  3) const std::vector<std::string>* - names of channels the client was on
- *     (snapshot taken before the client is removed from its channels)
- * EVT_SQUIT
- *  1) iServer* - server being squit
- *  2) string* - source
- *  3) string* - reason
- * EVT_BURST_ACK
- *  1) iServer*
- * EVT_NICK
- *  1) iClient*
- * EVT_NETJOIN
- *  1) iServer* - newly joined server
- *  2) iServer* - newly joined server's uplink server
- * EVT_BURST_ACK
- *  1) iServer*
- * EVT_CHNICK
- *  1) iClient* (nick updated)
- *  2) string* (old nick)
- * EVT_GLINE
- *  1) Gline*
- * EVT_REMGLINE
- *  1) Gline*
- * EVT_ACCOUNT
- *  1) iClient*
- * EVT_XQUERY
- *  1) iServer* source (might add iClient* later)
- *  2) string* - routing
- *  3) string* - command
- * EVT_XREPLY
- *  1) iServer* source
- *  2) string* - routing
- *  3) string* - command
- * EVT_NETCONF
- *  1) iServer* source
- *  2) string* - key
- * EVT_REMNETCONF
- * 1) iServer* source
- * 2) string* - key
- *
- * Channel Events
- * --------------
- * EVT_CREATE
- *  1) iClient*
- * EVT_PART
- *  1) iClient*
- * EVT_KICK
- *  1) iClient*
- * EVT_JOIN
- *  1) iClient*
- *  2) ChannelUser*
- * EVT_BURST
- *  1) iClient*
- *  2) ChannelUser*
+/*
+ * The name of an event, for a module that reports or counts them.  Each is one
+ * switch with no default, so that an event added without a name here is a
+ * -Wswitch warning and therefore a failed build, rather than a hole nobody
+ * notices.  eventNames[] below is built from these two.
  */
 
-const std::string eventNames[] = {
-    "Oper Up",                /* EVT_OPER */
-    "Net Break",              /* EVT_NETBREAK */
-    "Net Join",               /* EVT_NETJOIN */
-    "Burst Complete",         /* EVT_BURST_CMPLT */
-    "Burst Acknowledge",      /* EVT_BURST_ACK */
-    "Burst Acknowledge Sent", /* EVT_EA_SENT */
-    "Gline Add",              /* EVT_GLINE */
-    "Gline Remove",           /* EVT_REMGLINE */
-    "Server Jupe",            /* EVT_JUPE */
-    "Server UnJupe",          /* EVT_UNJUPE */
-    "Client Quit",            /* EVT_QUIT */
-    "Client Kill",            /* EVT_KILL */
-    "Client Connect",         /* EVT_NICK */
-    "Nick Change",            /* EVT_CHNICK */
-    "Account Login",          /* EVT_ACCOUNT */
-    "Raw",                    /* EVT_RAW */
-    "XQuery",                 /* EVT_XQUERY */
-    "XReply",                 /* EVT_XREPLY */
-    "Netconf Add",            /* EVT_NETCONF */
-    "Netconf Remove",         /* EVT_REMNETCONF */
-    "Channel Join",           /* EVT_JOIN */
-    "Channel Part",           /* EVT_PART */
-    "Channel Mode By Server", /* EVT_SERVERMODE */
-    "Channel Topic Change",   /* EVT_TOPIC */
-    "Channel Kick",           /* EVT_KICK */
-    "Channel Create",         /* EVT_CREATE */
-    "Channel Burst"           /* EVT_BURST */
-};
+constexpr std::string_view eventName(NetworkEvent whichEvent) {
+    switch (whichEvent) {
+    case EVT_OPER:
+        return "Oper Up";
+    case EVT_NETBREAK:
+        return "Net Break";
+    case EVT_NETJOIN:
+        return "Net Join";
+    case EVT_BURST_CMPLT:
+        return "Burst Complete";
+    case EVT_BURST_ACK:
+        return "Burst Acknowledge";
+    case EVT_EA_SENT:
+        return "Burst Acknowledge Sent";
+    case EVT_GLINE:
+        return "Gline Add";
+    case EVT_REMGLINE:
+        return "Gline Remove";
+    case EVT_JUPE:
+        return "Server Jupe";
+    case EVT_UNJUPE:
+        return "Server UnJupe";
+    case EVT_QUIT:
+        return "Client Quit";
+    case EVT_KILL:
+        return "Client Kill";
+    case EVT_NICK:
+        return "Client Connect";
+    case EVT_CHNICK:
+        return "Nick Change";
+    case EVT_ACCOUNT:
+        return "Account Login";
+    case EVT_ACCOUNT_FLAGS:
+        return "Account Flags";
+    case EVT_RAW:
+        return "Raw";
+    case EVT_XQUERY:
+        return "XQuery";
+    case EVT_XREPLY:
+        return "XReply";
+    case EVT_NETCONF:
+        return "Netconf Add";
+    case EVT_REMNETCONF:
+        return "Netconf Remove";
+    }
+    return {};
+}
+
+constexpr std::string_view eventName(ChannelEvent whichEvent) {
+    switch (whichEvent) {
+    case EVT_JOIN:
+        return "Channel Join";
+    case EVT_PART:
+        return "Channel Part";
+    case EVT_SERVERMODE:
+        return "Channel Mode By Server";
+    case EVT_TOPIC:
+        return "Channel Topic Change";
+    case EVT_KICK:
+        return "Channel Kick";
+    case EVT_CREATE:
+        return "Channel Create";
+    case EVT_BURST:
+        return "Channel Burst";
+    }
+    return {};
+}
+
+/**
+ * Every event's name, indexed by the event: the network events and then the
+ * channel events, which is the order the two enums number them in.  Built from
+ * eventName() so that it can no longer be one entry short of the enums, as it
+ * was - it had no "Account Flags" and was therefore misaligned from EVT_RAW up,
+ * and reading its last entry was reading past its end.
+ */
+constexpr std::array<std::string_view, networkEventCount + channelEventCount> eventNames = []() {
+    std::array<std::string_view, networkEventCount + channelEventCount> names;
+    for (std::size_t whichEvent = 0; whichEvent < networkEventCount; ++whichEvent) {
+        names[whichEvent] = eventName(static_cast<NetworkEvent>(whichEvent));
+    }
+    for (std::size_t whichEvent = 0; whichEvent < channelEventCount; ++whichEvent) {
+        names[EVT_JOIN + whichEvent] = eventName(static_cast<ChannelEvent>(EVT_JOIN + whichEvent));
+    }
+    return names;
+}();
 
 } // namespace gnuworld
 

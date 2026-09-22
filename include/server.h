@@ -505,9 +505,10 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
 
     /**
      * Handle the parting of a network client from a channel.  This method
-     * updates internal tables.
+     * updates internal tables.  The reason is what the PART said, where
+     * there was one.
      */
-    virtual void OnPartChannel(iClient* theClient, Channel* theChan);
+    virtual void OnPartChannel(iClient* theClient, Channel* theChan, std::string_view reason = {});
 
     /**
      * OnXQuery is called when an XQ command
@@ -762,22 +763,55 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual void UserLogin(iClient*, const std::string&, const unsigned int,
                            const unsigned short int, xClient* = 0);
 
+    /*
+     * Post one event: each of these delivers it to every xClient registered
+     * for that event, by calling the xClient method of the same name without
+     * the "post".  What each event means and what may be null is said at that
+     * method, in include/client.h.
+     *
+     * Where an event can be caused by a module, the last argument is the
+     * xClient that caused it, which is then the one client not told about it.
+     */
+    void postOper(iClient* theClient);
+    void postNetBreak(iServer* theServer, const iServer* uplink, std::string_view reason);
+    void postNetJoin(iServer* theServer, const iServer* uplink);
+    void postBurstComplete(iServer* theServer);
+    void postBurstAck(iServer* theServer);
+    void postEndOfBurstAckSent(iServer* theServer);
+    void postGline(Gline* theGline, const xClient* exclude = nullptr);
+    void postRemGline(Gline* theGline, const xClient* exclude = nullptr);
+    void postQuit(iClient* theClient, std::string_view reason = {});
+    void postKill(const NetworkTarget* source, iClient* theClient, std::string_view reason);
+    void postNick(iClient* theClient);
+    void postNickChange(iClient* theClient, std::string_view oldNick);
+    void postAccount(iClient* theClient, const xClient* exclude = nullptr);
+    void postAccountFlags(iClient* theClient, const xClient* exclude = nullptr);
+    void postRaw(std::string_view line);
+    void postXQuery(iServer* theServer, std::string_view routing, std::string_view message);
+    void postXReply(iServer* theServer, std::string_view routing, std::string_view message);
+    void postNetConf(iServer* theServer, std::string_view key);
+    void postRemNetConf(iServer* theServer, std::string_view key);
+    void postJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
+    void postBurstJoin(Channel* theChan, iClient* theClient, ChannelUser* theUser);
+    void postCreate(Channel* theChan, iClient* theClient);
+    void postPart(Channel* theChan, iClient* theClient, std::string_view message = {});
+    void postTopic(Channel* theChan, iClient* theClient, std::string_view topic);
+    void postServerMode(Channel* theChan, iServer* theServer);
+
     /**
-     * Post a system event to the rest of the system.  Note
-     * that this method is public, so xClients may post
-     * events.
-     * The last argument is the an exclude xClient -- the
-     * event will NOT be sent to that client (in the case that
-     * an xClient calls PostEvent(), it may not want to receive
-     * that event back).
+     * Post a system event by number, with its payloads as void*: a switch onto
+     * the post method for that event and nothing else.  Only a module that has
+     * not been converted to those still calls this.
+     *
+     * bridge: removed by events-remove-legacy
      */
     virtual void PostEvent(const eventType&, void* = 0, void* = 0, void* = 0, void* = 0,
                            const xClient* ourClient = 0);
 
     /**
-     * Post a channel event to the rest of the system.  Note
-     * that this method is public, so xClients may post
-     * channel events.
+     * The same for a channel event.
+     *
+     * bridge: removed by events-remove-legacy
      */
     virtual void PostChannelEvent(const channelEventType&, Channel* theChan, void* = 0, void* = 0,
                                   void* = 0, void* = 0);
@@ -1600,6 +1634,12 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * Every Post*() goes through here.
      */
     template <typename Listeners, typename Call> void notify(Listeners listeners, Call call);
+
+    /**
+     * notify() for a network event, whose listeners are those registered for
+     * theEvent.  Every post*() of a network event goes through here.
+     */
+    template <typename Call> void notifyEvent(eventType theEvent, Call call);
 
     /**
      * notify() for a channel event, whose listeners are those of chanName.

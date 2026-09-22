@@ -774,10 +774,7 @@ bool xServer::SquitServer(const string& serverName, const string& reason) {
         LOG(WARN, "Unable to find server: {}", serverName);
         return false;
     }
-    string source(getCharYY());
-    string nreason(reason);
-    PostEvent(EVT_NETBREAK, static_cast<void*>(tmpServer), static_cast<void*>(&source),
-              static_cast<void*>(&nreason));
+    postNetBreak(tmpServer, Network->findServer(tmpServer->getUplinkIntYY()), reason);
 
     iServer* theServer = Network->removeServer(tmpServer->getIntYY(), true);
     if (NULL == theServer) {
@@ -838,7 +835,7 @@ bool xServer::AttachServer(iServer* fakeServer, xClient* owningClient) {
 
     BurstServer(fakeServer);
 
-    PostEvent(EVT_NETJOIN, static_cast<void*>(fakeServer));
+    postNetJoin(fakeServer, nullptr);
 
     return true;
 }
@@ -938,7 +935,7 @@ bool xServer::AttachClient(xClient* Client, bool doBurst) {
         return false;
     }
 
-    PostEvent(EVT_NICK, static_cast<void*>(theIClient));
+    postNick(theIClient);
 
     if (doBurst) {
         BurstClient(Client);
@@ -1078,7 +1075,7 @@ void xServer::BurstClient(iClient* fakeClient) {
           fakeClient->getCharYYXXX(),             // <YYXXX>
           description);
 
-    PostEvent(EVT_NICK, static_cast<void*>(fakeClient));
+    postNick(fakeClient);
 }
 
 /**
@@ -1233,8 +1230,11 @@ void xServer::removeClient(xClient* theClient) {
     // Remove this xClient's iClient instance (stealth modules have none)
     iClient* iClientPtr = 0;
     if (theClient->getInstance() != 0) {
+        // Nothing quit if the network did not have it to remove
         iClientPtr = Network->removeClient(theClient->getInstance());
-        PostEvent(EVT_QUIT, static_cast<void*>(iClientPtr));
+        if (iClientPtr != 0) {
+            postQuit(iClientPtr);
+        }
     }
 
     // Remove any fake clients and fake servers associated with this
@@ -1248,7 +1248,7 @@ void xServer::removeClient(xClient* theClient) {
         s << fakeClient->getCharYYXXX() << " Q :Exiting";
         Write(s);
 
-        PostEvent(EVT_QUIT, static_cast<void*>(fakeClient));
+        postQuit(fakeClient, "Exiting");
 
         // Remove the fake client from all internal tables and
         // deallocate.  xNetwork::removeClient() will do all but
@@ -1355,7 +1355,7 @@ void xServer::PartChannel(xClient* theClient, Channel* theChan, const string& re
     Write(s);
 
     OnPartChannel(theClient, theChan);
-    OnPartChannel(theClient->getInstance(), theChan);
+    OnPartChannel(theClient->getInstance(), theChan, reason);
 }
 
 /**
@@ -1386,14 +1386,14 @@ void xServer::OnPartChannel(iClient* theClient, const string& chanName) {
  * allows an xClient to update the internal tables without
  * needing to know exactly what needs to be done (encapsulation).
  */
-void xServer::OnPartChannel(iClient* theClient, Channel* theChan) {
+void xServer::OnPartChannel(iClient* theClient, Channel* theChan, std::string_view reason) {
     assert(theClient != 0);
     assert(theChan != 0);
 
     theClient->removeChannel(theChan);
     destroy(theChan->removeUser(theClient));
 
-    PostChannelEvent(EVT_PART, theChan, static_cast<void*>(theClient));
+    postPart(theChan, theClient, reason);
 
     if (theChan->empty()) {
         // Empty channel
@@ -1418,17 +1418,11 @@ void xServer::OnPartChannel(xClient* theClient, Channel* theChan) {
 }
 
 void xServer::OnXQuery(iServer* theServer, const string& Routing, const string& Message) {
-    void* const thisRouting = const_cast<char*>(Routing.c_str());
-    void* const thisMessage = const_cast<char*>(Message.c_str());
-    PostEvent(EVT_XQUERY, static_cast<void*>(theServer), reinterpret_cast<void*>(thisRouting),
-              reinterpret_cast<void*>(thisMessage));
+    postXQuery(theServer, Routing, Message);
 }
 
 void xServer::OnXReply(iServer* theServer, const string& Routing, const string& Message) {
-    void* const thisRouting = const_cast<char*>(Routing.c_str());
-    void* const thisMessage = const_cast<char*>(Message.c_str());
-    PostEvent(EVT_XREPLY, static_cast<void*>(theServer), reinterpret_cast<void*>(thisRouting),
-              reinterpret_cast<void*>(thisMessage));
+    postXReply(theServer, Routing, Message);
 }
 
 bool xServer::JoinChannel(xClient* theClient, const string& chanName, const string& chanModes,
@@ -1665,8 +1659,11 @@ bool xServer::JoinChannel(xClient* theClient, const string& chanName, const stri
         return false;
     }
 
-    PostChannelEvent(whichEvent, theChan, static_cast<void*>(theIClient),
-                     static_cast<void*>(theChanUser));
+    if (EVT_CREATE == whichEvent) {
+        postCreate(theChan, theIClient);
+    } else {
+        postJoin(theChan, theIClient, theChanUser);
+    }
 
     theClient->OnJoin(theChan->getName());
     return true;
@@ -2584,7 +2581,7 @@ void xServer::UserLogin(iClient* destClient, const string& account, const unsign
               << account_id << " " << flags;
     Write(outStream);
 
-    PostEvent(EVT_ACCOUNT, static_cast<void*>(destClient), 0, 0, 0, sourceClient);
+    postAccount(destClient, sourceClient);
 }
 
 void xServer::setBursting(bool newVal) {
@@ -2758,7 +2755,7 @@ bool xServer::DetachClient(iClient* fakeClient, const string& quitMessage) {
         Write("{} Q :Exiting", fakeClient->getCharYYXXX());
     }
 
-    PostEvent(EVT_QUIT, static_cast<void*>(fakeClient));
+    postQuit(fakeClient, quitMessage.empty() ? std::string_view("Exiting") : quitMessage);
 
     return true;
 }
@@ -2833,7 +2830,7 @@ bool xServer::JoinChannel(iClient* theClient, const string& chanName) {
     s << theClient->getCharYYXXX() << " J " << chanName << ' ' << ::time(0);
     Write(s);
 
-    PostChannelEvent(EVT_JOIN, theChan, static_cast<void*>(theClient), static_cast<void*>(theUser));
+    postJoin(theChan, theClient, theUser);
 
     return true;
 }
@@ -2873,7 +2870,7 @@ void xServer::PartChannel(iClient* theClient, const string& chanName, const stri
     }
     Write(s);
 
-    PostChannelEvent(EVT_PART, theChan, static_cast<void*>(theClient));
+    postPart(theChan, theClient, reason);
 }
 
 /// Have the server burst a channel
@@ -3126,12 +3123,9 @@ bool xServer::XReply(iServer* theServer, const string& Routing, const string& Me
         return false;
     }
 
-    /* If we are sending an XREPLY to ourselves; PostEvent instead. */
+    /* If we are sending an XREPLY to ourselves; post it instead. */
     if (theServer == getMe()) {
-        void* const thisRouting = const_cast<char*>(Routing.c_str());
-        void* const thisMessage = const_cast<char*>(Message.c_str());
-        PostEvent(EVT_XREPLY, static_cast<void*>(theServer), reinterpret_cast<void*>(thisRouting),
-                  reinterpret_cast<void*>(thisMessage));
+        postXReply(theServer, Routing, Message);
         return true;
     }
 
@@ -3147,12 +3141,9 @@ bool xServer::XQuery(iServer* theServer, const string& Routing, const string& Me
         return false;
     }
 
-    /* If we are sending an XQUERY to ourselves; PostEvent instead. */
+    /* If we are sending an XQUERY to ourselves; post it instead. */
     if (theServer == getMe()) {
-        void* const thisRouting = const_cast<char*>(Routing.c_str());
-        void* const thisMessage = const_cast<char*>(Message.c_str());
-        PostEvent(EVT_XQUERY, static_cast<void*>(theServer), reinterpret_cast<void*>(thisRouting),
-                  reinterpret_cast<void*>(thisMessage));
+        postXQuery(theServer, Routing, Message);
         return true;
     }
 

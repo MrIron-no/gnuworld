@@ -457,6 +457,130 @@ void gnutest::OnEvent(const eventType& whichEvent, void* data1, void* data2, voi
     xClient::OnEvent(whichEvent, data1, data2, data3, data4);
 }
 
+/*
+ * The notifications that are not events: a kick and each kind of channel mode
+ * change.  They are reported like an event, under the name of the method that
+ * delivers them, with the channel first and then the source - which for a mode
+ * is the member who set it, and is "-" when a server did.
+ */
+
+/// One mode change as it would be on the wire: "+m", "-b *!*@bad"
+static string modeChange(bool polarity, const string& what) {
+    return string(polarity ? "+" : "-") + what;
+}
+
+/// The letter of a simple mode, by the bit it occupies
+static string modeLetter(Channel::modeType whichMode) {
+    for (const Channel::ModeInfo& mode : Channel::modeTable) {
+        if (mode.flag == whichMode && Channel::ModeType::Flag == mode.type) {
+            return string(1, mode.letter);
+        }
+    }
+    return string("?");
+}
+
+void gnutest::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destClient,
+                            const string& kickMessage, bool authoritative) {
+    if (!eventWatcher.empty()) {
+        reportEvent("ChannelKick", {theChan->getName(), nickOf(srcClient), nickOf(destClient),
+                                    kickMessage, authoritative ? "authoritative" : "zombie"});
+    }
+
+    xClient::OnNetworkKick(theChan, srcClient, destClient, kickMessage, authoritative);
+}
+
+void gnutest::OnChannelMode(Channel* theChan, ChannelUser* sourceUser,
+                            const xServer::modeVectorType& modeVector) {
+    if (!eventWatcher.empty()) {
+        std::vector<string> args{theChan->getName(), memberOf(sourceUser)};
+        for (const xServer::modeVectorType::value_type& change : modeVector) {
+            args.push_back(modeChange(change.first, modeLetter(change.second)));
+        }
+        reportEvent("ChannelMode", args);
+    }
+
+    xClient::OnChannelMode(theChan, sourceUser, modeVector);
+}
+
+void gnutest::OnChannelModeL(Channel* theChan, bool polarity, ChannelUser* sourceUser,
+                             const unsigned int& limit) {
+    if (!eventWatcher.empty()) {
+        reportEvent("ChannelModeL", {theChan->getName(), memberOf(sourceUser),
+                                     modeChange(polarity, std::to_string(limit))});
+    }
+
+    xClient::OnChannelModeL(theChan, polarity, sourceUser, limit);
+}
+
+void gnutest::OnChannelModeK(Channel* theChan, bool polarity, ChannelUser* sourceUser,
+                             const string& key) {
+    if (!eventWatcher.empty()) {
+        reportEvent("ChannelModeK",
+                    {theChan->getName(), memberOf(sourceUser), modeChange(polarity, key)});
+    }
+
+    xClient::OnChannelModeK(theChan, polarity, sourceUser, key);
+}
+
+void gnutest::OnChannelModeA(Channel* theChan, bool polarity, ChannelUser* sourceUser,
+                             const string& Apass) {
+    if (!eventWatcher.empty()) {
+        reportEvent("ChannelModeA",
+                    {theChan->getName(), memberOf(sourceUser), modeChange(polarity, Apass)});
+    }
+
+    xClient::OnChannelModeA(theChan, polarity, sourceUser, Apass);
+}
+
+void gnutest::OnChannelModeU(Channel* theChan, bool polarity, ChannelUser* sourceUser,
+                             const string& Upass) {
+    if (!eventWatcher.empty()) {
+        reportEvent("ChannelModeU",
+                    {theChan->getName(), memberOf(sourceUser), modeChange(polarity, Upass)});
+    }
+
+    xClient::OnChannelModeU(theChan, polarity, sourceUser, Upass);
+}
+
+void gnutest::OnChannelModeO(Channel* theChan, ChannelUser* sourceUser,
+                             const xServer::opVectorType& opVector) {
+    if (!eventWatcher.empty()) {
+        std::vector<string> args{theChan->getName(), memberOf(sourceUser)};
+        for (const xServer::opVectorType::value_type& change : opVector) {
+            args.push_back(modeChange(change.first, memberOf(change.second)));
+        }
+        reportEvent("ChannelModeO", args);
+    }
+
+    xClient::OnChannelModeO(theChan, sourceUser, opVector);
+}
+
+void gnutest::OnChannelModeV(Channel* theChan, ChannelUser* sourceUser,
+                             const xServer::voiceVectorType& voiceVector) {
+    if (!eventWatcher.empty()) {
+        std::vector<string> args{theChan->getName(), memberOf(sourceUser)};
+        for (const xServer::voiceVectorType::value_type& change : voiceVector) {
+            args.push_back(modeChange(change.first, memberOf(change.second)));
+        }
+        reportEvent("ChannelModeV", args);
+    }
+
+    xClient::OnChannelModeV(theChan, sourceUser, voiceVector);
+}
+
+void gnutest::OnChannelModeB(Channel* theChan, ChannelUser* sourceUser,
+                             const xServer::banVectorType& banVector) {
+    if (!eventWatcher.empty()) {
+        std::vector<string> args{theChan->getName(), memberOf(sourceUser)};
+        for (const xServer::banVectorType::value_type& change : banVector) {
+            args.push_back(modeChange(change.first, change.second));
+        }
+        reportEvent("ChannelModeB", args);
+    }
+
+    xClient::OnChannelModeB(theChan, sourceUser, banVector);
+}
+
 /**
  * "events on|off" registers this module for every event core posts, on every
  * channel, and reports each one it receives; "onevent <NAME> <action> [args]"
