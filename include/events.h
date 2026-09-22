@@ -69,8 +69,12 @@ enum NetworkEvent : int {
 constexpr std::size_t networkEventCount = EVT_REMNETCONF + 1;
 
 /**
- * The old end marker of the network enum, which is also where the channel
- * enum starts.  Only the untyped API still needs it, and it goes with it.
+ * One past the last network event, and so where the channel enum starts.  It is
+ * a count, not an event, which is why it is not an enumerator: eventName()'s
+ * switch has no default, so an enumerator there would have to be given a name it
+ * has no use for, or a default that would stop -Wswitch catching the next event
+ * added without one.  xServer sizes eventList with it and validEvent() bounds a
+ * registration against it.
  */
 constexpr int EVT_NOOP = networkEventCount;
 
