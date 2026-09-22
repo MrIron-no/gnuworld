@@ -114,8 +114,8 @@ stats::stats(const string& fileName) : xClient(fileName) {
     partMessage = conf.Require("part_message")->second;
     startTime = 0;
 
-    channelInfoFileName = "users_per_channel";
-    userInfoFileName = "channels_per_user";
+    channelInfoFileName = data_path + "users_per_channel";
+    userInfoFileName = data_path + "channels_per_user";
 
     openLogFiles();
 
