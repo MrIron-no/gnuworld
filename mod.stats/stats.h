@@ -51,67 +51,87 @@ class stats : public xClient {
      * It basically just calls the base class OnAttach(),
      * and registers for events.
      */
-    virtual void OnAttach();
+    virtual void OnAttach() override;
 
     /**
      * This method is invoked when someone sends a private
      * message to the stats bot.
      */
-    virtual void OnPrivateMessage(iClient*, const std::string&, bool = false);
+    virtual void OnPrivateMessage(iClient*, const std::string&, bool = false) override;
 
     /**
      * This method is invoked when someone sends a private
      * message CTCP to the stats bot.
      */
-    virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool = false);
+    virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool = false) override;
 
     /**
      * This method is invoked when someone sends a channel
      * message to the stats bot.
      */
-    virtual void OnChannelMessage(iClient*, Channel*, const std::string&);
+    virtual void OnChannelMessage(iClient*, Channel*, const std::string&) override;
 
     /**
      * This method is invoked when someone sends a channel
      * CTCP to the stats bot.
      */
-    virtual void OnChannelCTCP(iClient*, Channel*, const std::string&, const std::string&);
+    virtual void OnChannelCTCP(iClient*, Channel*, const std::string&, const std::string&) override;
 
     /**
      * This method is invoked when someone sends a private
      * notice to the stats bot.
      */
-    virtual void OnPrivateNotice(iClient*, const std::string&, bool);
+    virtual void OnPrivateNotice(iClient*, const std::string&, bool) override;
 
     /**
      * This method is invoked when someone sends a channel
      * notice to the stats bot.
      */
-    virtual void OnChannelNotice(iClient*, Channel*, const std::string&);
+    virtual void OnChannelNotice(iClient*, Channel*, const std::string&) override;
 
     /**
-     * This method is called when a general network event
-     * occurs.
+     * Every event this module is registered for.  Each one counts itself and
+     * does nothing with what it carries, so they are listed in the order
+     * events.h numbers them - which is the order of the counters and of the
+     * log files.  Three events are absent: EVT_KICK is counted by
+     * OnNetworkKick() below, EVT_RAW is not registered for, and nothing posts
+     * EVT_JUPE or EVT_UNJUPE.
      */
-    virtual void OnEvent(const eventType&, void* = 0, void* = 0, void* = 0, void* = 0);
-
-    /**
-     * This method is invoked when a channel event (except for
-     * kick) occurs.
-     */
-    virtual void OnChannelEvent(const channelEventType&, Channel*, void* Data1 = NULL,
-                                void* Data2 = NULL, void* Data3 = NULL, void* Data4 = NULL);
+    virtual void OnOper(iClient*) override;
+    virtual void OnNetBreak(iServer*, const iServer*, std::string_view) override;
+    virtual void OnNetJoin(iServer*, const iServer*) override;
+    virtual void OnBurstComplete(iServer*) override;
+    virtual void OnBurstAck(iServer*) override;
+    virtual void OnEndOfBurstAckSent(iServer*) override;
+    virtual void OnGline(Gline*) override;
+    virtual void OnRemGline(Gline*) override;
+    virtual void OnQuit(iClient*, std::string_view) override;
+    virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;
+    virtual void OnNick(iClient*) override;
+    virtual void OnNickChange(iClient*, std::string_view) override;
+    virtual void OnAccount(iClient*) override;
+    virtual void OnAccountFlags(iClient*) override;
+    virtual void OnXQuery(iServer*, std::string_view, std::string_view) override;
+    virtual void OnXReply(iServer*, std::string_view, std::string_view) override;
+    virtual void OnNetConf(iServer*, std::string_view) override;
+    virtual void OnRemNetConf(iServer*, std::string_view) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnPart(Channel*, iClient*, std::string_view) override;
+    virtual void OnServerMode(Channel*, iServer*) override;
+    virtual void OnTopic(Channel*, iClient*, std::string_view) override;
+    virtual void OnCreate(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
 
     /**
      * This method is invoked when a channel kick occurs.
      */
-    virtual void OnNetworkKick(Channel*, iClient*, iClient*, const std::string&, bool);
+    virtual void OnNetworkKick(Channel*, iClient*, iClient*, const std::string&, bool) override;
 
     /**
      * This method is called when a registered timer
      * expires.
      */
-    virtual void OnTimer(const xServer::timerID&, void*);
+    virtual void OnTimer(const xServer::timerID&, void*) override;
 
     /**
      * Return the part message stats will use when it parts
@@ -131,6 +151,11 @@ class stats : public xClient {
     virtual void dumpStats(iClient*);
 
   protected:
+    /**
+     * Count one event, which is all any of the handlers above does.
+     */
+    void countEvent(eventType);
+
     /**
      * WriteLog() will flush all data to the log files.
      */
@@ -169,16 +194,16 @@ class stats : public xClient {
     /// This variable holds the totals for each event,
     /// and is reset each minute when the log files are
     /// written.
-    unsigned long int eventMinuteTotal[EVT_BURST + 1];
+    unsigned long int eventMinuteTotal[eventNames.size()];
 
     /// This variable holds the totals for each event
     /// since time of connect (optionally excluding net
     /// bursts).
-    unsigned long int eventTotal[EVT_BURST + 1];
+    unsigned long int eventTotal[eventNames.size()];
 
     /// This variable holds pointers to the individual
     /// log files.
-    std::ofstream fileTable[EVT_BURST + 1];
+    std::ofstream fileTable[eventNames.size()];
 
     /// The name of the file to which channel information will
     /// be written.

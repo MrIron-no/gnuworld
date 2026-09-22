@@ -102,7 +102,7 @@ stats::stats(const string& fileName) : xClient(fileName) {
 }
 
 stats::~stats() {
-    for (eventType whichEvent = 0; whichEvent <= EVT_BURST; ++whichEvent) {
+    for (std::size_t whichEvent = 0; whichEvent < eventNames.size(); ++whichEvent) {
         if (EVT_RAW == whichEvent) {
             continue;
         }
@@ -116,7 +116,7 @@ void stats::openLogFiles() {
     // event totals.
     // Note that the file names will be retrieve from the eventNames
     // array, and spaces (' ') will be substituted with underscore ('_').
-    for (eventType whichEvent = 0; whichEvent <= EVT_BURST; ++whichEvent) {
+    for (std::size_t whichEvent = 0; whichEvent < eventNames.size(); ++whichEvent) {
         if (EVT_RAW == whichEvent) {
             continue;
         }
@@ -150,14 +150,11 @@ void stats::OnAttach() {
     xClient::OnAttach();
 
     // Register for all events
-    for (eventType whichEvent = 0; whichEvent != EVT_NOOP; ++whichEvent) {
-        switch (whichEvent) {
-        case EVT_RAW:
-            break;
-        default:
-            MyUplink->RegisterEvent(whichEvent, this);
-            break;
-        } // switch()
+    for (std::size_t whichEvent = 0; whichEvent < networkEventCount; ++whichEvent) {
+        if (EVT_RAW == whichEvent) {
+            continue;
+        }
+        MyUplink->RegisterEvent(whichEvent, this);
     } // for()
 
     MyUplink->RegisterChannelEvent("*", this);
@@ -340,7 +337,7 @@ void stats::writeLog() {
     time_t now = ::time(0);
     struct tm* nowTM = gmtime(&now);
 
-    for (eventType whichEvent = 0; whichEvent <= EVT_BURST; ++whichEvent) {
+    for (std::size_t whichEvent = 0; whichEvent < eventNames.size(); ++whichEvent) {
         if (EVT_RAW == whichEvent) {
             continue;
         }
@@ -352,8 +349,7 @@ void stats::writeLog() {
     }
 }
 
-void stats::OnChannelEvent(const channelEventType& whichEvent, Channel* theChan, void* arg1,
-                           void* arg2, void* arg3, void* arg4) {
+void stats::countEvent(eventType whichEvent) {
     if (!logDuringBurst && MyUplink->isBursting()) {
         // Don't log
         return;
@@ -363,13 +359,62 @@ void stats::OnChannelEvent(const channelEventType& whichEvent, Channel* theChan,
         startTime = ::time(0);
     }
 
-    assert(whichEvent <= EVT_BURST);
-
     eventMinuteTotal[whichEvent]++;
     eventTotal[whichEvent]++;
-
-    xClient::OnChannelEvent(whichEvent, theChan, arg1, arg2, arg3, arg4);
 }
+
+/*
+ * One handler per event, each naming the counter it belongs to, in the order
+ * events.h numbers them.  See stats.h for the three events that are not here.
+ */
+
+void stats::OnOper(iClient*) { countEvent(EVT_OPER); }
+
+void stats::OnNetBreak(iServer*, const iServer*, std::string_view) { countEvent(EVT_NETBREAK); }
+
+void stats::OnNetJoin(iServer*, const iServer*) { countEvent(EVT_NETJOIN); }
+
+void stats::OnBurstComplete(iServer*) { countEvent(EVT_BURST_CMPLT); }
+
+void stats::OnBurstAck(iServer*) { countEvent(EVT_BURST_ACK); }
+
+void stats::OnEndOfBurstAckSent(iServer*) { countEvent(EVT_EA_SENT); }
+
+void stats::OnGline(Gline*) { countEvent(EVT_GLINE); }
+
+void stats::OnRemGline(Gline*) { countEvent(EVT_REMGLINE); }
+
+void stats::OnQuit(iClient*, std::string_view) { countEvent(EVT_QUIT); }
+
+void stats::OnKill(const NetworkTarget*, iClient*, std::string_view) { countEvent(EVT_KILL); }
+
+void stats::OnNick(iClient*) { countEvent(EVT_NICK); }
+
+void stats::OnNickChange(iClient*, std::string_view) { countEvent(EVT_CHNICK); }
+
+void stats::OnAccount(iClient*) { countEvent(EVT_ACCOUNT); }
+
+void stats::OnAccountFlags(iClient*) { countEvent(EVT_ACCOUNT_FLAGS); }
+
+void stats::OnXQuery(iServer*, std::string_view, std::string_view) { countEvent(EVT_XQUERY); }
+
+void stats::OnXReply(iServer*, std::string_view, std::string_view) { countEvent(EVT_XREPLY); }
+
+void stats::OnNetConf(iServer*, std::string_view) { countEvent(EVT_NETCONF); }
+
+void stats::OnRemNetConf(iServer*, std::string_view) { countEvent(EVT_REMNETCONF); }
+
+void stats::OnJoin(Channel*, iClient*, ChannelUser*) { countEvent(EVT_JOIN); }
+
+void stats::OnPart(Channel*, iClient*, std::string_view) { countEvent(EVT_PART); }
+
+void stats::OnServerMode(Channel*, iServer*) { countEvent(EVT_SERVERMODE); }
+
+void stats::OnTopic(Channel*, iClient*, std::string_view) { countEvent(EVT_TOPIC); }
+
+void stats::OnCreate(Channel*, iClient*, ChannelUser*) { countEvent(EVT_CREATE); }
+
+void stats::OnBurstJoin(Channel*, iClient*, ChannelUser*) { countEvent(EVT_BURST); }
 
 void stats::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destClient,
                           const string& kickMessage, bool authoritative) {
@@ -377,29 +422,6 @@ void stats::OnNetworkKick(Channel* theChan, iClient* srcClient, iClient* destCli
     eventTotal[EVT_KICK]++;
 
     xClient::OnNetworkKick(theChan, srcClient, destClient, kickMessage, authoritative);
-}
-
-void stats::OnEvent(const eventType& whichEvent, void* arg1, void* arg2, void* arg3, void* arg4) {
-    if (!logDuringBurst && MyUplink->isBursting()) {
-        // Don't log
-        return;
-    }
-
-    if (0 == startTime) {
-        startTime = ::time(0);
-    }
-
-    assert(whichEvent <= EVT_BURST);
-
-    eventMinuteTotal[whichEvent]++;
-    eventTotal[whichEvent]++;
-
-    // NEVER uncomment this line on a large network heh
-    // elog	<< "stats::OnEvent> Event number: "
-    //	<< whichEvent
-    //	<< endl ;
-
-    xClient::OnEvent(whichEvent, arg1, arg2, arg3, arg4);
 }
 
 void stats::dumpStats(iClient* theClient) {
@@ -506,7 +528,7 @@ void stats::dumpStats(iClient* theClient) {
     unsigned long int totalEvents = 0;
 
     // First, find the total number of events to occur
-    for (eventType whichEvent = 0; whichEvent <= EVT_BURST; ++whichEvent) {
+    for (std::size_t whichEvent = 0; whichEvent < eventNames.size(); ++whichEvent) {
         if (EVT_RAW == whichEvent) {
             continue;
         }
@@ -515,7 +537,7 @@ void stats::dumpStats(iClient* theClient) {
 
     // Now output number of each event, and percentage of that
     // event to the total events received
-    for (eventType whichEvent = 0; whichEvent <= EVT_BURST; ++whichEvent) {
+    for (std::size_t whichEvent = 0; whichEvent < eventNames.size(); ++whichEvent) {
         if (EVT_RAW == whichEvent) {
             continue;
         }
