@@ -36,12 +36,13 @@ import ccontrol_client as cc
 import cservice_client as cs
 from conftest import (
     _prepare_conf_dir,
+    harness_db,
     link_ccontrol_logging,
     link_cservice_logging,
     link_module,
     require_module,
 )
-from gnuworld_proc import COMPOSE_FILE, CONTAINER_UPLINK, HARNESS_DIR, GnuworldProc
+from gnuworld_proc import CONTAINER_UPLINK, HARNESS_DIR, GnuworldProc, compose_cmd
 from p10 import p10_token, strip_msg_tags
 
 PERMIT_ACCOUNT = "MrIron"  # the account mod.debug's harness config permits
@@ -57,8 +58,8 @@ def unique(prefix: str) -> str:
 def psql(sql: str, db: str) -> None:
     """One statement against the harness's Postgres, as test_logging.py does."""
     subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "exec", "-T", "postgres",
-         "psql", "-U", "gnuworld", "-d", db, "-c", sql],
+        compose_cmd("exec", "-T", "postgres",
+                    "psql", "-U", "gnuworld", "-d", db, "-c", sql),
         cwd=str(HARNESS_DIR),
         check=True,
         capture_output=True,
@@ -639,14 +640,14 @@ DRONESCAN_TUNING = {
     "consoleLevel": "0",
 }
 
-_HARNESS_DB = {"host": "127.0.0.1", "port": "5433", "user": "gnuworld", "password": "gnuworld"}
-
 
 @asynccontextmanager
 async def dronescan_tuned(docker_stack, hub, tmp_path, **overrides):
-    settings = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"],
-                "sqlDB": "dronescan", "sqlUser": _HARNESS_DB["user"],
-                "sqlPass": _HARNESS_DB["password"], **DRONESCAN_TUNING, **overrides}
+    docker_stack.up()  # Postgres, for the port it was given
+    db = harness_db()
+    settings = {"sqlHost": db["host"], "sqlPort": db["port"],
+                "sqlDB": "dronescan", "sqlUser": db["user"],
+                "sqlPass": db["password"], **DRONESCAN_TUNING, **overrides}
     async with link_module(docker_stack, hub, tmp_path, "dronescan", "libdronescan.la",
                            "dronescan.example.conf", settings) as linked:
         yield linked
@@ -779,14 +780,17 @@ async def test_dronescan_watches_joins_and_parts_but_not_nick_changes(docker_sta
 # ==========================================================================
 
 
-CHANFIX_DB = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"], "sqlDB": "chanfix",
-              "sqlcfUser": _HARNESS_DB["user"], "sqlPass": _HARNESS_DB["password"]}
+def chanfix_db() -> dict[str, str]:
+    db = harness_db()
+    return {"sqlHost": db["host"], "sqlPort": db["port"], "sqlDB": "chanfix",
+            "sqlcfUser": db["user"], "sqlPass": db["password"]}
 
 
 @asynccontextmanager
 async def chanfix_tuned(docker_stack, hub, tmp_path, **overrides):
+    docker_stack.up()  # Postgres, for the port it was given
     async with link_module(docker_stack, hub, tmp_path, "openchanfix", "libchanfix.la",
-                           "openchanfix.example.conf", {**CHANFIX_DB, **overrides}) as linked:
+                           "openchanfix.example.conf", {**chanfix_db(), **overrides}) as linked:
         yield linked
 
 
@@ -1126,14 +1130,15 @@ async def test_nickserv_takes_an_account_for_a_client_it_never_saw_arrive(
     require_module("nickserv")
     require_module("gnutest")
     docker_stack.up()  # Postgres
+    db = harness_db()
     hub = fake_hub_p11
     conf_dir = _prepare_conf_dir(tmp_path)
     root = GnuworldProc.conf_root(conf_dir)
     GnuworldProc.write_gnutest_config(conf_dir / "gnutest.conf")
     GnuworldProc.write_module_config(
         conf_dir / "nickserv.conf", "nickserv.example.conf",
-        {"dbHost": _HARNESS_DB["host"], "dbPort": _HARNESS_DB["port"], "dbDb": "nickserv",
-         "dbUser": _HARNESS_DB["user"], "dbPass": _HARNESS_DB["password"]})
+        {"dbHost": db["host"], "dbPort": db["port"], "dbDb": "nickserv",
+         "dbUser": db["user"], "dbPass": db["password"]})
     GnuworldProc.write_config(
         conf_dir / "GNUWorld.conf",
         uplink=CONTAINER_UPLINK,

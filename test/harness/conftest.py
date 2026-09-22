@@ -19,6 +19,7 @@ from gnuworld_proc import (
     DockerStack,
     GnuworldProc,
     LOCAL_BINARY,
+    harness_sql_port,
     use_docker,
 )
 
@@ -465,13 +466,19 @@ async def link_module(docker_stack, hub, tmp_path, module: str, library: str, ex
         await proc.terminate()
 
 
-_HARNESS_DB = {"host": "127.0.0.1", "port": "5433", "user": "gnuworld", "password": "gnuworld"}
+def harness_db() -> dict[str, str]:
+    """Where the compose file's Postgres is. Its host port is Docker's to pick,
+    so this is only good once ``docker_stack.up()`` has run."""
+    return {"host": "127.0.0.1", "port": harness_sql_port(),
+            "user": "gnuworld", "password": "gnuworld"}
 
 
 @pytest_asyncio.fixture
 async def nickserv_linked(docker_stack, fake_hub_p11, tmp_path):
-    settings = {"dbHost": _HARNESS_DB["host"], "dbPort": _HARNESS_DB["port"], "dbDb": "nickserv",
-                "dbUser": _HARNESS_DB["user"], "dbPass": _HARNESS_DB["password"]}
+    docker_stack.up()  # Postgres, for the port it was given
+    db = harness_db()
+    settings = {"dbHost": db["host"], "dbPort": db["port"], "dbDb": "nickserv",
+                "dbUser": db["user"], "dbPass": db["password"]}
     async with link_module(docker_stack, fake_hub_p11, tmp_path, "nickserv", "libnickserv.la",
                            "nickserv.example.conf", settings) as linked:
         yield linked
@@ -479,8 +486,10 @@ async def nickserv_linked(docker_stack, fake_hub_p11, tmp_path):
 
 @pytest_asyncio.fixture
 async def dronescan_linked(docker_stack, fake_hub_p11, tmp_path):
-    settings = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"], "sqlDB": "dronescan",
-                "sqlUser": _HARNESS_DB["user"], "sqlPass": _HARNESS_DB["password"]}
+    docker_stack.up()  # Postgres, for the port it was given
+    db = harness_db()
+    settings = {"sqlHost": db["host"], "sqlPort": db["port"], "sqlDB": "dronescan",
+                "sqlUser": db["user"], "sqlPass": db["password"]}
     async with link_module(docker_stack, fake_hub_p11, tmp_path, "dronescan", "libdronescan.la",
                            "dronescan.example.conf", settings) as linked:
         yield linked
@@ -488,8 +497,10 @@ async def dronescan_linked(docker_stack, fake_hub_p11, tmp_path):
 
 @pytest_asyncio.fixture
 async def openchanfix_linked(docker_stack, fake_hub_p11, tmp_path):
-    settings = {"sqlHost": _HARNESS_DB["host"], "sqlPort": _HARNESS_DB["port"], "sqlDB": "chanfix",
-                "sqlcfUser": _HARNESS_DB["user"], "sqlPass": _HARNESS_DB["password"]}
+    docker_stack.up()  # Postgres, for the port it was given
+    db = harness_db()
+    settings = {"sqlHost": db["host"], "sqlPort": db["port"], "sqlDB": "chanfix",
+                "sqlcfUser": db["user"], "sqlPass": db["password"]}
     async with link_module(docker_stack, fake_hub_p11, tmp_path, "openchanfix", "libchanfix.la",
                            "openchanfix.example.conf", settings) as linked:
         yield linked

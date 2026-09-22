@@ -1,8 +1,11 @@
 # GNUWorld integration-test stack: Postgres + gnuworld runtime image.
 #
 # Gnuworld uses host networking so it can reach FakeHub on 127.0.0.1
-# (pytest on the host) and Postgres on published port 5433.
+# (pytest on the host) and Postgres on its published port.
 # Stdout is still captured via `docker compose run --rm -T`.
+#
+# Reach it with gnuworld_proc.compose_cmd(): a bare `docker compose` here would
+# name the project after this directory, which every checkout shares.
 
 services:
   postgres:
@@ -22,7 +25,11 @@ services:
       timeout: 5s
       retries: 30
     ports:
-      - "5433:5432"
+      # No host port: Docker picks a free one, which the harness asks for with
+      # `compose port` (gnuworld_proc.harness_sql_port) and writes into the
+      # module configs. A fixed port here is shared by every checkout on the
+      # machine, so two runs at once collide on it -- do not put one back.
+      - "5432"
 
   gnuworld:
     build:

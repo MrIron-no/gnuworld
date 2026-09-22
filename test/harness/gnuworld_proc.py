@@ -17,6 +17,7 @@ Either way the FakeHub listens on the host loopback, and gnuworld's stdout
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -62,14 +63,34 @@ CONTAINER_UPLINK = "127.0.0.1"
 
 # Postgres via published host port (gnuworld uses network_mode: host)
 DEFAULT_SQL_HOST = "127.0.0.1"
-DEFAULT_SQL_PORT = "5433"
 DEFAULT_SQL_DB = "ccontrol"
 DEFAULT_SQL_USER = "gnuworld"
 DEFAULT_SQL_PASS = "gnuworld"
 
+# Compose would otherwise name the project after this file's directory, which
+# is "harness" in every checkout and every worktree on the machine: two runs
+# would then share one Postgres container and volume, and whichever finished
+# first would tear the other's database down mid-run. Naming the project after
+# the tree gives each checkout its own stack.
+COMPOSE_PROJECT = "gnuworld-harness-" + hashlib.sha1(
+    str(REPO_ROOT).encode("utf-8")
+).hexdigest()[:8]
 
-def _compose_cmd(*args: str) -> list[str]:
-    return ["docker", "compose", "-f", str(COMPOSE_FILE), *args]
+# The host port Postgres is published on. Docker picks it (docker-compose.yml
+# publishes 5432 with no host port), so that two checkouts do not fight over
+# one fixed port; it is only known once the stack is up.
+_sql_port: str | None = None
+
+
+def compose_cmd(*args: str) -> list[str]:
+    """A ``docker compose`` command line for this checkout's own stack."""
+    return ["docker", "compose", "-p", COMPOSE_PROJECT, "-f", str(COMPOSE_FILE), *args]
+
+
+def harness_sql_port() -> str:
+    """The host port of the harness's Postgres, once ``DockerStack.up()`` has run."""
+    assert _sql_port is not None, "Postgres is not up: it has no host port yet"
+    return _sql_port
 
 
 class DockerStack:
@@ -87,7 +108,7 @@ class DockerStack:
         if use_docker():
             logger.info("Building gnuworld image...")
             subprocess.run(
-                _compose_cmd("build", "gnuworld"),
+                compose_cmd("build", "gnuworld"),
                 cwd=str(HARNESS_DIR),
                 check=True,
             )
@@ -101,28 +122,48 @@ class DockerStack:
                 check=False,
                 capture_output=True,
             )
-        logger.info("Starting Postgres...")
+        logger.info("Starting Postgres (compose project %s)...", COMPOSE_PROJECT)
         subprocess.run(
-            _compose_cmd("up", "-d", "postgres"),
+            compose_cmd("up", "-d", "postgres"),
             cwd=str(HARNESS_DIR),
             check=True,
         )
         self._wait_healthy("postgres", timeout=120.0)
+        global _sql_port
+        _sql_port = self._published_port("postgres", 5432)
+        logger.info("Postgres is on %s:%s", DEFAULT_SQL_HOST, _sql_port)
         self.started = True
 
     def down(self) -> None:
         subprocess.run(
-            _compose_cmd("down", "-v", "--remove-orphans"),
+            compose_cmd("down", "-v", "--remove-orphans"),
             cwd=str(HARNESS_DIR),
             check=False,
         )
+        global _sql_port
+        _sql_port = None
         self.started = False
+
+    @staticmethod
+    def _published_port(service: str, container_port: int) -> str:
+        """The host port Docker gave ``service``; it is not a fixed one."""
+        said = subprocess.run(
+            compose_cmd("port", service, str(container_port)),
+            cwd=str(HARNESS_DIR),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        # "0.0.0.0:49154", or "[::]:49154"
+        port = said.rsplit(":", 1)[-1]
+        assert port.isdigit(), f"compose port {service} {container_port} said {said!r}"
+        return port
 
     def _wait_healthy(self, service: str, timeout: float) -> None:
         deadline = time.time() + timeout
         while time.time() < deadline:
             ready = subprocess.run(
-                _compose_cmd(
+                compose_cmd(
                     "exec",
                     "-T",
                     "postgres",
@@ -244,7 +285,7 @@ class GnuworldProc:
         path: Path,
         *,
         sql_host: str = DEFAULT_SQL_HOST,
-        sql_port: str = DEFAULT_SQL_PORT,
+        sql_port: str | None = None,
         sql_db: str = DEFAULT_SQL_DB,
         sql_user: str = DEFAULT_SQL_USER,
         sql_pass: str = DEFAULT_SQL_PASS,
@@ -252,7 +293,7 @@ class GnuworldProc:
         text = CCONTROL_CONF_TEMPLATE.read_text(encoding="utf-8")
         replacements = {
             "@SQL_HOST@": os.environ.get("CCONTROL_SQL_HOST", sql_host),
-            "@SQL_PORT@": os.environ.get("CCONTROL_SQL_PORT", sql_port),
+            "@SQL_PORT@": os.environ.get("CCONTROL_SQL_PORT") or sql_port or harness_sql_port(),
             "@SQL_DB@": os.environ.get("CCONTROL_SQL_DB", sql_db),
             "@SQL_USER@": os.environ.get("CCONTROL_SQL_USER", sql_user),
             "@SQL_PASS@": os.environ.get("CCONTROL_SQL_PASS", sql_pass),
@@ -267,7 +308,7 @@ class GnuworldProc:
         path: Path,
         *,
         sql_host: str = DEFAULT_SQL_HOST,
-        sql_port: str = DEFAULT_SQL_PORT,
+        sql_port: str | None = None,
         sql_user: str = DEFAULT_SQL_USER,
         sql_pass: str = DEFAULT_SQL_PASS,
     ) -> Path:
@@ -276,7 +317,7 @@ class GnuworldProc:
         text = (REPO_ROOT / "bin" / "cservice.example.conf").read_text(encoding="utf-8")
         for key, value in (
             ("sql_host", os.environ.get("CSERVICE_SQL_HOST", sql_host)),
-            ("sql_port", os.environ.get("CSERVICE_SQL_PORT", sql_port)),
+            ("sql_port", os.environ.get("CSERVICE_SQL_PORT") or sql_port or harness_sql_port()),
             ("sql_db", "cservice"),
             ("sql_user", sql_user),
             ("sql_pass", sql_pass),
@@ -372,7 +413,7 @@ class GnuworldProc:
             return
 
         # Bind-mount this test's conf dir over /etc/gnuworld for the one-off run.
-        cmd = _compose_cmd(
+        cmd = compose_cmd(
             "run",
             "--rm",
             "-T",

@@ -35,7 +35,7 @@ from conftest import (
     require_module,
     send_gnuworld_signal,
 )
-from gnuworld_proc import CONTAINER_UPLINK, COMPOSE_FILE, HARNESS_DIR, GnuworldProc, use_docker
+from gnuworld_proc import CONTAINER_UPLINK, HARNESS_DIR, GnuworldProc, compose_cmd, use_docker
 from p10 import p10_token, strip_msg_tags
 
 TEXT_LINE = re.compile(
@@ -1089,8 +1089,8 @@ async def test_cservice_configured_mode_uses_logging_conf(docker_stack, fake_hub
 
 def _psql(sql: str, db: str = "cservice") -> None:
     subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "exec", "-T", "postgres",
-         "psql", "-U", "gnuworld", "-d", db, "-c", sql],
+        compose_cmd("exec", "-T", "postgres",
+                    "psql", "-U", "gnuworld", "-d", db, "-c", sql),
         cwd=str(HARNESS_DIR),
         check=True,
         capture_output=True,

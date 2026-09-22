@@ -127,4 +127,16 @@ runs after it.
 | `data/*.conf.in` | Config templates |
 
 Gnuworld reaches FakeHub at `127.0.0.1:<port>` (container uses host networking).
-ccontrol reaches Postgres at `127.0.0.1:5433` (published compose port).
+ccontrol reaches Postgres at `127.0.0.1:<port>` too: neither port is a fixed
+one, so that two checkouts can run the suite at the same time. Docker picks
+Postgres's, and the harness writes it into the module configs it generates.
+
+Each checkout also gets its own compose project, named after the tree, so two
+runs never share a container or a volume either. To reach the database by hand:
+
+```sh
+cd test/harness
+project=$(python3 -c 'import gnuworld_proc as g; print(g.COMPOSE_PROJECT)')
+docker compose -p "$project" exec postgres psql -U gnuworld -d cservice
+docker compose -p "$project" port postgres 5432   # that port, for a psql on the host
+```
