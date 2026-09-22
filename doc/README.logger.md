@@ -673,6 +673,11 @@ nothing is formatted for a record that will be dropped.
   width or precision above 4096, which `std::format` itself would accept but
   this renderer will not honour. Honouring one costs an allocation the size of
   the width, and under libc++ the exception that follows escapes the render.
+  The same 4096 is enforced a second time, differently: a `Write`, `Notice`,
+  `Message` or `Wallops` whose format is a source literal refuses a wider one at
+  **compile time**, so that is a build error rather than a placeholder. A
+  template is read from a config file and must fail gracefully; a literal is a
+  typo in the tree, and the only person who can fix it is the one compiling it.
 
 Because substituted text is never rescanned, a value that happens to look
 like a placeholder is safe: `nick="{reason}"`, `reason="spam"`, template

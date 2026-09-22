@@ -405,6 +405,14 @@ constexpr std::size_t maxSpecNumber = 4096;
  * survives it; libc++ throws std::length_error or std::bad_alloc, and
  * formatMessage() catches neither.  A literal is read here, where it is
  * compiled, so the answer is the same on both.
+ *
+ * A dynamic width or precision ("{:{}}") is not seen: its value is a run-time
+ * argument, and nothing here can read it.  No call site uses one today; one
+ * fed a value from the network would reach formatMessage() unguarded.
+ *
+ * A nested field's own argument index ("{:{5000}}") is read as a digit run and
+ * refused.  Leave that: the field needs as many arguments as the index, so no
+ * call this daemon could make is affected.
  */
 constexpr bool formatSpecNumberTooLarge(std::string_view fmt) noexcept {
     for (std::size_t i = 0; i < fmt.size(); ++i) {
