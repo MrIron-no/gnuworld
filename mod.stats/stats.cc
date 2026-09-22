@@ -537,7 +537,7 @@ void stats::dumpStats(iClient* theClient) {
     {
         stringstream ss;
 
-        ss.width(20);
+        ss.width(eventNameColumn);
         ss.setf(std::ios::left);
         ss << "EventName";
 
