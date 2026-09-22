@@ -34,6 +34,16 @@ using std::string;
 bool REGISTERCommand::Exec(iClient* theClient, const string&) {
     bot->theStats->incStat("NS.CMD.REGISTER");
 
+    /* A client already here when we attached never met OnNick(), so it has no
+     * netData to put the new user record in.  Say so before the account is
+     * written: registering it anyway would leave a row this session is not
+     * logged in to, under a notice saying that it is. */
+    netData* theData = static_cast<netData*>(theClient->getCustomData(bot));
+    if (!theData) {
+        bot->Notice(theClient, "I have no record of you. Please reconnect and try again.");
+        return true;
+    }
+
     /* Is this nick already registered? */
     sqlUser* theUser = bot->isRegistered(theClient->getAccount());
 
@@ -57,7 +67,6 @@ bool REGISTERCommand::Exec(iClient* theClient, const string&) {
     theUser->insertUser();
 
     /* Assign the new user to the iClient */
-    netData* theData = static_cast<netData*>(theClient->getCustomData(bot));
     theData->authedUser = theUser;
 
     /* Insert the new user into the cache */
