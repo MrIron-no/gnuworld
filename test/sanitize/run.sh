@@ -81,6 +81,15 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# A failed run keeps its exported tree so it can be looked at, and a sanitized
+# build of this tree is over 2G.  Keeping one is useful; keeping every failure
+# ever run fills /tmp and the next run dies at the link with "No space left on
+# device", which looks nothing like the real problem.  So the previous one goes
+# before this one is made.  --keep is for a tree you mean to keep: take a copy.
+for stale in "${TMPDIR:-/tmp}"/gnuworld-sanitize.*; do
+    [ -d "$stale" ] && rm -rf "$stale"
+done
+
 dir=$(mktemp -d "${TMPDIR:-/tmp}/gnuworld-sanitize.XXXXXX")
 
 failed=0
