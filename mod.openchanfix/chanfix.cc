@@ -633,57 +633,54 @@ void chanfix::BurstChannels() {
     startTimers();
 }
 
-/* OnChannelEvent */
-void chanfix::OnChannelEvent(const channelEventType& whichEvent, Channel* theChan, void* data1,
-                             void* data2, void* data3, void* data4) {
-    iClient* theClient = 0;
-    iServer* theServer = 0;
+bool chanfix::watchingChannel(Channel* theChan) const {
+    /* If we are not running, we don't want to be giving points, and if this
+     * channel is too small, we don't worry about it.
+     */
+    return (currentState == RUN) && (theChan->size() >= minClients);
+}
 
-    /* If we are not running, we don't want to be giving points. */
-    if (currentState != RUN)
+/* A join and a burst join are the same thing to us. */
+void chanfix::opJoiningOper(Channel* theChan, iClient* theClient) {
+    if (!watchingChannel(theChan))
         return;
 
-    /* If this channel is too small, don't worry about it. */
-    if (theChan->size() < minClients)
-        return;
-
-    switch (whichEvent) {
-    case EVT_BURST:
-    case EVT_JOIN: {
-        /* If this is the operChan or supportChan, op opers on join */
-        theClient = static_cast<iClient*>(data1);
-        if (theClient->isOper()) {
-            for (joinChansType::iterator ptr = chansToJoin.begin(); ptr != chansToJoin.end();
-                 ++ptr) {
-                if (!strcasecmp((*ptr).c_str(), theChan->getName().c_str())) {
-                    /* Found, op the user */
-                    Op(theChan, theClient);
-                    break;
-                }
+    /* If this is the operChan or supportChan, op opers on join */
+    if (theClient->isOper()) {
+        for (joinChansType::iterator ptr = chansToJoin.begin(); ptr != chansToJoin.end(); ++ptr) {
+            if (!strcasecmp((*ptr).c_str(), theChan->getName().c_str())) {
+                /* Found, op the user */
+                Op(theChan, theClient);
+                break;
             }
         }
-        break;
     }
-    case EVT_KICK:
-    case EVT_PART: {
-        theClient = static_cast<iClient*>(data1);
-        lostOp(theChan->getName(), theClient, NULL);
-        break;
-    }
-    case EVT_SERVERMODE: {
-        theServer = static_cast<iServer*>(data1);
-        if (theServer && theServer != MyUplink->getUplink() && theServer->isService()) {
-            if (!isTempBlocked(theChan->getName()))
-                tempBlockList.insert(tempBlockType::value_type(theChan->getName(), currentTime()));
-        }
-        //		elog << "chanfix: GOT SERVER MODE EVENT!" << std::endl;
-        break;
-    }
-    default:
-        break;
-    }
+}
 
-    xClient::OnChannelEvent(whichEvent, theChan, data1, data2, data3, data4);
+void chanfix::OnBurstJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
+    opJoiningOper(theChan, theClient);
+}
+
+void chanfix::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*) {
+    opJoiningOper(theChan, theClient);
+}
+
+void chanfix::OnPart(Channel* theChan, iClient* theClient, std::string_view) {
+    if (!watchingChannel(theChan))
+        return;
+
+    lostOp(theChan->getName(), theClient, nullptr);
+}
+
+void chanfix::OnServerMode(Channel* theChan, iServer* theServer) {
+    if (!watchingChannel(theChan))
+        return;
+
+    if (theServer && theServer != MyUplink->getUplink() && theServer->isService()) {
+        if (!isTempBlocked(theChan->getName()))
+            tempBlockList.insert(tempBlockType::value_type(theChan->getName(), currentTime()));
+    }
+    //		elog << "chanfix: GOT SERVER MODE EVENT!" << std::endl;
 }
 
 void chanfix::OnChannelModeO(Channel* theChan, ChannelUser* theUser,
@@ -810,116 +807,118 @@ bool chanfix::msgTopOps(Channel* netChan) {
     return true;
 }
 
-/* OnEvent */
-void chanfix::OnEvent(const eventType& whichEvent, void* data1, void* data2, void* data3,
-                      void* data4) {
-    switch (whichEvent) {
-    case EVT_ACCOUNT: {
-        iClient* tmpUser = static_cast<iClient*>(data1);
+void chanfix::OnAccount(iClient* tmpUser) {
+    authMapType::iterator ptr = authMap.find(tmpUser->getAccount());
+    if (ptr != authMap.end()) {
+        /* This user is already logged in, just add the iClient
+         * (if they aren't in the list already)
+         */
+        authMapType::mapped_type::iterator listPtr =
+            std::find(ptr->second.begin(), ptr->second.end(), tmpUser);
+        if (listPtr == ptr->second.end())
+            ptr->second.push_back(tmpUser);
+    } else {
+        /* Add the map entry AND the initial list entry */
+        authMapType::mapped_type theList;
+        theList.push_back(tmpUser);
+        authMap.insert(authMapType::value_type(tmpUser->getAccount(), theList));
+    }
+}
+
+void chanfix::OnBurstComplete(iServer*) {
+    if (currentState != SPLIT)
+        changeState(RUN);
+}
+
+/* A server joining the network and a server leaving it are the same two
+ * questions to us: is the channel service still there, and is enough of the
+ * network.
+ */
+void chanfix::checkServerChange(iServer* theServer, const eventType& theEvent) {
+    checkChannelServiceLink(theServer, theEvent);
+    checkNetwork();
+}
+
+void chanfix::OnNetBreak(iServer* theServer, const iServer*, std::string_view) {
+    checkServerChange(theServer, EVT_NETBREAK);
+}
+
+void chanfix::OnNetJoin(iServer* theServer, const iServer*) {
+    checkServerChange(theServer, EVT_NETJOIN);
+}
+
+/* A kill and a quit are the same thing to us. */
+void chanfix::lostClient(iClient* theClient) {
+    clientOpsType* myOps = findMyOps(theClient);
+    if (!myOps->empty()) {
+        for (clientOpsType::iterator ptr = myOps->begin(); ptr != myOps->end();)
+            lostOp(*ptr++, theClient, myOps);
+    } else {
+        delete myOps;
+    }
+
+    /* Now we need to remove this iClient from the auth map */
+    authMapType::iterator ptr = authMap.find(theClient->getAccount());
+
+    if (ptr != authMap.end()) {
+        authMapType::mapped_type::iterator listPtr =
+            ::find(ptr->second.begin(), ptr->second.end(), theClient);
+        assert(listPtr != ptr->second.end());
+        if (listPtr != ptr->second.end()) {
+            ptr->second.erase(listPtr);
+            /* If the list is empty, remove the map entry */
+            if (ptr->second.empty())
+                authMap.erase(theClient->getAccount());
+        }
+    }
+    // Cleanup
+    theClient->removeCustomData(this);
+}
+
+void chanfix::OnKill(const NetworkTarget*, iClient* theClient, std::string_view) {
+    lostClient(theClient);
+}
+
+void chanfix::OnQuit(iClient* theClient, std::string_view) { lostClient(theClient); }
+
+void chanfix::OnNick(iClient* tmpUser) {
+    if (tmpUser->isModeR()) {
+        /* Check to see if this current account is already mapped,
+         * Then check to see if this nick is already there
+         */
         authMapType::iterator ptr = authMap.find(tmpUser->getAccount());
         if (ptr != authMap.end()) {
-            /* This user is already logged in, just add the iClient
-             * (if they aren't in the list already)
-             */
+            /* Already have an entry, just add the iClient if not there already */
             authMapType::mapped_type::iterator listPtr =
                 std::find(ptr->second.begin(), ptr->second.end(), tmpUser);
             if (listPtr == ptr->second.end())
                 ptr->second.push_back(tmpUser);
+
         } else {
-            /* Add the map entry AND the initial list entry */
             authMapType::mapped_type theList;
             theList.push_back(tmpUser);
             authMap.insert(authMapType::value_type(tmpUser->getAccount(), theList));
         }
-        break;
     }
-    case EVT_BURST_CMPLT: {
-        if (currentState != SPLIT)
-            changeState(RUN);
-        break;
-    }
-    case EVT_NETJOIN:
-    case EVT_NETBREAK: {
-        iServer* theServer = static_cast<iServer*>(data1);
-        checkChannelServiceLink(theServer, whichEvent);
-        checkNetwork();
-        break;
-    }
-    case EVT_KILL:
-    case EVT_QUIT: {
-        iClient* theClient = static_cast<iClient*>((whichEvent == EVT_QUIT) ? data1 : data2);
+}
 
-        clientOpsType* myOps = findMyOps(theClient);
-        if (!myOps->empty()) {
-            for (clientOpsType::iterator ptr = myOps->begin(); ptr != myOps->end();)
-                lostOp(*ptr++, theClient, myOps);
-        } else {
-            delete myOps;
-        }
-
-        /* Now we need to remove this iClient from the auth map */
-        authMapType::iterator ptr = authMap.find(theClient->getAccount());
-
-        if (ptr != authMap.end()) {
-            authMapType::mapped_type::iterator listPtr =
-                ::find(ptr->second.begin(), ptr->second.end(), theClient);
-            assert(listPtr != ptr->second.end());
-            if (listPtr != ptr->second.end()) {
-                ptr->second.erase(listPtr);
-                /* If the list is empty, remove the map entry */
-                if (ptr->second.empty())
-                    authMap.erase(theClient->getAccount());
-            }
-        }
-        // Cleanup
-        theClient->removeCustomData(this);
-        break;
+void chanfix::OnXQuery(iServer* theServer, std::string_view routing, std::string_view message) {
+    const string Routing(routing);
+    const string Message(message);
+    elog << "chanfix.cc: EVT_XQUERY:" << theServer->getName() << " " << Routing << " " << Message
+         << endl;
+    // As it is possible to run multiple GNUWorld clients on one server, first parameter should
+    // be a nickname. If it ain't us, ignore the message, the message is probably meant for
+    // another client here.
+    StringTokenizer st(Message);
+    if (st.size() < 2) {
+        // No command or no nick supplied
+        return;
     }
-    case EVT_NICK: {
-        iClient* tmpUser = static_cast<iClient*>(data1);
-        if (tmpUser->isModeR()) {
-            /* Check to see if this current account is already mapped,
-             * Then check to see if this nick is already there
-             */
-            authMapType::iterator ptr = authMap.find(tmpUser->getAccount());
-            if (ptr != authMap.end()) {
-                /* Already have an entry, just add the iClient if not there already */
-                authMapType::mapped_type::iterator listPtr =
-                    std::find(ptr->second.begin(), ptr->second.end(), tmpUser);
-                if (listPtr == ptr->second.end())
-                    ptr->second.push_back(tmpUser);
-
-            } else {
-                authMapType::mapped_type theList;
-                theList.push_back(tmpUser);
-                authMap.insert(authMapType::value_type(tmpUser->getAccount(), theList));
-            }
-        }
-        break;
+    string Command = string_upper(st[0]);
+    if (Command == "OPLIST") {
+        doXROplist(theServer, Routing, Message);
     }
-    case EVT_XQUERY: {
-        iServer* theServer = static_cast<iServer*>(data1);
-        const char* Routing = reinterpret_cast<char*>(data2);
-        const char* Message = reinterpret_cast<char*>(data3);
-        elog << "chanfix.cc: EVT_XQUERY:" << theServer->getName() << " " << Routing << " "
-             << Message << endl;
-        // As it is possible to run multiple GNUWorld clients on one server, first parameter should
-        // be a nickname. If it ain't us, ignore the message, the message is probably meant for
-        // another client here.
-        StringTokenizer st(Message);
-        if (st.size() < 2) {
-            // No command or no nick supplied
-            break;
-        }
-        string Command = string_upper(st[0]);
-        if (Command == "OPLIST") {
-            doXROplist(theServer, Routing, Message);
-        }
-        break;
-    }
-    }
-
-    xClient::OnEvent(whichEvent, data1, data2, data3, data4);
 }
 
 bool chanfix::serverNotice(Channel* theChannel, const char* format, ...) {

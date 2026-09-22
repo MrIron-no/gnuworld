@@ -75,7 +75,7 @@ class chanfix : public xClient {
      */
     virtual ~chanfix();
 
-    virtual void OnTimer(const gnuworld::xServer::timerID&, void*);
+    virtual void OnTimer(const gnuworld::xServer::timerID&, void*) override;
 
     /**
      * This method is called when a network client sends
@@ -84,14 +84,14 @@ class chanfix : public xClient {
      * and the second argument is the actual message (minus
      * all of the server command stuff).
      */
-    virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false);
+    virtual void OnPrivateMessage(iClient*, const std::string&, bool secure = false) override;
 
     /**
      * This method is called by the server when a server connection
      * is established.  The purpose of this method is to inform
      * the xServer of the channels this client wishes to burst.
      */
-    virtual void BurstChannels();
+    virtual void BurstChannels() override;
 
     /**
      * This method is invoked when the server has been requested
@@ -103,7 +103,7 @@ class chanfix : public xClient {
      * Timers will be executed after this method is invoked, once,
      * depending upon target time of course :)
      */
-    virtual void OnShutdown(const std::string& reason);
+    virtual void OnShutdown(const std::string& reason) override;
 
     /**
      * This method is invoked when this module is first loaded.
@@ -111,7 +111,7 @@ class chanfix : public xClient {
      * At this point, the server may not yet be connected to the
      * network, so please do not issue join/nick requests.
      */
-    virtual void OnAttach();
+    virtual void OnAttach() override;
 
     /**
      * This method is called when this module is being unloaded from
@@ -119,20 +119,20 @@ class chanfix : public xClient {
      * deallocating timers, closing connections, closing log files,
      * and deallocating private data stored in iClients.
      */
-    virtual void OnDetach(const std::string& = std::string("Shutting down"));
+    virtual void OnDetach(const std::string& = std::string("Shutting down")) override;
 
     /**
      * This method is called when the server connects to the network.
      * Note that if this module is attached while already connected
      * to a network, this method is still invoked.
      */
-    virtual void OnConnect();
+    virtual void OnConnect() override;
 
     /**
      * This method is invoked when the server disconnects from
      * its uplink.
      */
-    virtual void OnDisconnect();
+    virtual void OnDisconnect() override;
 
     /**
      * This method will register a given command handler, removing
@@ -149,12 +149,13 @@ class chanfix : public xClient {
     virtual bool UnRegisterCommand(const std::string&);
 
     /**
-     * This method is invoked each time a channel event occurs
-     * for one of the channels for which this client has registered
-     * to receive channel events.
+     * These are invoked for each of the channel events this client has
+     * registered to receive, on one of the channels it watches.
      */
-    virtual void OnChannelEvent(const channelEventType&, Channel*, void* data1 = 0, void* data2 = 0,
-                                void* data3 = 0, void* data4 = 0);
+    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+    virtual void OnPart(Channel*, iClient*, std::string_view) override;
+    virtual void OnServerMode(Channel*, iServer*) override;
 
     /**
      * This method is invoked when a user sets or removes
@@ -162,17 +163,24 @@ class chanfix : public xClient {
      * source ChannelUser may be NULL if a server is
      * setting the mode.
      */
-    virtual void OnChannelModeO(Channel*, ChannelUser*, const xServer::opVectorType&);
+    virtual void OnChannelModeO(Channel*, ChannelUser*, const xServer::opVectorType&) override;
 
     /**
-     * This method is invoked each time a network event occurs.
+     * These are invoked for each of the network events this client has
+     * registered to receive.
      */
-    virtual void OnEvent(const eventType& theEvent, void* data1 = 0, void* data2 = 0,
-                         void* data3 = 0, void* data4 = 0);
+    virtual void OnAccount(iClient*) override;
+    virtual void OnBurstComplete(iServer*) override;
+    virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;
+    virtual void OnNetBreak(iServer*, const iServer*, std::string_view) override;
+    virtual void OnNetJoin(iServer*, const iServer*) override;
+    virtual void OnNick(iClient*) override;
+    virtual void OnQuit(iClient*, std::string_view) override;
+    virtual void OnXQuery(iServer*, std::string_view, std::string_view) override;
 
-    virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool);
+    virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool) override;
 
-    virtual void OnSignal(int sig);
+    virtual void OnSignal(int sig) override;
 
     /**
      * Our functions.
@@ -566,6 +574,24 @@ class chanfix : public xClient {
         enableChannelBlocking = _enableChannelBlocking;
     }
     inline void setCurrentDay() { currentDay = currentTime() / 86400 % daySamples; }
+
+  private:
+    /*
+     *  The bodies shared by two event handlers each, and the gate every
+     *  channel event goes through.
+     */
+
+    /** Whether a channel event is one we care about at all */
+    bool watchingChannel(Channel*) const;
+
+    /** Op a client that has joined one of our own channels, if it is an oper */
+    void opJoiningOper(Channel*, iClient*);
+
+    /** Take note of a server that has joined the network or left it */
+    void checkServerChange(iServer*, const eventType&);
+
+    /** Drop everything we hold for a client that has left the network */
+    void lostClient(iClient*);
 
 }; // class chanfix
 
