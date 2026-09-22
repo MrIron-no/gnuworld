@@ -144,8 +144,10 @@ bool msg_L::Execute(const xParameters& Param) {
         // Is the channel now empty, and no services clients are
         // on the channel?
         if (theChan->empty()) {
-            // No users in the channel, remove it.
-            destroy(Network->removeChannel(theChan->getName()));
+            // No users in the channel, remove it.  A handler of the part may
+            // have removed it already, so it is this channel that goes, not
+            // whatever holds its name
+            destroy(Network->removeChannel(theChan));
 
             // TODO: Post event
         }

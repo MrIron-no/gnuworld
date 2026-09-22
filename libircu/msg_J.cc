@@ -322,8 +322,10 @@ void msg_J::userPartAllChannels(iClient* theClient) {
             // TODO: Post event
 
             // Yup, remove the channel from the network channel
-            // table
-            destroy(Network->removeChannel((*ptr++)->getName()));
+            // table.  A handler of the part above may have removed it
+            // already, so it is this channel that goes, not whatever
+            // holds its name
+            destroy(Network->removeChannel(*ptr++));
         } else
             ptr++;
     }

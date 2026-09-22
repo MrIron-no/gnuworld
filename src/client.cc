@@ -497,6 +497,12 @@ bool xClient::Kill(iClient* theClient, const string& reason, bool asServer) {
         return false;
     }
 
+    if (!Network->stillHas(theClient)) {
+        // A handler of an earlier event in this line has already removed it:
+        // still alive for us to read, but the uplink has heard it quit
+        return false;
+    }
+
     if (asServer) {
         if (getUplink()->getUplink()->getProtocol() < 11) {
             Write("{} D {} :{} ({})", MyUplink->getCharYY(), theClient->getCharYYXXX(),
@@ -726,7 +732,15 @@ bool xClient::Part(const string& chanName, const string& reason) {
 bool xClient::Part(Channel* theChan) {
     assert(theChan != NULL);
 
-    return Part(theChan->getName());
+    if (!isConnected()) {
+        return false;
+    }
+
+    // The channel we were given, not its name: parting by name would part
+    // whatever holds that name now, which need not be this channel any more
+    MyUplink->PartChannel(this, theChan, string());
+
+    return true;
 }
 
 bool xClient::Invite(iClient* theClient, const string& chanName) {

@@ -1089,6 +1089,14 @@ bool xServer::DetachClient(xClient* Client, const string& reason) {
         return false;
     }
 
+    if (std::find(pendingUnloads.begin(), pendingUnloads.end(), Client) != pendingUnloads.end()) {
+        // Detached already, and waiting only to be let go.  Until then it is
+        // still a local client and still in the module list, so it can be
+        // asked for a second time - and OnDetach() is not a thing to do twice:
+        // mod.openchanfix frees its database handle in there.
+        return false;
+    }
+
     // Notify the client that it is being detached.
     Client->OnDetach(reason);
 
@@ -1175,10 +1183,52 @@ void xServer::UnloadClient(xClient* theClient, const string& reason) {
     LOG_CORE(Modules, WARN, "Unable to find client: {}", theClient->getNickName());
 }
 
+void xServer::unregisterClient(xClient* theClient) {
+    // Walk the channelEventMap, and remove the xClient from all
+    // channel's in which it is registered.
+    // This will include channel "*"
+    for (channelEventMapType::iterator chPtr = channelEventMap.begin();
+         chPtr != channelEventMap.end();) {
+        std::erase(chPtr->second, theClient);
+
+        // An entry with no listeners left is no entry
+        chPtr = chPtr->second.empty() ? channelEventMap.erase(chPtr) : std::next(chPtr);
+    }
+
+    // Remove this xClient from all other events
+    for (eventListType::iterator evPtr = eventList.begin(), evEndPtr = eventList.end();
+         evPtr != evEndPtr; ++evPtr) {
+        std::erase(*evPtr, theClient);
+    }
+
+    // Remove all remaining timers for this xClient
+    removeAllTimers(theClient);
+}
+
 // This method is responsible for updating all internal
 // tables and deallocating the given xClient
 void xServer::removeClient(xClient* theClient) {
     // Precondition: theClient != 0
+
+    // This removal is the one that happens, so an earlier one that is still
+    // waiting is not a second removal
+    std::erase(pendingUnloads, theClient);
+
+    // Whatever else this does or defers, the module is told nothing from here
+    // on: that is what it asked for, and it must not be called again by an
+    // event or a timer that outlives this call.
+    unregisterClient(theClient);
+
+    if (dispatchDepth > 0) {
+        /* A handler is on the stack - this module's own, another module's, or a
+         * timer's - so the xClient cannot be deleted here and the library it
+         * came from cannot be unmapped: the handler would return into freed
+         * memory, in code that is no longer mapped.  The rest waits for
+         * releaseHeldObjects(), where the outermost dispatch has unwound and
+         * neither the queue nor the holding list has anything left in it. */
+        pendingUnloads.push_back(theClient);
+        return;
+    }
 
     // Remove this xClient's iClient instance (stealth modules have none)
     iClient* iClientPtr = 0;
@@ -1229,26 +1279,6 @@ void xServer::removeClient(xClient* theClient) {
 
     // Reset the iClient instance for good measure
     theClient->resetInstance();
-
-    // Walk the channelEventMap, and remove the xClient from all
-    // channel's in which it is registered.
-    // This will include channel "*"
-    for (channelEventMapType::iterator chPtr = channelEventMap.begin();
-         chPtr != channelEventMap.end();) {
-        std::erase(chPtr->second, theClient);
-
-        // An entry with no listeners left is no entry
-        chPtr = chPtr->second.empty() ? channelEventMap.erase(chPtr) : std::next(chPtr);
-    }
-
-    // Remove this xClient from all other events
-    for (eventListType::iterator evPtr = eventList.begin(), evEndPtr = eventList.end();
-         evPtr != evEndPtr; ++evPtr) {
-        std::erase(*evPtr, theClient);
-    }
-
-    // Remove all remaining timers for this xClient
-    removeAllTimers(theClient);
 
     // Close all Connections the xClient may have open/pending
     ConnectionManager::Disconnect(reinterpret_cast<ConnectionHandler*>(theClient), 0);
@@ -1307,6 +1337,12 @@ void xServer::PartChannel(xClient* theClient, const string& chanName, const stri
 void xServer::PartChannel(xClient* theClient, Channel* theChan, const string& reason) {
     assert(theClient != 0);
     assert(theChan != 0);
+
+    if (!Network->stillHas(theChan)) {
+        // A handler of an earlier event in this line has already removed it:
+        // still alive for us to read, but not a channel of the network
+        return;
+    }
 
     if (theClient->IsStealth()) {
         // It never joined: no client on the network, and no server form of a PART
@@ -2152,6 +2188,12 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
                           const std::string& reason, const iClient* from, iClient* kicker) {
     assert(theChan != 0);
 
+    if (!Network->stillHas(theChan)) {
+        // A handler of an earlier event in this line has already removed it:
+        // still alive for us to read, but not a channel of the network
+        return false;
+    }
+
     std::vector<iClient*> kicked;
     for (iClient* target : targets) {
         if (NULL == target) {
@@ -2215,7 +2257,7 @@ bool xServer::kickMembers(Channel* theChan, std::span<iClient* const> targets,
     if (joined != 0) {
         joined->Part(theChan);
     } else if (theChan->empty()) {
-        destroy(Network->removeChannel(theChan->getName()));
+        destroy(Network->removeChannel(theChan));
     }
     return true;
 }
@@ -2559,6 +2601,14 @@ void xServer::setBursting(bool newVal) {
 }
 
 void xServer::doShutdown() {
+    // Let go of what is waiting before the world is taken apart.  A module
+    // that asked to go while a handler was running is a local client and a
+    // loaded module until then, and everything below walks both; and its
+    // removal wants the network tables that the rest of this empties.  The
+    // main loop does this every time round, but a shutdown can come between a
+    // deferred unload and the next turn of it.
+    releaseHeldObjects();
+
     // elog	<< "xServer::doShutdown> Removing modules..."
     //	<< endl ;
 

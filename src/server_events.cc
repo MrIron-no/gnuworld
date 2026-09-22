@@ -359,10 +359,27 @@ void xServer::releaseHeldObjects() {
     // Never with a dispatch in progress: that is the whole point of the list
     assert(0 == dispatchDepth);
 
-    for (const std::function<void()>& release : holdingList) {
-        release();
+    /* This is also where a module that asked to go while a handler was running
+     * is finally let go: nothing of its own is on the stack here, the queue is
+     * empty because the outermost dispatch drained it, and the holding list is
+     * given back first, so the library can be unmapped.  Finishing one such
+     * removal quits the module's clients, which posts events and removes
+     * network objects of its own, so both lists can fill again: go round until
+     * neither has anything left. */
+    while (!holdingList.empty() || !pendingUnloads.empty()) {
+        std::vector<std::function<void()>> releasing;
+        releasing.swap(holdingList);
+        for (const std::function<void()>& release : releasing) {
+            release();
+        }
+
+        if (!pendingUnloads.empty()) {
+            xClient* const theClient = pendingUnloads.front();
+            pendingUnloads.pop_front();
+
+            removeClient(theClient);
+        }
     }
-    holdingList.clear();
 }
 
 /**

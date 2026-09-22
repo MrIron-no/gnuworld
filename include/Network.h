@@ -211,9 +211,7 @@ class xNetwork {
     /**
      * Remove a netconf variable from the network table.
      */
-    virtual void removeNetConf(const std::string& key) {
-        netConfMap.erase(key);
-    }
+    virtual void removeNetConf(const std::string& key) { netConfMap.erase(key); }
 
     /**
      * Find a netconf variable by key.
@@ -351,6 +349,26 @@ class xNetwork {
      */
     virtual Channel* findChannel(const std::string& name) const;
 
+    /**
+     * Whether the tables still hold this very object, and not merely something
+     * that has since taken its name or its numeric.
+     *
+     * Nothing else in here can tell the difference: every lookup and every
+     * removal is by name or by numeric, and a handler of an event may have
+     * removed the object the event is about.  The object is alive - the server
+     * holds it until the line being processed is done with it - but it is gone
+     * from the network, and the uplink will never hear of it again, so whoever
+     * holds such a pointer must ask this before acting on it or removing it.
+     * A new object of the same name is as much "not this one" as none at all.
+     */
+    bool stillHas(const Channel* theChan) const {
+        return findChannel(theChan->getName()) == theChan;
+    }
+
+    bool stillHas(const iClient* theClient) const {
+        return findClient(theClient->getIntYYXXX()) == theClient;
+    }
+
     /* Removal methods. */
 
     /**
@@ -459,9 +477,12 @@ class xNetwork {
     virtual Channel* removeChannel(const std::string& name);
 
     /**
-     * Remove a channel from the network table.
-     * Returns the Channel which has been removed, or NULL if the
-     * channel was not found.
+     * Remove THIS channel from the network table, and return it.
+     * Returns NULL, and says nothing about it, when the table no longer holds
+     * it: see stillHas().  Core removes a channel it is holding a pointer to
+     * through here rather than by name, so that a handler which removed the
+     * channel first, or which caused another of the same name to be created,
+     * cannot make it remove the wrong one.
      */
     virtual Channel* removeChannel(const Channel* theChan);
 
