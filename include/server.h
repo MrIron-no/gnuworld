@@ -439,6 +439,15 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     virtual bool DetachClient(xClient* Client, const std::string& reason);
 
     /**
+     * Detach a client that a deferred unload has been holding across the
+     * timer delay.  The instance may have gone in the meantime, so the
+     * pointer is looked for among the loaded modules and is followed only
+     * if it is still one of them.
+     * Clients must *not* call this method, use UnloadClient() instead.
+     */
+    virtual bool DetachClientIfLoaded(xClient* theClient, const std::string& reason);
+
+    /**
      * Output the information for a channel, and make the given
      * xClient operator in that channel.
      * This works at all times, bursting or not.

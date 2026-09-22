@@ -330,30 +330,22 @@ async def test_one_instance_detaches_the_other_from_inside_a_handler(two_gnutest
     ]
 
 
-@pytest.mark.xfail(
-    reason="xServer::UnloadClient(xClient*) turns the object back into the module NAME and "
-    "defers that, and xServer::DetachClient(const string&) then takes the FIRST module of "
-    "that name: with one library loaded twice the two instances share a name, so the unload "
-    "lands on whichever was loaded first, not on the instance that was named",
-)
 @pytest.mark.asyncio
 async def test_one_instance_unloads_the_other_from_inside_a_handler(two_gnutests_linked_p11):
     """The same attack through UnloadClient() instead of DetachClient(), which
     is the pair's other half and the one a module is told to use.
 
     gnutest, from inside its own OnQuit, asks for gnutest2 to be unloaded. What
-    must leave is gnutest2: its client quits, and gnutest - which asked - is
-    still there afterwards to report the next event. That is not what happens,
-    and the wire says so plainly: the client that quits is gnutest's own.
+    leaves is gnutest2: its client quits, and gnutest - which asked - is still
+    there afterwards to report the next event.
 
-    The detach test above is the control. It names the same instance the same
-    way, reaches xServer::removeClient() for the right module, and passes - so
-    nothing about naming another instance from a handler is at fault here. The
-    difference is entirely in what UnloadClient(xClient*) does with the pointer:
-    it looks the module up, throws the object away, keeps only the module NAME,
-    and hands that to a timer; DetachClient(const string&) then returns the
-    first entry of clientModuleList with that name. Both instances here were
-    loaded from libgnutest.la, so the first entry is gnutest."""
+    The detach test above is the control, and this one used to be the pair's
+    odd one out: UnloadClient(xClient*) looked the module up, threw the object
+    away, kept only the module NAME and handed that to a timer, and
+    DetachClient(const string&) then took the first entry of clientModuleList
+    with that name. Both instances here come from libgnutest.la and answer to
+    one name, so the unload landed on gnutest, the instance nobody named. What
+    waits out the timer now is the instance itself."""
     hub, proc = two_gnutests_linked_p11
     env = await setup(hub)
 

@@ -1124,6 +1124,27 @@ bool xServer::DetachClient(const string& moduleName, const string& reason) {
     return false;
 }
 
+/**
+ * Detach an xClient that an unload has been holding across a timer delay,
+ * if that instance is still loaded.
+ */
+bool xServer::DetachClientIfLoaded(xClient* theClient, const string& reason) {
+    for (clientModuleListType::const_iterator ptr = clientModuleList.begin();
+         ptr != clientModuleList.end(); ++ptr) {
+        if ((*ptr)->getObject() == theClient) {
+            // Still one of the loaded modules, so the pointer is good
+            return DetachClient(theClient, reason);
+        }
+    }
+
+    // Between asking for the unload and here the instance has gone - by a
+    // detach, or by a shutdown.  There is nothing left to unload, and the
+    // pointer is not to be followed, not even to name it in this message.
+    LOG_CORE(Modules, WARN, "Client to unload is no longer loaded, reason was: {}", reason);
+
+    return false;
+}
+
 void xServer::LoadClient(const string& moduleName, const string& configFileName) {
     // elog	<< "xServer::LoadClient("
     //	<< moduleName
@@ -1148,36 +1169,32 @@ void xServer::LoadClient(const string& moduleName, const string& configFileName)
 }
 
 void xServer::UnloadClient(const string& moduleName, const string& reason) {
-    // elog	<< "xServer::UnloadClient("
-    //	<< moduleName
-    //	<< ","
-    //	<< reason
-    //	<< ")> "
-    //	<< moduleName
-    //	<< endl ;
-
-    UnloadClientTimerHandler* handler =
-        new (std::nothrow) UnloadClientTimerHandler(this, moduleName, reason);
-    assert(handler != 0);
-
-    RegisterTimer(::time(0), handler, 0);
-}
-
-void xServer::UnloadClient(xClient* theClient, const string& reason) {
-    // elog	<< "xServer::UnloadClient(xClient*)> "
-    //	<< theClient->getNickName()
-    //	<< endl ;
-
+    /* Which instance a module name means is settled here, while the caller is
+     * still asking, rather than after the delay: a name can only ever mean the
+     * first module loaded under it, and that is what it meant when asked. */
     for (clientModuleListType::const_iterator ptr = clientModuleList.begin();
          ptr != clientModuleList.end(); ++ptr) {
-        if ((*ptr)->getObject() == theClient) {
+        if (!strcasecmp((*ptr)->getModuleName(), moduleName)) {
             // Found one
-            UnloadClient((*ptr)->getModuleName(), reason);
+            UnloadClient((*ptr)->getObject(), reason);
             return;
         }
     }
 
-    LOG_CORE(Modules, WARN, "Unable to find client: {}", theClient->getNickName());
+    LOG_CORE(Modules, WARN, "Unable to find client moduleName: {}", moduleName);
+}
+
+void xServer::UnloadClient(xClient* theClient, const string& reason) {
+    /* The unload is deferred so that the module which asked for it is off the
+     * stack before its library is unmapped - but what waits out the delay is
+     * the instance, not the name of the module it came from.  One library
+     * loaded twice gives two instances answering to one name, so a name handed
+     * to the timer lands the unload on whichever of them loaded first. */
+    UnloadClientTimerHandler* handler =
+        new (std::nothrow) UnloadClientTimerHandler(this, theClient, reason);
+    assert(handler != nullptr);
+
+    RegisterTimer(::time(0), handler, 0);
 }
 
 void xServer::unregisterClient(xClient* theClient) {
