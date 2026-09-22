@@ -304,7 +304,15 @@ void nickserv::OnNick(iClient* theClient) {
  * We do NOT zero the warning count. This is to prevent someone jumping
  * between registered nicks to avoid getting killed.
  */
-void nickserv::OnNickChange(iClient* theClient, std::string_view) { addToQueue(theClient); }
+void nickserv::OnNickChange(iClient* theClient, std::string_view) {
+    /* A client already here when we attached never met OnNick(), so it has no
+     * netData: processQueue() writes through the record of every entry it
+     * walks, and there is nothing to hold a warning count in anyway. */
+    if (!theClient->getCustomData(this))
+        return;
+
+    addToQueue(theClient);
+}
 
 void nickserv::OnQuit(iClient* theClient, std::string_view) { forgetClient(theClient); }
 
