@@ -1779,6 +1779,14 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     clientModuleListType clientModuleList;
 
     /**
+     * The client of the first module loaded under this name, or null when there
+     * is none.  A name cannot tell two instances of one library apart, and the
+     * first is what it has always meant; a caller holding an instance should
+     * pass that instead.
+     */
+    xClient* findClientByModuleName(const std::string& moduleName) const;
+
+    /**
      * The type of the modules used to load ServerCommandHandlers
      * from dynamically loadable libraries.
      * This is stored here in order to properly close them when

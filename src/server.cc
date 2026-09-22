@@ -1106,22 +1106,25 @@ bool xServer::DetachClient(xClient* Client, const string& reason) {
 /**
  * Detach an xClient by moduleName
  */
-bool xServer::DetachClient(const string& moduleName, const string& reason) {
+xClient* xServer::findClientByModuleName(const string& moduleName) const {
     for (clientModuleListType::const_iterator ptr = clientModuleList.begin();
          ptr != clientModuleList.end(); ++ptr) {
-        //	elog	<< "xServer::DetachClient> moduleName: "
-        //		<< (*ptr)->getModuleName()
-        //		<< endl ;
-
         if (!strcasecmp((*ptr)->getModuleName(), moduleName)) {
-            // Found one
-            return DetachClient((*ptr)->getObject(), reason);
+            return (*ptr)->getObject();
         }
     }
 
-    LOG_CORE(Modules, WARN, "Unable to find client moduleName: {}", moduleName);
+    return nullptr;
+}
 
-    return false;
+bool xServer::DetachClient(const string& moduleName, const string& reason) {
+    xClient* theClient = findClientByModuleName(moduleName);
+    if (!theClient) {
+        LOG_CORE(Modules, WARN, "Unable to find client moduleName: {}", moduleName);
+        return false;
+    }
+
+    return DetachClient(theClient, reason);
 }
 
 /**
@@ -1172,16 +1175,13 @@ void xServer::UnloadClient(const string& moduleName, const string& reason) {
     /* Which instance a module name means is settled here, while the caller is
      * still asking, rather than after the delay: a name can only ever mean the
      * first module loaded under it, and that is what it meant when asked. */
-    for (clientModuleListType::const_iterator ptr = clientModuleList.begin();
-         ptr != clientModuleList.end(); ++ptr) {
-        if (!strcasecmp((*ptr)->getModuleName(), moduleName)) {
-            // Found one
-            UnloadClient((*ptr)->getObject(), reason);
-            return;
-        }
+    xClient* theClient = findClientByModuleName(moduleName);
+    if (!theClient) {
+        LOG_CORE(Modules, WARN, "Unable to find client moduleName: {}", moduleName);
+        return;
     }
 
-    LOG_CORE(Modules, WARN, "Unable to find client moduleName: {}", moduleName);
+    UnloadClient(theClient, reason);
 }
 
 void xServer::UnloadClient(xClient* theClient, const string& reason) {
