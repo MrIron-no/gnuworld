@@ -595,6 +595,10 @@ void gnutest::eventArrived(int whichEvent, bool channelEvent, const std::vector<
         LOG_MSG(WARN, "Got bad channel: {chan}").with("chan", theChan).log();
     }
 
+    // Both of the above read theChan, so both run before the armed action: an
+    // action may part or kick the channel empty, and then the object lives only
+    // as long as the holding list holds it.  The switch this replaced warned
+    // afterwards and depended on that.
     runArmedAction(whichEvent, channelEvent, aboutClient, theChan);
 }
 
