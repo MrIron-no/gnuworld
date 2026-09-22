@@ -665,11 +665,14 @@ nothing is formatted for a record that will be dropped.
 - `{{` and `}}` are literal `{` and `}`.
 - `{}` or `{:spec}` takes the next positional argument, formatted with
   `std::vformat("{:spec}", ...)` — any `std::format` spec works, e.g.
-  `"{:>5}"`.
+  `"{:>5}"`, save for a width or precision above 4096 (see below).
 - `{name}` (`name` matching `[A-Za-z0-9_]+`) is the first field of that key,
   substituted at **every** occurrence.
 - An unknown name, an exhausted positional argument, a spec `std::format`
-  rejects, and an unmatched `{` or lone `}` are all copied verbatim.
+  rejects, and an unmatched `{` or lone `}` are all copied verbatim — as is a
+  width or precision above 4096, which `std::format` itself would accept but
+  this renderer will not honour. Honouring one costs an allocation the size of
+  the width, and under libc++ the exception that follows escapes the render.
 
 Because substituted text is never rescanned, a value that happens to look
 like a placeholder is safe: `nick="{reason}"`, `reason="spam"`, template
