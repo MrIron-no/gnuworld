@@ -83,6 +83,29 @@ always writes to stderr, so every step's output is captured to a log in $dir and
 those logs are searched for UBSan's own first line, "runtime error:", which fails
 the run just as a report file does.
 
+FOUR HARNESS TESTS FAIL UNDER THIS GATE AND ALWAYS HAVE.  They are not a finding
+and they are not the event work: they fail identically at 491e2ac2, before the
+last four merges of that series, and one of them is a mod.dronescan test that
+fails at a commit where mod.dronescan had not been converted yet (measured
+2026-09-22, both trees, same four by name):
+
+	test_logging.py::test_irc_sink_delivers_a_notice_with_highlighted_value
+	test_logging.py::test_irc_sink_says_once_that_its_channel_does_not_exist
+	test_logging.py::test_reconnect_cycle_with_irc_sink_survives
+	test_prod_module_events.py::test_dronescan_watches_joins_and_parts_but_not_nick_changes
+
+Three causes, all about time rather than memory: two fixtures never get the
+daemon connected, one test carries its own @pytest.mark.timeout(90) which
+overrides whatever --timeout the gate is given, and the dronescan one loses the
+connection mid-test.  GNUWORLD_TEST_TIMEOUT_SCALE (which run.sh sets to 4, and
+test/harness/fake_hub.py applies to the budget a caller gives, not only to its
+own default) lengthened every wait enough to change how they fail without fixing
+them.  Whoever takes this on: the marker has to be scaled too, and the dronescan
+one needs its connection loss explained before its timeouts are touched.
+
+Until then: FOUR failures and no sanitizer report is this gate passing.  A fifth
+failure, or any report file, is not.
+
 ONE CASE ESCAPES BOTH, and it is the one to know about: the daemon's stderr.
 test/harness/gnuworld_proc.py starts gnuworld with stderr merged into the pipe it
 reads for wait_for_stdout, and does not print what it collects - so a UBSan
