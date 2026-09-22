@@ -86,8 +86,12 @@ done
 # ever run fills /tmp and the next run dies at the link with "No space left on
 # device", which looks nothing like the real problem.  So the previous one goes
 # before this one is made.  --keep is for a tree you mean to keep: take a copy.
+#
+# Only a tree whose run has finished is removed: the marker is written at the
+# end, so a run still going in another terminal keeps its tree, and a run that
+# was killed keeps its own until someone clears it by hand.
 for stale in "${TMPDIR:-/tmp}"/gnuworld-sanitize.*; do
-    [ -d "$stale" ] && rm -rf "$stale"
+    [ -f "$stale/.finished" ] && rm -rf "$stale"
 done
 
 dir=$(mktemp -d "${TMPDIR:-/tmp}/gnuworld-sanitize.XXXXXX")
@@ -301,6 +305,8 @@ if [ $failed -eq 0 ]; then
 else
     printf 'SOMETHING FAILED, see above.\n'
 fi
+
+: > "$dir/.finished"
 
 if [ "$keep" = yes ]; then
     printf 'the exported tree is kept (--keep): %s\n' "$dir"
