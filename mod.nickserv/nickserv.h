@@ -42,7 +42,7 @@ class nickserv : public xClient, public logging::logTarget {
      ***********************************************************/
 
     /** Receive a message for logging */
-    virtual void log(const logging::events::eventType&, const string&);
+    virtual void log(const logging::events::eventType&, const string&) override;
 
     /*******************************************************
      ** O V E R R I D E N   X C L I E N T   M E T H O D S **
@@ -55,25 +55,40 @@ class nickserv : public xClient, public logging::logTarget {
     virtual ~nickserv();
 
     /** This method is called after server connection */
-    virtual void BurstChannels();
+    virtual void BurstChannels() override;
+
+    /** This is called when a client logs in to an account */
+    virtual void OnAccount(iClient*) override;
 
     /** This is called when we have attached to the xServer */
-    virtual void OnAttach();
+    virtual void OnAttach() override;
 
-    /** This is called when a channel event we are listening for happens */
-    virtual void OnChannelEvent(const channelEventType&, Channel*, void*, void*, void*, void*);
+    /** This is called when a client joins a channel we watch during a burst */
+    virtual void OnBurstJoin(Channel*, iClient*, ChannelUser*) override;
 
     /** This is called when we receive a CTCP */
-    virtual void OnCTCP(iClient*, const string&, const string&, bool);
+    virtual void OnCTCP(iClient*, const string&, const string&, bool) override;
 
-    /** This is called when a network event happens */
-    virtual void OnEvent(const eventType&, void*, void*, void*, void*);
+    /** This is called when a client joins a channel we watch */
+    virtual void OnJoin(Channel*, iClient*, ChannelUser*) override;
+
+    /** This is called when a client is killed */
+    virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;
+
+    /** This is called when a client appears on the network */
+    virtual void OnNick(iClient*) override;
+
+    /** This is called when a client changes nick */
+    virtual void OnNickChange(iClient*, std::string_view) override;
 
     /** This method is called when the bot gets a PRIVMSG */
-    virtual void OnPrivateMessage(iClient*, const string&, bool secure);
+    virtual void OnPrivateMessage(iClient*, const string&, bool secure) override;
+
+    /** This is called when a client quits */
+    virtual void OnQuit(iClient*, std::string_view) override;
 
     /** This method is called when a timer expires */
-    virtual void OnTimer(const gnuworld::xServer::timerID&, void*);
+    virtual void OnTimer(const gnuworld::xServer::timerID&, void*) override;
 
     /*********************************
      ** N I C K S E R V   T Y P E S **
@@ -201,6 +216,17 @@ class nickserv : public xClient, public logging::logTarget {
 
     /** TimerID for processing the queue */
     gnuworld::xServer::timerID processQueue_timerID;
+
+  private:
+    /*******************************************
+     ** S H A R E D   E V E N T   B O D I E S **
+     *******************************************/
+
+    /** Op a client that has joined our console channel, if it has access */
+    void opConsoleJoin(Channel*, iClient*);
+
+    /** Drop everything we hold for a client that has left the network */
+    void forgetClient(iClient*);
 
 }; // class nickserv
 
