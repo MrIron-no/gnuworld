@@ -1043,6 +1043,29 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         Notice(theClient, "Timer {} registered", id);
         return;
     }
+    if (st[0] == "callbacktimer" && st.size() > 2) {
+        /* callbacktimer <seconds from now> <label>: a timer registered with a
+         * closure, which reports its own label when it runs -- there is no
+         * void* and no OnTimer() involved, so the label is the only way to tell
+         * which closure ran.
+         * callbacktimer cancel <id>: cancel one before it expires. */
+        if (st[1] == "cancel") {
+            const xServer::timerID id = atol(st[2].c_str());
+            const bool found = MyUplink->UnRegisterTimer(id);
+            Notice(theClient, "Callback timer {} {}", id, found ? "cancelled" : "not found");
+            return;
+        }
+
+        const string label = st.assemble(2);
+        const xServer::timerID id =
+            MyUplink->RegisterTimer(::time(nullptr) + atol(st[1].c_str()), this, [this, label]() {
+                if (!eventWatcher.empty()) {
+                    reportEvent("CallbackTimer", {label});
+                }
+            });
+        Notice(theClient, "Callback timer {} registered", id);
+        return;
+    }
     if (eventCommand(theClient, st)) {
         return;
     }
