@@ -5266,6 +5266,10 @@ void cservice::undoJoinLimits(sqlChannel* reggedChan) {
     }
     incStat("CORE.JOINLIM.ALTER");
 
+    /* The timer that brought us here is spent.  Forget its id, or ~sqlChannel()
+     * will later ask the server to cancel a timer that no longer exists and walk
+     * the whole queue to find out. */
+    reggedChan->setLimitJoinTimer(0);
     reggedChan->setLimitJoinActive(false);
 }
 

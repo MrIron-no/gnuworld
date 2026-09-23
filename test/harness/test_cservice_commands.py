@@ -11,6 +11,8 @@ out without the channel's timestamp.
 from __future__ import annotations
 
 import asyncio
+
+import fake_hub
 import itertools
 import os
 import time
@@ -244,7 +246,7 @@ async def test_purge_takes_the_joinlim_timer_with_the_channel(cservice_linked):
     await cs.run(hub, admin, f"purge {CHAN} testing")
 
     # Long enough for the timer to come due and X's handler to run
-    await asyncio.sleep(9.0)
+    await asyncio.sleep(9.0 * fake_hub.TIMEOUT_SCALE)
 
     returncode = proc.proc.returncode if proc.proc else "no process"
     assert returncode is None, (
