@@ -329,6 +329,21 @@ class cservice : public xClient {
     /* TimerID for checking prometheus metrics */
     xServer::timerID prometheus_timerID = 0;
 
+    /* Book each of the periodic timers above.  The timer runs its work and then
+     * calls the same method again to book the next one, so the timerID member
+     * is assigned in one place and the period is read afresh every time round.
+     */
+    void scheduleDbConnectionCheck();
+    void scheduleDbUpdate();
+    void scheduleExpireCheck();
+    void scheduleCacheExpire();
+    void schedulePendingCheck();
+    void schedulePendingNotify();
+    void scheduleLimitCheck();
+    void scheduleWebrelayCheck();
+    void scheduleChannelsFloodCheck();
+    void schedulePrometheusUpdate();
+
     /* Checks whether the SQL database connection is active. */
     void checkDbConnectionStatus();
 
