@@ -22,6 +22,7 @@
 #ifndef __GNUTEST_H
 #define __GNUTEST_H "$Id: gnutest.h,v 1.14 2005/01/17 23:09:54 dan_karrels Exp $"
 
+#include <list>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -209,6 +210,12 @@ class gnutest : public xClient {
      */
     virtual void OnTimer(const xServer::timerID&, void*) override;
 
+    /**
+     * Core destroyed a timer of ours without being asked.  Report the id and
+     * the payload it handed us, the same way an event is reported.
+     */
+    virtual void OnTimerDestroy(xServer::timerID, void*) override;
+
   protected:
     /**
      * Spawn a fake client.
@@ -327,6 +334,12 @@ class gnutest : public xClient {
      * I have no idea what this is.
      */
     std::string timerChan;
+
+    /**
+     * The payload of every timer "timer" registered, each one the void* handed
+     * to core.  A list, so that an address stays an address as more are added.
+     */
+    std::list<std::string> timerPayloads;
 
     /**
      * This type is used for the helpTable, which will store basic

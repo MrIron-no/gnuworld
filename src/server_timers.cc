@@ -201,7 +201,7 @@ void xServer::removeAllTimers(TimerHandler* theHandler) {
             // to the timer system internals here, it is safe
             // to simply call its OnTimerDestroy() method, even
             // though that method may call other xServer methods.
-            theHandler->OnTimerDestroy(thePair.first, thePair.second);
+            theHandler->OnTimerDestroy(thePair.second->ID, thePair.second->data);
 
             delete thePair.second;
         } else {
