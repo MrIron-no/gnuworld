@@ -230,6 +230,9 @@ void xServer::removeAllTimers(TimerHandler* theHandler) {
                 theHandler->OnTimerDestroy(thePair.second->ID, thePair.second->data);
             }
 
+            // This timer no longer exists, so neither does its id
+            uniqueTimerMap.erase(thePair.second->ID);
+
             delete thePair.second;
         } else {
             // Add it to the stack
