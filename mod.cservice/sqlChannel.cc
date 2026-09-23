@@ -112,7 +112,7 @@ sqlChannel::sqlChannel(cservice* _bot)
 #ifdef THERETURN_ENABLED
       hasw(false), w_ts(0),
 #endif
-      SQLDb(_bot->SQLDb) {
+      bot(_bot), SQLDb(_bot->SQLDb) {
 }
 
 bool sqlChannel::loadData(const string& channelName) {
@@ -646,6 +646,15 @@ void sqlChannel::ExpireMessagesForChannel(sqlChannel* theChan) {
 }
 
 sqlChannel::~sqlChannel() {
+    /* A pending JOINLIM timer was given this record as its argument, and the
+     * handler reads the record to tell whether the timer is the one it expects:
+     * a timer that outlives the record it names is a use-after-free. Cancelling
+     * here covers every place a record is deleted, this one's three and the
+     * fourth somebody adds later. */
+    if (limit_jointimerID) {
+        bot->stopTimer(limit_jointimerID);
+    }
+
     /* TODO: Clean up bans */
     chanFloodMap.clear();
 }
