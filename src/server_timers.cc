@@ -70,7 +70,7 @@ xServer::timerID xServer::RegisterTimer(const time_t& absTime, TimerHandler* the
     return ID;
 }
 
-bool xServer::UnRegisterTimer(const xServer::timerID& ID, void* data) {
+bool xServer::UnRegisterTimer(const xServer::timerID& ID) {
     // Make sure there are timers in the queue
     if (timerQueue.empty()) {
         // The timerQueue is empty -- the timerID specified
@@ -102,11 +102,6 @@ bool xServer::UnRegisterTimer(const xServer::timerID& ID, void* data) {
     if (!timerQueue.empty()) {
         // Find was successful
         foundTimer = true;
-
-        // Assign the timer argument back to "data"
-        if (data != 0) {
-            data = timerQueue.top().second->data;
-        }
 
         // Remove this timerID from the uniqueTimerMap
         uniqueTimerMap.erase(timerQueue.top().second->ID);
