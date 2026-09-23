@@ -27,6 +27,8 @@
 #include <optional>
 #include <format>
 #include <span>
+#include <concepts>
+#include <utility>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -741,6 +743,11 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     typedef TimerHandler::timerID timerID;
 
     /**
+     * The type used to represent what a timer runs when it expires.
+     */
+    typedef std::function<void()> timerCallback;
+
+    /**
      * Register for a timer event.  The first argument is the
      * absolute time at which the timed event is to occur.
      * The second argument is a pointer to an argument to be
@@ -749,6 +756,29 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     virtual timerID RegisterTimer(const time_t& absoluteTime, TimerHandler* theHandler,
                                   void* data = 0);
+
+    /**
+     * Register for a timer event which runs the given callback when it
+     * expires, rather than calling the handler's OnTimer() method.  The
+     * first argument is the absolute time at which the timed event is to
+     * occur, the second the owner of the timer.  The owner is there for one
+     * reason: removeAllTimers() must still cancel a module's timers when it
+     * unloads.  It is not handed to the callback, which captures whatever
+     * it needs.
+     * Cancelling such a timer, whether through UnRegisterTimer() or by the
+     * owner going away, simply discards the callback, and its captures are
+     * released with it.  OnTimerDestroy() is not called for a callback
+     * timer: that method belongs to the void* API above, and goes away with
+     * it once the last module has converted.
+     * Constrained to invocables taking no argument, so that the many calls
+     * passing a null void* still resolve to the overload above.
+     * Returns 0 on failure, a valid timerID otherwise.
+     */
+    template <typename F>
+        requires std::invocable<F>
+    timerID RegisterTimer(const time_t& absoluteTime, TimerHandler* owner, F&& callback) {
+        return registerCallbackTimer(absoluteTime, owner, timerCallback(std::forward<F>(callback)));
+    }
 
     /**
      * Remove a timed event from the timer system.
@@ -1435,6 +1465,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
                   void* _data = 0)
             : ID(_ID), absTime(_absTime), theHandler(_theHandler), data(_data) {}
 
+        /// Instantiate a new timerInfo structure for a timer which runs a
+        /// callback of its own instead of calling its owner's OnTimer().
+        timerInfo(const timerID& _ID, const time_t& _absTime, TimerHandler* _owner,
+                  timerCallback _callback)
+            : ID(_ID), absTime(_absTime), theHandler(_owner), data(0),
+              callback(std::move(_callback)) {}
+
         /// The unique identifier of this timer
         timerID ID;
 
@@ -1446,6 +1483,10 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
 
         /// The argument to pass to the handler
         void* data;
+
+        /// What to run when this timer expires; empty for a timer registered
+        /// through the void* API, whose handler is called instead
+        timerCallback callback;
     };
 
     /**
@@ -1468,6 +1509,14 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * Return a unique timerID.
      */
     virtual timerID getUniqueTimerID();
+
+    /**
+     * Queue one timer which runs the given callback when it expires.  This is
+     * what the RegisterTimer() callback template forwards to, so that the
+     * queue itself is touched from one place only.
+     */
+    virtual timerID registerCallbackTimer(const time_t& absoluteTime, TimerHandler* owner,
+                                          timerCallback callback);
 
     /**
      * Remove all timers registered by the given xClient.

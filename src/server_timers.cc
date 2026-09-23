@@ -70,6 +70,28 @@ xServer::timerID xServer::RegisterTimer(const time_t& absTime, TimerHandler* the
     return ID;
 }
 
+xServer::timerID xServer::registerCallbackTimer(const time_t& absTime, TimerHandler* owner,
+                                                timerCallback callback) {
+    assert(owner != 0);
+    assert(static_cast<bool>(callback));
+
+    // Retrieve a unique timerID
+    timerID ID = getUniqueTimerID();
+
+    // Allocate a timerInfo structure to represent this timer
+    timerInfo* ti = new (std::nothrow) timerInfo(ID, absTime, owner, std::move(callback));
+    assert(ti != 0);
+
+    // Add this timerInfo structure to the timerQueue
+    timerQueue.push(timerQueueType::value_type(absTime, ti));
+
+    // Add the unique timerID to the timerID map
+    uniqueTimerMap.insert(uniqueTimerMapType::value_type(ID, true));
+
+    // Return the valid timerID of this timer
+    return ID;
+}
+
 bool xServer::UnRegisterTimer(const xServer::timerID& ID) {
     // Make sure there are timers in the queue
     if (timerQueue.empty()) {
@@ -147,7 +169,13 @@ unsigned int xServer::CheckTimers() {
          * frame, a network object core removes waits for the main loop, and a
          * post waits its turn.  Same shape as xServer::dispatch(). */
         ++dispatchDepth;
-        info->theHandler->OnTimer(info->ID, info->data);
+        if (info->callback) {
+            // A timer registered with a callback runs that and nothing else:
+            // the closure already holds whatever the caller needed
+            info->callback();
+        } else {
+            info->theHandler->OnTimer(info->ID, info->data);
+        }
         --dispatchDepth;
 
         if (0 == dispatchDepth) {
@@ -196,7 +224,11 @@ void xServer::removeAllTimers(TimerHandler* theHandler) {
             // to the timer system internals here, it is safe
             // to simply call its OnTimerDestroy() method, even
             // though that method may call other xServer methods.
-            theHandler->OnTimerDestroy(thePair.second->ID, thePair.second->data);
+            // A timer registered with a callback has nothing to hand back:
+            // deleting it discards the closure, and its captures go with it.
+            if (!thePair.second->callback) {
+                theHandler->OnTimerDestroy(thePair.second->ID, thePair.second->data);
+            }
 
             delete thePair.second;
         } else {
