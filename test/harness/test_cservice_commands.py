@@ -10,6 +10,7 @@ out without the channel's timestamp.
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import os
 import time
@@ -214,6 +215,47 @@ async def test_joinlim_sets_its_modes_and_lifts_the_same_ones(cservice_linked):
     info = await chaninfo(hub, asker, CHAN)
     assert "D" not in info.modes and info.key is None
     assert "r" in info.modes, "X lifted a mode that was not its own"
+
+
+@pytest.mark.asyncio
+async def test_purge_takes_the_joinlim_timer_with_the_channel(cservice_linked):
+    """A channel purged while its JOINLIM timer is still pending.  The timer was
+    registered with the channel's own record as its argument, and PURGE frees
+    that record: X's timer handler read the freed record to decide whether the
+    timer was the one it expected, and lifted the modes of a channel that is no
+    longer registered."""
+    hub, proc = cservice_linked
+    CHAN, admin, _asker, _n, ts = await _setup(hub)
+    x = cs.numnick(hub)
+
+    for setting in ("joinlim on", "joinmax 2", "joinmode +Dk sekrit", "joinperiod 5"):
+        await cs.run(hub, admin, f"set {CHAN} {setting}")
+
+    after = len(hub.received)
+    for nick in ("purge1", "purge2", "purge3"):
+        numnick = await hub.introduce_nick(nick, username=f"~{nick}", host=f"{nick}.example.net")
+        await hub.send_raw(f"{numnick} J {CHAN} {ts}")
+
+    set_line = await hub.wait_for(lambda l: f"{x} M {CHAN} +" in l, timeout=15.0, after=after)
+    assert set_line.endswith(f"{x} M {CHAN} +Dk sekrit {ts}")
+
+    # The timer has five seconds to run; the purge takes its record away first
+    purged = len(hub.received)
+    await cs.run(hub, admin, f"purge {CHAN} testing")
+
+    # Long enough for the timer to come due and X's handler to run
+    await asyncio.sleep(9.0)
+
+    returncode = proc.proc.returncode if proc.proc else "no process"
+    assert returncode is None, (
+        f"gnuworld terminated (returncode={returncode}) after a purged channel's "
+        f"JOINLIM timer fired.\nRecent output:\n" + "\n".join(proc.stdout_lines[-20:])
+    )
+    # PURGE takes off 'R' itself, as the server: X's own lines are the tell
+    assert [line for line in hub.received[purged:] if f"{x} M {CHAN} -" in line] == [], (
+        "X lifted the JOINLIM modes of a channel it had purged: the timer still "
+        "held the freed record"
+    )
 
 
 @pytest.mark.asyncio

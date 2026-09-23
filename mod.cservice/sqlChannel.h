@@ -518,6 +518,7 @@ class sqlChannel {
     time_t w_ts;
 #endif // THERETURN_ENABLED
 
+    cservice* bot;
     dbHandle* SQLDb;
 };
 
