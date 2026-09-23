@@ -62,6 +62,9 @@ class TimerHandler {
      * timed event without being requested by the TimerHandler.
      * This can happen when the TimerHandler is being destroyed,
      * but has not removed all of its timers yet.
+     * The arguments are the same two OnTimer() receives: the
+     * handle for the timer registration, and the argument that
+     * was passed when registering the timer.
      */
     virtual void OnTimerDestroy(timerID, void*) {}
 };

@@ -159,7 +159,7 @@ void cloner::OnKill(const NetworkTarget*, iClient* victim, std::string_view) {
 void cloner::OnDetach(const string& reason) {
     MyUplink->UnRegisterChannelEvent(xServer::CHANNEL_ALL, this);
     MyUplink->UnRegisterEvent(EVT_KILL, this);
-    MyUplink->UnRegisterTimer(cycleCloneTimer, nullptr);
+    MyUplink->UnRegisterTimer(cycleCloneTimer);
 
     if (fakeServer && MyUplink->DetachServer(fakeServer)) {
         delete fakeServer;
@@ -353,7 +353,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
                 cycleRun = false;
                 cycleTime = 0;
                 cyclePercentage = 0.0;
-                MyUplink->UnRegisterTimer(cycleCloneTimer, nullptr);
+                MyUplink->UnRegisterTimer(cycleCloneTimer);
                 Notice(theClient, "Cycle stopped.");
                 return;
             } else {

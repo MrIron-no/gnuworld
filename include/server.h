@@ -752,11 +752,9 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
 
     /**
      * Remove a timed event from the timer system.
-     * If data is non-NULL, the timer argument passed to
-     * RegisterTimer() will be returned through data.
      * Return true if successful, false otherwise.
      */
-    virtual bool UnRegisterTimer(const timerID&, void* data);
+    virtual bool UnRegisterTimer(const timerID&);
 
     /**
      * This method is called by the xClient's to notify the network

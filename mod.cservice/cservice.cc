@@ -5273,16 +5273,16 @@ void cservice::undoJoinLimits(sqlChannel* reggedChan) {
     reggedChan->setLimitJoinActive(false);
 }
 
-void cservice::stopTimer(xServer::timerID timerID) { MyUplink->UnRegisterTimer(timerID, 0); }
+void cservice::stopTimer(xServer::timerID timerID) { MyUplink->UnRegisterTimer(timerID); }
 
 void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
     if (reggedChan->getLimitJoinActive()) {
         // When a new client joins, reset the JOINPERIOD to keep it alive
-        timerID tmpTimer = MyUplink->UnRegisterTimer(reggedChan->getLimitJoinTimer(), NULL);
+        MyUplink->UnRegisterTimer(reggedChan->getLimitJoinTimer());
 
         // Start new timer with remaining time + joinsecs
         time_t theTime = ::time(nullptr) + reggedChan->getLimitJoinPeriod();
-        tmpTimer = MyUplink->RegisterTimer(theTime, this, reggedChan);
+        timerID tmpTimer = MyUplink->RegisterTimer(theTime, this, reggedChan);
 
         reggedChan->setLimitJoinTimer(tmpTimer);
         reggedChan->setLimitJoinTimeExpire(theTime);

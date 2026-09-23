@@ -1087,9 +1087,9 @@ void dronescan::OnDetach(const std::string& message) {
     }
 
     /* Unregister the join counting timer */
-    if (!MyUplink->UnRegisterTimer(tidClearJoinCounter, 0) ||
-        !MyUplink->UnRegisterTimer(tidClearNickCounter, 0) ||
-        !MyUplink->UnRegisterTimer(tidClearActiveList, 0)) {
+    if (!MyUplink->UnRegisterTimer(tidClearJoinCounter) ||
+        !MyUplink->UnRegisterTimer(tidClearNickCounter) ||
+        !MyUplink->UnRegisterTimer(tidClearActiveList)) {
         elog << "dronescan::~dronescan> "
              << "Could not unregister timer. Expect problems shortly." << std::endl;
     }
@@ -1097,28 +1097,28 @@ void dronescan::OnDetach(const std::string& message) {
     /* Cancel pending spy client join timers */
     for (pendingJoinTimersType::iterator it = pendingJoinTimers.begin();
          it != pendingJoinTimers.end(); ++it) {
-        MyUplink->UnRegisterTimer(it->first, nullptr);
+        MyUplink->UnRegisterTimer(it->first);
     }
     pendingJoinTimers.clear();
 
     /* Cancel pending (delayed) spam action timers */
     for (pendingSpamActionTimersType::iterator it = pendingSpamActionTimers.begin();
          it != pendingSpamActionTimers.end(); ++it) {
-        MyUplink->UnRegisterTimer(it->first, nullptr);
+        MyUplink->UnRegisterTimer(it->first);
     }
     pendingSpamActionTimers.clear();
 
     /* Cancel pending spy client personal-quit timers */
     for (pendingSpyQuitTimersType::iterator it = pendingSpyQuitTimers.begin();
          it != pendingSpyQuitTimers.end(); ++it) {
-        MyUplink->UnRegisterTimer(it->first, nullptr);
+        MyUplink->UnRegisterTimer(it->first);
     }
     pendingSpyQuitTimers.clear();
 
     /* Cancel pending deferred spy client reintroductions */
     for (pendingSpyReintroduceTimersType::iterator it = pendingSpyReintroduceTimers.begin();
          it != pendingSpyReintroduceTimers.end(); ++it) {
-        MyUplink->UnRegisterTimer(it->first, nullptr);
+        MyUplink->UnRegisterTimer(it->first);
     }
     pendingSpyReintroduceTimers.clear();
 
@@ -1131,12 +1131,12 @@ void dronescan::OnDetach(const std::string& message) {
     chanSpyJoinRetryLastMap.clear();
 
     /* Stop the repeat-tracking GC timer and drop tracking state */
-    MyUplink->UnRegisterTimer(tidRepeatGC, nullptr);
+    MyUplink->UnRegisterTimer(tidRepeatGC);
     repeatTrackMap.clear();
 
     /* Stop the 2nd-spy-client-join and missing-spy-join sweep timers */
-    MyUplink->UnRegisterTimer(tidSecondSpyCheck, nullptr);
-    MyUplink->UnRegisterTimer(tidSpyJoinRetry, nullptr);
+    MyUplink->UnRegisterTimer(tidSecondSpyCheck);
+    MyUplink->UnRegisterTimer(tidSpyJoinRetry);
 
     /* Done! */
     xClient::OnDetach(message);
@@ -4096,7 +4096,7 @@ void dronescan::cancelPendingJoinTimers(const std::string& chanName) {
     for (pendingJoinTimersType::iterator it = pendingJoinTimers.begin();
          it != pendingJoinTimers.end();) {
         if (it->second.second == chanKey) {
-            MyUplink->UnRegisterTimer(it->first, nullptr);
+            MyUplink->UnRegisterTimer(it->first);
             pendingJoinTimers.erase(it++);
         } else {
             ++it;
@@ -4136,7 +4136,7 @@ void dronescan::cancelSpyClientPersonalQuit(int scId) {
     for (pendingSpyQuitTimersType::iterator it = pendingSpyQuitTimers.begin();
          it != pendingSpyQuitTimers.end();) {
         if (it->second == scId) {
-            MyUplink->UnRegisterTimer(it->first, nullptr);
+            MyUplink->UnRegisterTimer(it->first);
             pendingSpyQuitTimers.erase(it++);
         } else {
             ++it;
