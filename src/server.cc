@@ -172,6 +172,7 @@ void xServer::initializeVariables() {
     // Initialize more variables
     keepRunning = true;
     bursting = false;
+    burstSent = false;
     sendEA = true;
     sendEB = true;
     lastLoop = false;
