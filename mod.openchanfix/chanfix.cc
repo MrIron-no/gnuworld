@@ -378,59 +378,81 @@ void chanfix::OnAttach() {
     xClient::OnAttach();
 }
 
-/* OnTimer */
-void chanfix::OnTimer(const xServer::timerID& theTimer, void*) {
-    time_t theTime;
-    if (theTimer == tidGivePoints) {
+/*
+ * The module's timers.  Each of these books a timer whose callback does the
+ * work and then calls this same method again for the next run: the timerID
+ * member is assigned in one place, and the interval is read afresh every time
+ * round.  The callbacks capture the module, which outlives them -- the server
+ * cancels whatever is still pending when the module unloads.
+ */
+void chanfix::scheduleGivePoints() {
+    tidGivePoints = MyUplink->RegisterTimer(time(NULL) + POINTS_UPDATE_TIME, this, [this]() {
         /* 5 min timer, loop through channels and give all ops a point! */
         elog << "[C] - INFO  - Scoring cycle: awarding points to opped users." << std::endl;
         giveAllOpsPoints();
 
         /* Refresh Timer */
-        theTime = time(NULL) + POINTS_UPDATE_TIME;
-        tidGivePoints = MyUplink->RegisterTimer(theTime, this, NULL);
-    } else if (theTimer == tidAutoFix) {
+        scheduleGivePoints();
+    });
+}
+
+void chanfix::scheduleAutoFix() {
+    tidAutoFix = MyUplink->RegisterTimer(time(NULL) + CHECK_CHANS_TIME, this, [this]() {
         autoFix();
 
         /* Refresh Timer */
-        theTime = time(NULL) + CHECK_CHANS_TIME;
-        tidAutoFix = MyUplink->RegisterTimer(theTime, this, NULL);
-    } else if (theTimer == tidCheckDB) {
+        scheduleAutoFix();
+    });
+}
+
+void chanfix::scheduleCheckDB() {
+    tidCheckDB = MyUplink->RegisterTimer(time(NULL) + connectCheckFreq, this, [this]() {
         /*checkDBConnection();*/
 
         /* Refresh Timer */
-        theTime = time(NULL) + connectCheckFreq;
-        tidCheckDB = MyUplink->RegisterTimer(theTime, this, NULL);
-    } else if (theTimer == tidFixQ) {
+        scheduleCheckDB();
+    });
+}
+
+void chanfix::scheduleFixQueue() {
+    tidFixQ = MyUplink->RegisterTimer(time(NULL) + PROCESS_QUEUE_TIME, this, [this]() {
         processQueue();
 
         /* Refresh Timer */
-        theTime = time(NULL) + PROCESS_QUEUE_TIME;
-        tidFixQ = MyUplink->RegisterTimer(theTime, this, NULL);
+        scheduleFixQueue();
         setNextFix(currentTime() + PROCESS_QUEUE_TIME);
-    } else if (theTimer == tidRotateDB) {
+    });
+}
+
+void chanfix::scheduleRotateDB() {
+    tidRotateDB = MyUplink->RegisterTimer(time(NULL) + getSecsTilMidnight(), this, [this]() {
         /* Clean-up the database if its 00 GMT */
         rotateDB();
 
         /* Refresh Timer */
-        theTime = time(NULL) + getSecsTilMidnight();
-        tidRotateDB = MyUplink->RegisterTimer(theTime, this, NULL);
-    } else if (theTimer == tidUpdateDB) {
+        scheduleRotateDB();
+    });
+}
+
+void chanfix::scheduleUpdateDB() {
+    tidUpdateDB = MyUplink->RegisterTimer(time(NULL) + SQL_SYNC_TIME, this, [this]() {
         /* Sync dirty ops to the database */
         elog << "[C] - INFO  - SQL sync: writing dirty ops to database." << std::endl;
         syncToDB();
 
         /* Refresh Timer */
-        theTime = time(NULL) + SQL_SYNC_TIME;
-        tidUpdateDB = MyUplink->RegisterTimer(theTime, this, NULL);
-    } else if (theTimer == tidTempBlocks) {
+        scheduleUpdateDB();
+    });
+}
+
+void chanfix::scheduleTempBlocks() {
+    tidTempBlocks = MyUplink->RegisterTimer(time(NULL) + TEMPBLOCKS_CHECK_TIME, this, [this]() {
         /* Remove expired temporary blocks */
         expireTempBlocks();
 
         /* Refresh Timer */
-        theTime = time(NULL) + TEMPBLOCKS_CHECK_TIME;
-        tidTempBlocks = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
+        scheduleTempBlocks();
+    });
 }
 
 /* OnDetach */
@@ -2683,21 +2705,13 @@ chanfix::clientOpsType* chanfix::findMyOps(iClient* theClient) {
  * Start timers
  */
 void chanfix::startTimers() {
-    time_t theTime;
-    theTime = time(NULL) + connectCheckFreq;
-    tidCheckDB = MyUplink->RegisterTimer(theTime, this, NULL);
-    theTime = time(NULL) + CHECK_CHANS_TIME;
-    tidAutoFix = MyUplink->RegisterTimer(theTime, this, NULL);
-    theTime = time(NULL) + PROCESS_QUEUE_TIME;
-    tidFixQ = MyUplink->RegisterTimer(theTime, this, NULL);
-    theTime = time(NULL) + POINTS_UPDATE_TIME;
-    tidGivePoints = MyUplink->RegisterTimer(theTime, this, NULL);
-    theTime = time(NULL) + getSecsTilMidnight();
-    tidRotateDB = MyUplink->RegisterTimer(theTime, this, NULL);
-    theTime = time(NULL) + SQL_SYNC_TIME;
-    tidUpdateDB = MyUplink->RegisterTimer(theTime, this, NULL);
-    theTime = time(NULL) + TEMPBLOCKS_CHECK_TIME;
-    tidTempBlocks = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleCheckDB();
+    scheduleAutoFix();
+    scheduleFixQueue();
+    scheduleGivePoints();
+    scheduleRotateDB();
+    scheduleUpdateDB();
+    scheduleTempBlocks();
     elog << "chanfix::startTimers> Started all timers." << std::endl;
 }
 

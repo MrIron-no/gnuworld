@@ -339,8 +339,6 @@ class ccontrol : public xClient {
      */
     virtual void OnJoin(Channel*, iClient*, ChannelUser*, JoinKind) override;
 
-    virtual void OnTimer(const gnuworld::xServer::timerID&, void*) override;
-
     virtual void OnConnect() override;
 
     /**
@@ -1036,6 +1034,20 @@ class ccontrol : public xClient {
     gnuworld::xServer::timerID rpingCheck;
 
     gnuworld::xServer::timerID timeCheck;
+
+    /* Book each of the timers above.  The timer runs its work and then calls
+     * the same method again for the next run, so the timerID member is assigned
+     * in one place and the interval is read afresh every time round.  The ones
+     * whose first run is not a whole interval away take the time to run at.
+     */
+    void scheduleExpiredCheck();
+    void scheduleDbConnectionCheck();
+    void scheduleGlineQueueCheck();
+#ifndef LOGTOHD
+    void schedulePostDailyLog(time_t);
+#endif
+    void scheduleTimeCheck(time_t);
+    void scheduleRpingCheck(time_t);
 
     struct sort_pred {
         bool operator()(const std::pair<string, int>& left, const std::pair<string, int>& right) {

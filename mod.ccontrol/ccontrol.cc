@@ -708,16 +708,16 @@ void ccontrol::OnAttach() {
         ptr->second->setServer(MyUplink);
     }
 
-    expiredTimer = MyUplink->RegisterTimer(::time(0) + ExpiredInterval, this, NULL);
-    dbConnectionCheck = MyUplink->RegisterTimer(::time(0) + dbConnectionTimer, this, NULL);
-    glineQueueCheck = MyUplink->RegisterTimer(::time(0) + glineBurstInterval, this, NULL);
+    scheduleExpiredCheck();
+    scheduleDbConnectionCheck();
+    scheduleGlineQueueCheck();
 
 #ifndef LOGTOHD
     if (SendReport) {
         struct tm Now = convertToTmTime(::time(0));
         time_t theTime = ::time(0) + ((24 - Now.tm_hour) * 3600 -
                                       (Now.tm_min) * 60); // Set the daily timer to 24:00
-        postDailyLog = MyUplink->RegisterTimer(theTime, this, NULL);
+        schedulePostDailyLog(theTime);
     }
 #endif
     MyUplink->RegisterEvent(EVT_KILL, this);
@@ -1264,9 +1264,17 @@ void ccontrol::OnJoin(Channel* theChan, iClient* theClient, ChannelUser*, JoinKi
     opJoiningOper(theChan, theClient);
 }
 
-void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
+/**
+ * The module's timers.  Each of these books a timer whose callback does the
+ * work and then calls this same method again for the next run: the timerID
+ * member is assigned in one place, and the interval is read afresh every time
+ * round, so a rehash takes effect on the following run.  The callbacks capture
+ * the module, which outlives them -- the server cancels whatever is still
+ * pending when the module unloads.
+ */
 #ifndef LOGTOHD
-    if (timer_id == postDailyLog) {
+void ccontrol::schedulePostDailyLog(time_t theTime) {
+    postDailyLog = MyUplink->RegisterTimer(theTime, this, [this]() {
         // Create the lastcom report
         CreateReport(::time(0) - 24 * 3600, ::time(0));
 
@@ -1274,27 +1282,37 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
         MailReport(AbuseMail.c_str(), "Report.log");
 
         /* Refresh Timers */
-        time_t theTime = time(NULL) + 24 * 3600;
-        postDailyLog = MyUplink->RegisterTimer(theTime, this, NULL);
-    } else if (timer_id == expiredTimer)
-#else
-    if (timer_id == expiredTimer)
+        schedulePostDailyLog(time(NULL) + 24 * 3600);
+    });
+}
 #endif
-    {
+
+void ccontrol::scheduleExpiredCheck() {
+    expiredTimer = MyUplink->RegisterTimer(::time(0) + ExpiredInterval, this, [this]() {
         refreshGlines();
         refreshIgnores();
         refreshSuspention();
         refreshIauthEntries();
-        expiredTimer = MyUplink->RegisterTimer(::time(0) + ExpiredInterval, this, NULL);
-    } else if (timer_id == dbConnectionCheck) {
-        checkDbConnection();
-        dbConnectionCheck = MyUplink->RegisterTimer(::time(0) + dbConnectionTimer, this, NULL);
-    } else if (timer_id == glineQueueCheck) {
-        processGlineQueue();
-        glineQueueCheck = MyUplink->RegisterTimer(::time(0) + glineBurstInterval, this, NULL);
-    }
+        scheduleExpiredCheck();
+    });
+}
 
-    else if (timer_id == timeCheck) {
+void ccontrol::scheduleDbConnectionCheck() {
+    dbConnectionCheck = MyUplink->RegisterTimer(::time(0) + dbConnectionTimer, this, [this]() {
+        checkDbConnection();
+        scheduleDbConnectionCheck();
+    });
+}
+
+void ccontrol::scheduleGlineQueueCheck() {
+    glineQueueCheck = MyUplink->RegisterTimer(::time(0) + glineBurstInterval, this, [this]() {
+        processGlineQueue();
+        scheduleGlineQueueCheck();
+    });
+}
+
+void ccontrol::scheduleTimeCheck(time_t theTime) {
+    timeCheck = MyUplink->RegisterTimer(theTime, this, [this]() {
         refreshExcessiveConnNotif();
         ccServer* TmpServer;
         for (serversconstiterator ptr = serversMap_begin(); ptr != serversMap_end(); ++ptr) {
@@ -1304,10 +1322,14 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
                       TmpServer->getNetServer()->getCharYY().c_str());
             }
         }
-        timeCheck = MyUplink->RegisterTimer(::time(0) + 7200, this, NULL);
-    } else if (timer_id == rpingCheck) {
+        scheduleTimeCheck(::time(0) + 7200);
+    });
+}
+
+void ccontrol::scheduleRpingCheck(time_t theTime) {
+    rpingCheck = MyUplink->RegisterTimer(theTime, this, [this]() {
         if (myHub == NULL) {
-            rpingCheck = MyUplink->RegisterTimer(::time(0) + 60, this, NULL);
+            scheduleRpingCheck(::time(0) + 60);
             return;
         }
         timeval now = {0, 0};
@@ -1378,13 +1400,13 @@ void ccontrol::OnTimer(const xServer::timerID& timer_id, void*) {
             }
             // BG RI C] BGAAA 1246224483 960943 :1246224474
         }
-        rpingCheck = MyUplink->RegisterTimer(::time(0) + 3, this, NULL);
-    }
+        scheduleRpingCheck(::time(0) + 3);
+    });
 }
 
 void ccontrol::OnConnect() {
-    rpingCheck = MyUplink->RegisterTimer(::time(0) + 60, this, NULL);
-    timeCheck = MyUplink->RegisterTimer(::time(0) + 300, this, NULL);
+    scheduleRpingCheck(::time(0) + 60);
+    scheduleTimeCheck(::time(0) + 300);
 
     iServer* tmpServer = Network->findServer(getUplink()->getUplinkCharYY());
     ccServer* tServer = getServer(tmpServer->getName());
