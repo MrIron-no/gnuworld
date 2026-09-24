@@ -3088,31 +3088,6 @@ void cservice::schedulePrometheusUpdate() {
     });
 }
 
-/**
- * Timer handler.
- * The JOINLIM timers are the last that still arrive here: they are registered
- * with the channel's own record as their argument, and this recovers the
- * channel from it.
- */
-void cservice::OnTimer(const xServer::timerID& timer_id, void* parms) {
-    /**
-     * If the timer is called with a param, we check:
-     * 1: Whether the param is a sqlChannel object; and
-     * 2: Whether the timer_id mathes the sqlChannel's getLimitJoinTimer()
-     */
-
-    if (parms != nullptr) {
-        LOG(TRACE, "Called with parms (JOINLIM)");
-        sqlChannel* sqlChan = static_cast<sqlChannel*>(parms);
-        if (sqlChan != nullptr && sqlChan->getLimitJoinTimer() == timer_id &&
-            sqlChan->getLimitJoinActive()) {
-            undoJoinLimits(sqlChan);
-            LOG(DEBUG, "Calling undoJoinLimits for {} (ID: {})", sqlChan->getName(),
-                sqlChan->getID());
-        }
-    }
-}
-
 void cservice::updatePrometheusMetrics() {
     if (!prometheus)
         return;
@@ -5271,17 +5246,29 @@ void cservice::undoJoinLimits(sqlChannel* reggedChan) {
 
 void cservice::stopTimer(xServer::timerID timerID) { MyUplink->UnRegisterTimer(timerID); }
 
+void cservice::scheduleJoinLimitLift(sqlChannel* reggedChan, const time_t& when) {
+    /* The callback holds the record, rather than looking the channel up again
+     * when it runs: these timers are reset on every unidented join, and a
+     * lookup each time is what that would cost.  ~sqlChannel() cancels the
+     * timer, so a record is never freed while its timer can still run. */
+    reggedChan->setLimitJoinTimer(MyUplink->RegisterTimer(when, this, [this, reggedChan]() {
+        if (!reggedChan->getLimitJoinActive())
+            return;
+
+        LOG(DEBUG, "Calling undoJoinLimits for {} (ID: {})", reggedChan->getName(),
+            reggedChan->getID());
+        undoJoinLimits(reggedChan);
+    }));
+    reggedChan->setLimitJoinTimeExpire(when);
+}
+
 void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
     if (reggedChan->getLimitJoinActive()) {
         // When a new client joins, reset the JOINPERIOD to keep it alive
         MyUplink->UnRegisterTimer(reggedChan->getLimitJoinTimer());
 
         // Start new timer with remaining time + joinsecs
-        time_t theTime = ::time(nullptr) + reggedChan->getLimitJoinPeriod();
-        timerID tmpTimer = MyUplink->RegisterTimer(theTime, this, reggedChan);
-
-        reggedChan->setLimitJoinTimer(tmpTimer);
-        reggedChan->setLimitJoinTimeExpire(theTime);
+        scheduleJoinLimitLift(reggedChan, ::time(nullptr) + reggedChan->getLimitJoinPeriod());
 
         return; // We are already active, just reset the timer
     }
@@ -5358,12 +5345,10 @@ void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
         Mode(theChan, "+" + letters, args, false);
 
         // Register a timer to lift this
-        time_t theTime = time(NULL) + reggedChan->getLimitJoinPeriod();
         if (reggedChan->getLimitJoinTimer() > 0)
             stopTimer(reggedChan->getLimitJoinTimer()); // Unregister old one
 
-        reggedChan->setLimitJoinTimer(MyUplink->RegisterTimer(theTime, this, reggedChan));
-        reggedChan->setLimitJoinTimeExpire(theTime);
+        scheduleJoinLimitLift(reggedChan, ::time(nullptr) + reggedChan->getLimitJoinPeriod());
 
         incStat("CORE.JOINLIM.ALTER");
     }

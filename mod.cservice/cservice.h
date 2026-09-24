@@ -477,7 +477,6 @@ class cservice : public xClient {
 
     virtual void OnCTCP(iClient* Sender, const string& CTCP, const string& Message,
                         bool Secure = false) override;
-    virtual void OnTimer(const xServer::timerID&, void*) override;
     virtual void OnJoin(const std::string&) override;
     virtual bool Notice(const iClient*, const string&) override;
 
@@ -939,6 +938,13 @@ class cservice : public xClient {
 
     void updateLimits();
     void undoJoinLimits(sqlChannel* reggedChan);
+
+    /* Book the timer that lifts a channel's JOINLIM modes at the given time,
+     * and record it on the channel, which is what stopTimer() and the JOINLIM
+     * logic read.  The timer holds the record itself: ~sqlChannel() cancels it,
+     * and that is what keeps the record good for as long as the timer can run.
+     */
+    void scheduleJoinLimitLift(sqlChannel* reggedChan, const time_t& when);
 
     bool addGline(csGline*);
     bool remGline(csGline*);
