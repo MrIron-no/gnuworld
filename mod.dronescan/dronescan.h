@@ -23,6 +23,7 @@
 #include <deque>
 #include <list>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -180,9 +181,6 @@ class dronescan : public xClient {
     /** When the xServer is processing a real shutdown */
     virtual void OnShutdown(const std::string& reason) override;
 
-    /** Receive our own timed events. */
-    virtual void OnTimer(const xServer::timerID&, void*) override;
-
     /*****************************************
      ** D R O N E S C A N   T Y P E D E F S **
      *****************************************/
@@ -207,6 +205,27 @@ class dronescan : public xClient {
 
     /** Process the gline queue */
     void processGlineQueue();
+
+    /* Book each of our periodic timers. The timer does its work and then calls
+     * the same method again for the next run, so the timerID member each one is
+     * recorded in is assigned in one place, and the interval is read afresh
+     * every time round.
+     */
+    void scheduleClearActiveList();
+    void scheduleClearJoinCounter();
+    void scheduleClearNickCounter();
+    void scheduleGlineQueue();
+    void scheduleRepeatGC();
+    void scheduleSecondSpyCheck();
+    void scheduleSpyJoinRetry();
+
+    /* A one-shot timer that is tracked in one of the pending*Timers maps below
+     * needs to find its own entry when it fires, and its id is only known once
+     * it has been booked. Holder in hand first, id written into it after the
+     * booking, and the callback reads it through the holder it shares with us.
+     */
+    typedef std::shared_ptr<xServer::timerID> timerIDHolder;
+    static timerIDHolder newTimerIDHolder() { return std::make_shared<xServer::timerID>(0); }
 
     /** Report a SQL error to the appropriate places. */
     void doSqlError(const std::string&, const std::string&);
@@ -390,7 +409,7 @@ class dronescan : public xClient {
                          iClient* spyTarget);
     // Runs a single already-resolved action (GLINE/KILL only - REPORT was
     // removed). Called either directly from fireRuleActions (no delay) or
-    // from OnTimer, once a PendingSpamAction's timer fires. Never prints to
+    // from a PendingSpamAction's own timer, once it fires. Never prints to
     // console (that happens once, up front, in fireRuleActions); only queues
     // the GLINE / calls Kill() and writes the log4cplus audit line.
     void executeSpamAction(const std::string& actionType, const std::string& reason, int duration,
@@ -706,7 +725,7 @@ class dronescan : public xClient {
     // in-progress network event processing (EVT_KILL/EVT_QUIT) where the
     // departing client isn't fully removed from the network's own tables
     // yet - reintroducing synchronously there risks corrupting our own
-    // tracking maps. See OnTimer()'s handling of this map.
+    // tracking maps. Each entry is dropped by its own timer when it fires.
     typedef std::map<xServer::timerID, int> pendingSpyReintroduceTimersType;
     pendingSpyReintroduceTimersType pendingSpyReintroduceTimers;
 

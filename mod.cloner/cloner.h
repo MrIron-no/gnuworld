@@ -54,7 +54,6 @@ class cloner : public xClient {
     virtual void OnAttach() override;
     virtual void OnConnect() override;
     virtual void OnDetach(const string&) override;
-    virtual void OnTimer(const xServer::timerID&, void*) override;
 
     /// A clone that the network kills is gone: forget it.
     virtual void OnKill(const NetworkTarget*, iClient*, std::string_view) override;
@@ -73,9 +72,19 @@ class cloner : public xClient {
     virtual size_t quitClone(iClient*, const string);
     virtual bool banMatch(const Channel*, const iClient*);
 
-    gnuworld::xServer::timerID loadCloneTimer;
+    gnuworld::xServer::timerID loadCloneTimer = 0;
     gnuworld::xServer::timerID cycleCloneTimer = 0;
     gnuworld::xServer::timerID delayJoinTimer = 0;
+
+    /* Book each of the timers above.  The timer runs its work and then calls
+     * the same method again for the next run where it has one, so the timerID
+     * member is assigned in one place and the period is read afresh every time
+     * round.  The callbacks capture the module, which outlives them: the server
+     * cancels whatever is still pending when the module unloads.
+     */
+    void scheduleCloneLoad();
+    void scheduleCycle();
+    void scheduleDelayedJoin();
 
     virtual bool hasAccess(const std::string&) const;
 
