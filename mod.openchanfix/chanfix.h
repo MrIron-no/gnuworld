@@ -75,8 +75,6 @@ class chanfix : public xClient {
      */
     virtual ~chanfix();
 
-    virtual void OnTimer(const gnuworld::xServer::timerID&, void*) override;
-
     /**
      * This method is called when a network client sends
      * a private message (PRIVMSG or NOTICE) to this xClient.
@@ -521,6 +519,19 @@ class chanfix : public xClient {
     xServer::timerID tidRotateDB;
     xServer::timerID tidUpdateDB;
     xServer::timerID tidTempBlocks;
+
+    /**
+     * Book each of the timers above.  The timer runs its work and then calls
+     * the same method again for the next run, so the timerID member is assigned
+     * in one place and the interval is read afresh every time round.
+     */
+    void scheduleCheckDB();
+    void scheduleAutoFix();
+    void scheduleFixQueue();
+    void scheduleGivePoints();
+    void scheduleRotateDB();
+    void scheduleUpdateDB();
+    void scheduleTempBlocks();
 
     /**
      * Internal timer
