@@ -145,7 +145,11 @@ async def test_a_timer_left_behind_by_a_detached_owner_never_runs(gnutest_linked
     victim = await hub.introduce_nick("victim", username="victim")
 
     await gt.run(hub, asker, "events on")
-    left = registered_id(await gt.run(hub, asker, f"callbacktimer {LEFT_BEHIND_SECONDS} orphan"))
+    # The delay is scaled like every other budget here: the daemon itself runs
+    # slower under a sanitizer or a loaded machine, and an expiry that overtook
+    # the detach would fail this for the opposite of the reason it exists
+    left_behind = int(LEFT_BEHIND_SECONDS * fake_hub.TIMEOUT_SCALE)
+    left = registered_id(await gt.run(hub, asker, f"callbacktimer {left_behind} orphan"))
     assert left != "0"
 
     await gt.run(hub, asker, "onevent Quit detachself")
@@ -156,7 +160,7 @@ async def test_a_timer_left_behind_by_a_detached_owner_never_runs(gnutest_linked
     await hub.wait_for(lambda line: line.startswith(f"{gone} Q "), timeout=30.0)
 
     # Wait out the timer the departed instance registered
-    await asyncio.sleep((LEFT_BEHIND_SECONDS + 3) * fake_hub.TIMEOUT_SCALE)
+    await asyncio.sleep(left_behind + 3 * fake_hub.TIMEOUT_SCALE)
 
     assert proc.proc is not None and proc.proc.returncode is None, "gnuworld died"
     assert reported(hub, start, "CallbackTimer") == []
