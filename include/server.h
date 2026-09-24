@@ -1032,6 +1032,19 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     inline time_t getBurstEnd() const { return burstEnd; }
 
     /**
+     * Record that our own clients and channels have been burst to the
+     * uplink.
+     * This method should ONLY be called by the server command handlers.
+     */
+    inline void setBurstSent() { burstSent = true; }
+
+    /**
+     * True once our own clients and channels have been burst to the uplink
+     * on this connection.
+     */
+    inline bool getBurstSent() const { return burstSent; }
+
+    /**
      * Set the time of the most recent start of burst.
      * This method should ONLY be called by the server command
      * handlers.
@@ -1731,6 +1744,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * This variable is true when this server is bursting.
      */
     bool bursting;
+
+    /**
+     * This variable is true once our own clients and channels have been
+     * burst to the uplink.  A new uplink is a new xServer (see main()), so
+     * it is only ever set, never cleared.
+     */
+    bool burstSent;
 
     /**
      * This variable is set to true to indicate that the server

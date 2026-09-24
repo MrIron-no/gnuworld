@@ -66,11 +66,23 @@ bool msg_EB::Execute(const xParameters& params) {
         // normal output buffer
         theServer->setUseHoldBuffer(false);
 
-        // Burst our clients
-        theServer->BurstClients();
+        // Our own burst goes out once per uplink connection.  An uplink
+        // sends EB once, but a second one would introduce every local
+        // client and channel all over again, and hand every module another
+        // OnConnect() and BurstChannels() to arm its timers from - and
+        // nothing ever cancels the first set.
+        if (theServer->getBurstSent()) {
+            LOG(WARN, "Repeated end of burst from our uplink {}, not bursting again",
+                theServer->getUplink()->getName());
+        } else {
+            theServer->setBurstSent();
 
-        // Burst our channels
-        theServer->BurstChannels();
+            // Burst our clients
+            theServer->BurstClients();
+
+            // Burst our channels
+            theServer->BurstChannels();
+        }
 
         // Only need EB to be sent to turn off bursting, since after
         // EB no bursts can be sent
