@@ -30,22 +30,27 @@ namespace gnuworld {
 
 using std::string;
 
-void GlineUpdateTimer::OnTimer(const timerID&, void*) {
-    // Remove any expired glines
-    theServer->updateGlines();
+void GlineUpdateTimer::schedule() {
+    theServer->RegisterTimer(::time(0) + updateInterval, this, [this]() {
+        // Remove any expired glines
+        theServer->updateGlines();
 
-    // Re-register this timer
-    theServer->RegisterTimer(::time(0) + updateInterval, this, 0);
+        // Book the next run
+        schedule();
+    });
 }
 
-void PINGTimer::OnTimer(const timerID&, void*) {
-    string writeMe(theServer->getCharYY());
-    writeMe += " G :I am the King, bow before me!\n";
+void PINGTimer::schedule() {
+    theServer->RegisterTimer(::time(0) + updateInterval, this, [this]() {
+        string writeMe(theServer->getCharYY());
+        writeMe += " G :I am the King, bow before me!\n";
 
-    theServer->RegisterTimer(::time(0) + updateInterval, this, 0);
+        // Book the next run
+        schedule();
 
-    // Write to the network, even during bursting
-    theServer->WriteDuringBurst(writeMe);
+        // Write to the network, even during bursting
+        theServer->WriteDuringBurst(writeMe);
+    });
 }
 
 } // namespace gnuworld

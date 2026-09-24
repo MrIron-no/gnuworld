@@ -605,8 +605,8 @@ async def test_the_unload_of_a_detached_module_waits_for_the_whole_line(
 async def test_a_module_unloaded_from_its_own_timer_comes_back(two_gnutests_linked_p11):
     """mod.gnutest's "reload" is xServer::UnloadClient() followed by
     LoadClient(), both of which run from a timer: the unload is therefore asked
-    for from inside OnTimer, where the module's own frame is live, and is
-    deferred past it.
+    for from inside a timer's callback, where the module's own frame is live,
+    and is deferred past it.
 
     The daemon survives, the xClient is deleted and lt_dlclose() called with
     nothing of the module's own on the stack, and the load that follows brings

@@ -26,10 +26,13 @@
 namespace gnuworld {
 
 /**
- * This is the abstract base class used in the GNUWorld timer system.
- * All timer handlers must subclass this class, and define the
- * abstract method OnTimer().  The OnTimer() method will be called
- * by the timer system when the timer has expired.
+ * This is the base class used in the GNUWorld timer system, and it is
+ * nothing but the identity of a timer's owner: a timer runs the callback
+ * it was registered with, so there is no method here for it to call.
+ * What the owner is for is removeAllTimers(), which cancels every timer
+ * whose owner is the one it is given, and so needs one type common to
+ * everything that can own a timer -- every xClient, and the server core's
+ * own timer handlers, which are not xClients.
  */
 class TimerHandler {
 
@@ -48,38 +51,7 @@ class TimerHandler {
      * The type used to represent timer events.
      */
     typedef unsigned int timerID;
-
-    /**
-     * Handle a timer event.  The first argument is the
-     * handle for the timer registration, and the second
-     * is the argument that was passed when registering the
-     * timer.
-     */
-    virtual void OnTimer(const timerID&, void*) = 0;
-
-    /**
-     * This method is invoked when the server removes a
-     * timed event without being requested by the TimerHandler.
-     * This can happen when the TimerHandler is being destroyed,
-     * but has not removed all of its timers yet.
-     * The arguments are the same two OnTimer() receives: the
-     * handle for the timer registration, and the argument that
-     * was passed when registering the timer.
-     */
-    virtual void OnTimerDestroy(timerID, void*) {}
 };
-
-/**
- * This macro is meant to assist in creating new subclasses of
- * the TimerHandler class.
- */
-#define SUBCLASS_TIMERHANDLER(className)                                                           \
-    class className##Timer : public TimerHandler {                                                 \
-      public:                                                                                      \
-        className##Timer() {}                                                                      \
-        virtual ~className##Timer() {}                                                             \
-        virtual void OnTimer(timerID, void*);                                                      \
-    };
 
 } // namespace gnuworld
 

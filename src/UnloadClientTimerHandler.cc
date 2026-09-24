@@ -29,10 +29,12 @@
 
 namespace gnuworld {
 
-void UnloadClientTimerHandler::OnTimer(const timerID&, void*) {
-    theServer->DetachClientIfLoaded(theClient, reason);
+void UnloadClientTimerHandler::schedule() {
+    theServer->RegisterTimer(::time(0) + updateInterval, this, [this]() {
+        theServer->DetachClientIfLoaded(theClient, reason);
 
-    delete this;
+        delete this;
+    });
 }
 
 } // namespace gnuworld

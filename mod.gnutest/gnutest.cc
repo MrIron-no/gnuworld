@@ -141,17 +141,6 @@ static string glineMaskOf(const Gline* theGline) {
 
 static string stringOf(std::string_view text) { return text.empty() ? string("-") : string(text); }
 
-/// The payload "timer" registered at this address, "?" for anything else: what
-/// is not one of ours is not ours to dereference either
-static string payloadOf(const std::list<string>& payloads, const void* data) {
-    for (const string& payload : payloads) {
-        if (static_cast<const void*>(&payload) == data) {
-            return payload;
-        }
-    }
-    return string("?");
-}
-
 /**
  * The source of a kill, which is the one thing an event hands over whose type
  * is still not said: a client, a server, or null when one of our own modules
@@ -1033,21 +1022,10 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
         Notice(theClient, "{}: {}", st[1], isOnChannel(st[1]) ? "yes" : "no");
         return;
     }
-    if (st[0] == "timer" && st.size() > 2) {
-        /* timer <seconds from now> <payload>: a timer whose void* is one of our
-         * own strings, so that whatever core hands back for it can be told
-         * apart from core's own internals. */
-        timerPayloads.push_back(st.assemble(2));
-        const xServer::timerID id = MyUplink->RegisterTimer(::time(nullptr) + atol(st[1].c_str()),
-                                                            this, &timerPayloads.back());
-        Notice(theClient, "Timer {} registered", id);
-        return;
-    }
     if (st[0] == "callbacktimer" && st.size() > 2) {
         /* callbacktimer <seconds from now> <label>: a timer registered with a
-         * closure, which reports its own label when it runs -- there is no
-         * void* and no OnTimer() involved, so the label is the only way to tell
-         * which closure ran.
+         * closure, which reports its own label when it runs -- the label is the
+         * only way to tell which closure ran.
          * callbacktimer cancel <id>: cancel one before it expires. */
         if (st[1] == "cancel") {
             const xServer::timerID id = atol(st[2].c_str());
@@ -1109,12 +1087,20 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
             return;
         }
 
-        xServer::timerID id = MyUplink->RegisterTimer(::time(0) + 60, this);
+        const string chanName = theChan->getName();
+        xServer::timerID id = MyUplink->RegisterTimer(::time(0) + 60, this, [this, chanName]() {
+            Channel* thePlace = Network->findChannel(chanName);
+            if (NULL == thePlace) {
+                LOG(WARN, "Unable to find channel: {}", chanName);
+                return;
+            }
+
+            Message(thePlace, "Respect my authoritah!");
+        });
         if (0 == id) {
             Notice(theClient, "Failed");
         } else {
             Notice(theClient, "Scheduled for 1 minute from now");
-            timerChan = theChan->getName();
         }
     } else if (st[0] == "spawnclient") {
         spawnClient(theClient, st);
@@ -1357,24 +1343,6 @@ void gnutest::spawnClient(iClient* requestingClient, const StringTokenizer& st) 
         Notice(requestingClient, "Created new client {}", nickName);
         LOG_MSG(INFO, "Added client: {client}").with("client", newClient).log();
     }
-}
-
-void gnutest::OnTimer(const xServer::timerID&, void*) {
-    Channel* theChan = Network->findChannel(timerChan);
-    if (NULL == theChan) {
-        LOG(WARN, "Unable to find channel: {}", timerChan);
-        return;
-    }
-
-    Message(theChan, "Respect my authoritah!");
-}
-
-void gnutest::OnTimerDestroy(xServer::timerID id, void* data) {
-    if (!eventWatcher.empty()) {
-        reportEvent("TimerDestroy", {std::to_string(id), payloadOf(timerPayloads, data)});
-    }
-
-    xClient::OnTimerDestroy(id, data);
 }
 
 void gnutest::OnFakeChannelCTCP(iClient* srcClient, iClient* fakeClient, Channel* theChan,

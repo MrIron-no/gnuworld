@@ -179,8 +179,7 @@ void nickserv::OnAttach() {
      * Note: We add startDelay here to allow for a longer delay before checking
      * when we first link to the net
      */
-    time_t theTime = time(NULL) + startDelay;
-    processQueue_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleProcessQueue(startDelay);
 
     xClient::OnAttach();
 }
@@ -342,18 +341,15 @@ void nickserv::OnPrivateMessage(iClient* theClient, const string& Message, bool)
 }
 
 /**
- * When a timer expires, this function is called. It allows for periodic
- * processing of data.
+ * The queue processing timer.  Its callback works the queue and books the next
+ * run, so the module keeps processing periodically for as long as it is loaded.
  */
-void nickserv::OnTimer(const xServer::timerID& theTimer, void*) {
-    if (theTimer == processQueue_timerID) {
+void nickserv::scheduleProcessQueue(time_t delay) {
+    processQueue_timerID = MyUplink->RegisterTimer(::time(NULL) + delay, this, [this]() {
         processQueue();
-
-        time_t theTime = time(NULL) + checkFreq;
-        processQueue_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    } // if(theTimer == processQueue_timerID)
-
-} // nickserv::OnTimer(xServer::timerID, void*)
+        scheduleProcessQueue(checkFreq);
+    });
+} // nickserv::scheduleProcessQueue(time_t)
 
 /**
  * This is where we register a command so that users can interact

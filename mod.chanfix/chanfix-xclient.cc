@@ -32,10 +32,7 @@ void chanfix::OnAttach() {
     xClient::OnAttach();
 
     /* Lastly, kick off any timers we might need */
-    time_t next;
-
-    next = ::time(0) + confStartDelay;
-    timerCount = MyUplink->RegisterTimer(next, this, 0);
+    scheduleCountUpdate(confStartDelay);
 }
 
 void chanfix::BurstChannels() {
@@ -83,20 +80,12 @@ void chanfix::OnPrivateMessage(iClient* theClient, const std::string& Message, b
     commandHandler->second->Exec(theClient, Message);
 }
 
-void chanfix::OnTimer(const TimerHandler::timerID& theTimer, void* _data) {
-    xClient::OnTimer(theTimer, _data);
-
-    time_t next = ::time(0);
-
-    if (theTimer == timerCount) {
+void chanfix::scheduleCountUpdate(time_t delay) {
+    timerCount = MyUplink->RegisterTimer(::time(0) + delay, this, [this]() {
         doCountUpdate();
 
-        next += confPeriod;
-
-        timerCount = MyUplink->RegisterTimer(next, this, 0);
-    } else {
-        assert(0);
-    }
+        scheduleCountUpdate(confPeriod);
+    });
 }
 
 } // namespace chanfix

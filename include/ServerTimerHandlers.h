@@ -36,8 +36,9 @@ class xServer;
  * This is the abstract base class from which each timer to be used
  * by the GNUWorld server core must derive.  Each server timer
  * must inherit from this class, and define the abstract method
- * OnTimer().  The OnTimer() method will be called by the timer
- * system when the timer expires.
+ * schedule(), which books the timer that runs it.  The handler is
+ * the owner of that timer, so it is the handler, and never one of
+ * the clients, that removeAllTimers() would match the timer to.
  */
 class ServerTimerHandler : public TimerHandler {
   public:
@@ -56,14 +57,12 @@ class ServerTimerHandler : public TimerHandler {
     virtual ~ServerTimerHandler() {}
 
     /**
-     * This method is called when the timer expires.  The timerID
-     * argument is registration ID of the timer.  The void*
-     * argument is a pointer to whatever data was given during
-     * timer registration.  Make sure that this data is placed
-     * into persistent memory, otherwise a segmentation fault
-     * may occur when running OnTimer().
+     * Book the timer that runs this handler.  The callback the timer
+     * carries does the handler's work, and a handler that runs
+     * periodically books its next run from in there by calling this
+     * method again.
      */
-    virtual void OnTimer(const timerID&, void*) = 0;
+    virtual void schedule() = 0;
 
   protected:
     /**
@@ -79,7 +78,7 @@ class ServerTimerHandler : public TimerHandler {
 
 /**
  * This macro is used to create a generic subclass of class
- * ServerTimerHandler, and to declare the OnTimer() method as
+ * ServerTimerHandler, and to declare the schedule() method as
  * concrete.
  */
 #define SUBCLASS_SERVERTIMERHANDLER(className)                                                     \
@@ -88,7 +87,7 @@ class ServerTimerHandler : public TimerHandler {
         className##Timer(xServer* theServer, time_t updateInterval)                                \
             : ServerTimerHandler(theServer, updateInterval) {}                                     \
         virtual ~className##Timer() {}                                                             \
-        virtual void OnTimer(const timerID&, void*);                                               \
+        virtual void schedule() override;                                                          \
     };
 
 SUBCLASS_SERVERTIMERHANDLER(GlineUpdate)

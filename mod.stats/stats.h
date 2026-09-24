@@ -126,10 +126,10 @@ class stats : public xClient {
     virtual void OnNetworkKick(Channel*, iClient*, iClient*, const std::string&, bool) override;
 
     /**
-     * This method is called when a registered timer
-     * expires.
+     * Book the log flushing timer, one minute out.  Its callback flushes and
+     * books the next run, so there is one place that says when it happens.
      */
-    virtual void OnTimer(const xServer::timerID&, void*) override;
+    void scheduleLogFlush();
 
     /**
      * Return the part message stats will use when it parts

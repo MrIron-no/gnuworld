@@ -1,32 +1,38 @@
-"""A timer registered with a closure runs that closure, and nothing else.
+"""A timer runs the closure it was registered with, and nothing else.
 
-xServer::RegisterTimer(time, owner, callback) is the timer API modules are
-moving to: the owner is there only so that unloading one still cancels its
-timers, and what runs on expiry is the closure, not the owner's OnTimer().
-Cancelling such a timer discards the closure, and no OnTimerDestroy() is sent
-for it.
+xServer::RegisterTimer(time, owner, callback) is the whole timer API: the owner
+is there only so that unloading one still cancels its timers, and what runs on
+expiry is the closure.  Cancelling such a timer discards the closure and its
+captures, and the owner is never told about a timer that went away.
 
 mod.gnutest's "callbacktimer <seconds> <label>" registers one whose closure
 reports its own label back through the event channel, so a test can tell which
 closure ran; "callbacktimer cancel <id>" cancels one before it expires.
 
 The other way a timer goes away is its owner being unloaded, which reaches
-xServer::removeAllTimers(): a legacy timer is handed back to the module through
-OnTimerDestroy() there, and a callback timer is not. mod.gnutest's "reload"
-unloads and reloads that instance, so one reload with both kinds of timer
-pending shows both halves of that asymmetry.
+xServer::removeAllTimers().  Two of those here: "reload", which unloads and
+reloads the instance while it is still reporting events, so what it is told
+during the sweep is visible from the wire; and a detach from inside a handler,
+with a timer close enough to expire afterwards, so that a timer the sweep
+missed would have something of nobody's to run.
 """
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
+import fake_hub
 import gnutest_client as gt
 from p10 import p10_token, strip_msg_tags
 
 # Far enough out that a timer registered for the unload test cannot expire
 UNLOAD_SECONDS = 3600
-PAYLOAD = "the-payload-gnutest-registered"
+
+# Close enough that a timer left behind by a detached owner would expire while
+# the test is still watching
+LEFT_BEHIND_SECONDS = 3
 
 
 def registered_id(lines: list[str]) -> str:
@@ -35,17 +41,6 @@ def registered_id(lines: list[str]) -> str:
         line.split(" :Callback timer ", 1)[1].split(" ")[0]
         for line in lines
         if " :Callback timer " in line and line.rstrip().endswith("registered")
-    ]
-    assert len(ids) == 1, f"expected one registration, got {ids} from {lines}"
-    return ids[0]
-
-
-def legacy_id(lines: list[str]) -> str:
-    """The timerID gnutest reported for a legacy "timer" registration."""
-    ids = [
-        line.split(" :Timer ", 1)[1].split(" ")[0]
-        for line in lines
-        if " :Timer " in line and line.rstrip().endswith("registered")
     ]
     assert len(ids) == 1, f"expected one registration, got {ids} from {lines}"
     return ids[0]
@@ -96,30 +91,23 @@ async def test_a_cancelled_callback_timer_never_runs(gnutest_linked_p11):
     assert proc.proc is not None and proc.proc.returncode is None, "gnuworld died"
     assert reported(hub, start, "CallbackTimer") == ["CallbackTimer kept-closure"]
 
-    # A callback timer that goes away has no OnTimerDestroy(): its closure is
-    # simply discarded
-    assert reported(hub, start, "TimerDestroy") == []
-
 
 @pytest.mark.asyncio
-async def test_unloading_the_owner_discards_a_callback_timer_and_hands_back_a_legacy_one(
-    gnutest_linked_p11,
-):
-    """One unload, two pending timers, and only the legacy one is handed back.
+async def test_unloading_the_owner_discards_a_callback_timer(gnutest_linked_p11):
+    """One unload with a timer pending, and nothing is handed back for it.
 
     "reload" is xServer::UnloadClient() followed by LoadClient(), and the unload
     reaches unregisterClient() -> removeAllTimers(), the one path that cancels a
     module's timers for it. The module is still alive and still reporting events
-    while that runs, so what it is told there is visible from the wire: an
-    OnTimerDestroy() for the void* timer, and nothing at all for the closure,
-    whose captures go with it. Neither timer can expire, so a CallbackTimer
-    report would mean the closure survived its owner.
+    while that runs, so anything it were told there would be visible from the
+    wire: there is nothing to tell it, and the closure's captures go with the
+    closure. The timer cannot expire, so a CallbackTimer report would mean it
+    survived its owner.
     """
     hub, proc = gnutest_linked_p11
     asker = await hub.introduce_nick("asker", username="asker")
 
     await gt.run(hub, asker, "events on")
-    legacy = legacy_id(await gt.run(hub, asker, f"timer {UNLOAD_SECONDS} {PAYLOAD}"))
     callback = registered_id(await gt.run(hub, asker, f"callbacktimer {UNLOAD_SECONDS} unloaded"))
     assert callback != "0"
 
@@ -138,5 +126,41 @@ async def test_unloading_the_owner_discards_a_callback_timer_and_hands_back_a_le
     )
     assert proc.proc is not None and proc.proc.returncode is None, "gnuworld died"
 
-    assert reported(hub, start, "TimerDestroy") == [f"TimerDestroy {legacy} {PAYLOAD}"]
+    assert reported(hub, start, "CallbackTimer") == []
+
+
+@pytest.mark.asyncio
+async def test_a_timer_left_behind_by_a_detached_owner_never_runs(gnutest_linked_p11):
+    """A timer whose owner is gone by the time it would have expired.
+
+    Detaching from inside a handler is where a module leaving with timers still
+    registered actually happens, and it is the far side of removeAllTimers()
+    from the reload above: nothing comes back afterwards to say the sweep
+    happened. What says it is the expiry itself passing with the module gone -
+    a closure the sweep had missed would be run here, and it captured an
+    xClient that has been deleted and a library that has been unmapped.
+    """
+    hub, proc = gnutest_linked_p11
+    asker = await hub.introduce_nick("asker", username="asker")
+    victim = await hub.introduce_nick("victim", username="victim")
+
+    await gt.run(hub, asker, "events on")
+    # The delay is scaled like every other budget here: the daemon itself runs
+    # slower under a sanitizer or a loaded machine, and an expiry that overtook
+    # the detach would fail this for the opposite of the reason it exists
+    left_behind = int(LEFT_BEHIND_SECONDS * fake_hub.TIMEOUT_SCALE)
+    left = registered_id(await gt.run(hub, asker, f"callbacktimer {left_behind} orphan"))
+    assert left != "0"
+
+    await gt.run(hub, asker, "onevent Quit detachself")
+
+    gone = gt.numnick(hub)
+    start = len(hub.received)
+    await hub.send_raw(f"{victim} Q :bye now")
+    await hub.wait_for(lambda line: line.startswith(f"{gone} Q "), timeout=30.0)
+
+    # Wait out the timer the departed instance registered
+    await asyncio.sleep(left_behind + 3 * fake_hub.TIMEOUT_SCALE)
+
+    assert proc.proc is not None and proc.proc.returncode is None, "gnuworld died"
     assert reported(hub, start, "CallbackTimer") == []

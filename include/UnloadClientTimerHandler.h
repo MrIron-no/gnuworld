@@ -69,9 +69,12 @@ class UnloadClientTimerHandler : public ServerTimerHandler {
     virtual ~UnloadClientTimerHandler() {}
 
     /**
-     * The method that is called when it's time to unload the client.
+     * Book the timer that performs the unload.  This handler, and not the
+     * client being unloaded, owns that timer: removeAllTimers() sweeps
+     * what the client itself registered, and must not reach this one.
+     * The handler deletes itself once the unload has been attempted.
      */
-    virtual void OnTimer(const timerID&, void*);
+    virtual void schedule() override;
 };
 
 } // namespace gnuworld
