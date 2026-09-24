@@ -172,7 +172,7 @@ void cloner::OnDetach(const string& reason) {
 void cloner::OnAttach() {
     MyUplink->RegisterChannelEvent(xServer::CHANNEL_ALL, this);
     MyUplink->RegisterEvent(EVT_KILL, this);
-    loadCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, 0);
+    scheduleCloneLoad();
 }
 
 void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
@@ -386,10 +386,17 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             return;
         }
 
+        /* A cycle that is already running has a timer of its own pending, and
+         * that timer books the next run: leaving it registered would mean two
+         * cycles running from here on, and one more for every CYCLE after
+         * that. */
+        if (cycleRun)
+            MyUplink->UnRegisterTimer(cycleCloneTimer);
+
         cycleTime = atoi(st2[0]);
         cyclePercentage = tempPst;
         cycleRun = true;
-        cycleCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + cycleTime, this, 0);
+        scheduleCycle();
         Notice(theClient, "Cycle set to {}:{:f}", cycleTime, cyclePercentage);
         return;
     } else if (command == "JOIN") {
@@ -439,7 +446,7 @@ void cloner::OnPrivateMessage(iClient* theClient, const string& Message, bool) {
             delayCount = clonesPerSec;
 
             joinCloneCount = static_cast<size_t>(clonesTotal);
-            delayJoinTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, 0);
+            scheduleDelayedJoin();
 
             Notice(theClient, "Queuing {} clones per second ({} in total).", delayCount,
                    clonesTotal);
@@ -590,10 +597,8 @@ void cloner::allClonesSay(iClient* theClient, const string& chanOrNickName, cons
     }
 }
 
-void cloner::OnTimer(const xServer::timerID& timer_id, void*) {
-    if (timer_id == cycleCloneTimer) {
-        // elog << "cloner::OnTimer> cycleCloneTimer" << endl ;
-
+void cloner::scheduleCycle() {
+    cycleCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + cycleTime, this, [this]() {
         /* Are we running? */
         if (!cycleRun)
             return;
@@ -622,16 +627,14 @@ void cloner::OnTimer(const xServer::timerID& timer_id, void*) {
             }
         }
 
-        cycleCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + cycleTime, this, 0);
-    }
+        scheduleCycle();
+    });
+}
 
-    if (timer_id == loadCloneTimer) {
-        //  elog	<< "cloner::OnTimer> makeCloneCount: "
-        //  	    << makeCloneCount
-        //  	    << endl ;
-
+void cloner::scheduleCloneLoad() {
+    loadCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, [this]() {
         /* Reset timer. */
-        loadCloneTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, 0);
+        scheduleCloneLoad();
 
         if (!cloneQueue.empty()) {
             size_t cloneCount = std::min(cloneQueue.size(), cloneBurstCount);
@@ -643,13 +646,11 @@ void cloner::OnTimer(const xServer::timerID& timer_id, void*) {
             std::random_device rd;
             std::shuffle(clones.begin(), clones.end(), rd);
         }
-    }
+    });
+}
 
-    if (timer_id == delayJoinTimer) {
-        //  elog	<< "cloner::OnTimer> joinCloneCount: "
-        //  	    << joinCloneCount
-        //  	    << endl ;
-
+void cloner::scheduleDelayedJoin() {
+    delayJoinTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, [this]() {
         if (joinCloneCount > 0) {
             size_t cloneCount = joinCloneCount;
             if (cloneCount > delayCount) {
@@ -661,12 +662,12 @@ void cloner::OnTimer(const xServer::timerID& timer_id, void*) {
 
             /* Join the clones. We only reset the timer if this iteration was successful (>0). */
             if (joinClone(cloneCount, delayChan) > 0 && joinCloneCount > 0) {
-                delayJoinTimer = MyUplink->RegisterTimer(::time(nullptr) + 1, this, 0);
+                scheduleDelayedJoin();
             } else {
                 joinCloneCount = 0;
             }
         }
-    }
+    });
 }
 
 size_t cloner::joinClone(iClient* theClone, Channel* theChan) {
