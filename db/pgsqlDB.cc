@@ -44,7 +44,8 @@ using std::stringstream;
 
 pgsqlDB::pgsqlDB(xClient* _bot, const string& dbHost, const unsigned short int dbPort,
                  const string& dbName, const string& userName, const string& password)
-    : gnuworldDB(dbHost, dbPort, dbName, userName, password), bot(_bot), theDB(0), lastResult(0) {
+    : gnuworldDB(dbHost, dbPort, dbName, userName, password), bot(_bot), theDB(0), lastResult(0),
+      sqlLog(_bot->getLogger()->child("sql", ERROR)) {
     stringstream s;
     s << "host=" << dbHost << " dbname=" << dbName << " port=" << dbPort;
 
@@ -68,7 +69,8 @@ pgsqlDB::pgsqlDB(xClient* _bot, const string& dbHost, const unsigned short int d
     }
 }
 
-pgsqlDB::pgsqlDB(xClient* _bot, const string& connectInfo) : bot(_bot) {
+pgsqlDB::pgsqlDB(xClient* _bot, const string& connectInfo)
+    : bot(_bot), sqlLog(_bot->getLogger()->child("sql", ERROR)) {
     // TODO
     // Allow exception to be thrown
     lastResult = 0;
@@ -94,10 +96,10 @@ pgsqlDB::~pgsqlDB() {
     }
 }
 
-bool pgsqlDB::Exec(const string& theQuery, bool log) {
-    /* Log query. */
+bool pgsqlDB::Exec(const string& theQuery, bool log, std::source_location where) {
+    /* Log query: to this machine only, never to a channel or a pager */
     if (log)
-        bot->getLogger()->write(SQL, theQuery);
+        LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).localOnly().log();
 
     // It is necessary to manually deallocate the last result
     // to prevent memory leaks.
@@ -114,11 +116,31 @@ bool pgsqlDB::Exec(const string& theQuery, bool log) {
         return true;
     if (PGRES_COMMAND_OK == status)
         return true;
+
+    /* The failure is the handle's own to report, whatever "log" says: no
+     * caller has to remember to, and none of them can name the statement in
+     * the record anyway.
+     *
+     * PostgreSQL's primary message and nothing else: the full text of
+     * PQerrorMessage() carries a "LINE 1: <statement>" excerpt and a
+     * "DETAIL: Key (...)=(...)", either of which would put back into the log
+     * the literal values - a password hash, a TOTP secret, a SCRAM record -
+     * that Exec(query, false) keeps out of it.  A connection-level failure
+     * has no result to ask, and there the whole message is all there is.
+     *
+     * The line is the caller's: a function that runs several statements says
+     * with it which of them this was. */
+    const char* primary = PQresultErrorField(lastResult, PG_DIAG_MESSAGE_PRIMARY);
+
+    sqlLog->createMessage(ERROR, where.function_name(), "SQL Error: {error} (line {line})")
+        .with("error", (0 == primary) ? ErrorMessage() : string(primary))
+        .with("line", static_cast<std::uint64_t>(where.line()))
+        .log();
     return false;
 }
 
-bool pgsqlDB::Exec(const stringstream& theQuery, bool retData) {
-    return Exec(theQuery.str(), retData);
+bool pgsqlDB::Exec(const stringstream& theQuery, bool retData, std::source_location where) {
+    return Exec(theQuery.str(), retData, where);
 }
 
 bool pgsqlDB::StartCopyIn(const string& writeMe) { return Exec(writeMe); }

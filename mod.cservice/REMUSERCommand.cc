@@ -174,7 +174,6 @@ bool REMUSERCommand::Exec(iClient* theClient, const string& Message) {
             // bot->Notice(theClient,"I will always remember you!");
         }
     } else {
-        LOGSQL_ERROR(bot->SQLDb);
         bot->dbErrorMessage(theClient);
     }
 

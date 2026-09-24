@@ -42,6 +42,10 @@
 */
 
 #include "ELog.h"
+#include "IrcLogSink.h"
+#include "LogExtractors.h"
+#include "LogSinks.h"
+#include "logger.h"
 #include "server.h"
 #include "moduleLoader.h"
 #include "md5hash.h"
@@ -93,6 +97,15 @@ void gnu() {
 }
 
 int main(int argc, char** argv) {
+    /* Nothing reaches the terminal until startLogging() has read the command
+     * line and decided that it does.  The root logger has a console sink from
+     * the outset, so that a message logged while the logging system is being set
+     * up is seen somewhere, but the lines of this process before that point -
+     * a signal handler that could not open its pipes, for one - were silent
+     * without -c and stay silent: startLogging() turns the console on again
+     * when it was asked for */
+    ConsoleSink::setEnabled(false);
+
     // This is done to intialize the hasher
     md5 dummy;
 
@@ -110,6 +123,9 @@ int main(int argc, char** argv) {
     bool verbose = false;
     bool doDebug = true;
     bool logSocket = true;
+    /* Whether -d named the debug file, which is what lets it override the path
+     * logging.conf gives the sink named "debuglog" */
+    bool elogFileGiven = false;
     std::string elogFileName = "debug.log";
     std::string socketFileName = "socket.log";
     std::string configFileName = CONFFILE;
@@ -123,6 +139,7 @@ int main(int argc, char** argv) {
             break;
         case 'd':
             doDebug = true;
+            elogFileGiven = true;
             elogFileName = optarg;
             break;
         case 'D':
@@ -206,8 +223,9 @@ int main(int argc, char** argv) {
     bool autoConnect = true;
     while (autoConnect) {
         // Allocate a new instance of the xServer
-        gnuworld::xServer* theServer = new (std::nothrow) gnuworld::xServer(
-            verbose, doDebug, logSocket, elogFileName, socketFileName, configFileName, simFileName);
+        gnuworld::xServer* theServer = new (std::nothrow)
+            gnuworld::xServer(verbose, doDebug, logSocket, elogFileName, elogFileGiven,
+                              socketFileName, configFileName, simFileName);
         assert(theServer != 0);
 
         theServer->run();
@@ -239,15 +257,24 @@ int main(int argc, char** argv) {
 }
 
 xServer::xServer(bool verbose_arg, bool doDebug_arg, bool logSocket_arg,
-                 const std::string& elogFileName_arg, const std::string& socketFileName_arg,
-                 const std::string& configFileName_arg, const std::string& simFileName_arg)
+                 const std::string& elogFileName_arg, bool elogFileGiven_arg,
+                 const std::string& socketFileName_arg, const std::string& configFileName_arg,
+                 const std::string& simFileName_arg)
     : eventList(EVT_NOOP), tlsEnabled(false), verbose(verbose_arg), doDebug(doDebug_arg),
-      logSocket(logSocket_arg), elogFileName(elogFileName_arg), socketFileName(socketFileName_arg),
-      configFileName(configFileName_arg), simFileName(simFileName_arg) {
+      logSocket(logSocket_arg), elogFileName(elogFileName_arg), elogFileGiven(elogFileGiven_arg),
+      socketFileName(socketFileName_arg), configFileName(configFileName_arg),
+      simFileName(simFileName_arg) {
 #ifdef ENABLE_LOG4CPLUS
     log4cplus::PropertyConfigurator::doConfigure("logging.properties");
 #endif
 
+    // The logging system, before initializeSystem() loads the first module:
+    // that is where the clients are created and attached, and so where the
+    // first log record of a module is written.
+    IrcLogSink::setMainThread();
+    registerCoreLogExtractors();
+
+    setupLogging(false);
     startLogging(false);
     // Sets up the server internals
     initializeSystem();
@@ -261,6 +288,10 @@ void xServer::mainLoop() {
 
     // When this method is first invoked, the server is not connected
     while (keepRunning) {
+        // Records logged from a worker thread wait for the main thread, which
+        // is the only one that may write to the network
+        IrcLogSink::flushAll();
+
         // Check if a reconnection is necessary
         // Do not reconnect if the server is in the process of
         // shutting down.

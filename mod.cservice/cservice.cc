@@ -101,7 +101,6 @@ bool cservice::UnRegisterCommand(const string& commName) {
 void cservice::OnAttach() {
     for (commandMapType::iterator ptr = commandMap.begin(); ptr != commandMap.end(); ++ptr) {
         ptr->second->setServer(MyUplink);
-        ptr->second->setLogger(logger.get());
     }
 
     // Start the Db checker timer rolling.
@@ -154,7 +153,6 @@ void cservice::OnAttach() {
     } else {
         /* log the error */
         LOG(ERROR, "Unable to empty webnotices table, not checking webnotices.");
-        LOGSQL_ERROR(SQLDb);
     }
 
     /* Register our interest in recieving some Network events from gnuworld. */
@@ -188,6 +186,10 @@ cservice::cservice(const string& args)
 
     /* Register custom logger objects. */
     registerLogHandlers();
+
+    /* The command log has a logger of its own, looked up once here: the logger
+     * of this module is already the registry's by now */
+    commandsLogger = logger->child("commands");
 
     /*
      *  Register command handlers.
@@ -339,34 +341,26 @@ cservice::cservice(const string& args)
     loadConfigVariables();
     loadConfigData();
 
-    /* Initiate pushover. */
-    if (pushoverEnable) {
-        elog << "*** [CMaster]: Enabling Pushover notifications for " << pushoverUserKeys.size()
-             << " user keys..." << endl;
+    /* What this module used to send as a Pushover notification of its own is an
+     * ordinary record: a pager is a sink of logging.conf now, and whether one is
+     * attached to this logger - or to the root, or to nothing at all - is that
+     * file's business and not this module's */
+    LOG(INFO, "cmaster connecting...");
 
-#ifdef USE_THREAD
-        pushover =
-            std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys, &threadWorker);
-#else
-        pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys);
-#endif
-        logger->addNotifier(pushover, pushoverVerbosity);
-        pushover->sendMessage("cmaster init", "cmaster connecting...");
-    }
-
-/* Initiate prometheus. */
+/* Initiate prometheus.  The instance name every metric is prefixed with is this
+ * client's nick, as it has always been: an existing install must not see its
+ * metric names change. */
 #ifdef HAVE_PROMETHEUS
     if (prometheusEnable) {
-        elog << "*** [CMaster]: Enabling Prometheus metrics at " << prometheusIP << ":"
-             << prometheusPort << "..." << endl;
+        LOG(INFO, "Enabling Prometheus metrics at {}:{}...", prometheusIP, prometheusPort);
 
         try {
-            prometheus = std::make_shared<PrometheusClient>(this, prometheusIP, prometheusPort);
-            logger->addNotifier(prometheus);
+            prometheus =
+                std::make_shared<PrometheusClient>(getNickName(), prometheusIP, prometheusPort);
+            logger->addSink(prometheus);
         } catch (const std::exception& e) {
-            elog << "*** [CMaster]: Unable to start Prometheus on " << prometheusIP << ":"
-                 << prometheusPort << endl;
-            elog << "*** [CMaster]: Prometheus error message: " << e.what() << endl;
+            LOG(ERROR, "Unable to start Prometheus on {}:{}", prometheusIP, prometheusPort);
+            LOG(ERROR, "Prometheus error message: {}", e.what());
             prometheus.reset();
             ::exit(0);
         }
@@ -412,6 +406,10 @@ cservice::cservice(const string& args)
 }
 
 cservice::~cservice() {
+    /* The command log's logger is the registry's too: this instance only ever
+     * held a pointer to it, and lets go of it here */
+    commandsLogger = nullptr;
+
     delete cserviceConfig;
     cserviceConfig = 0;
     delete SQLDb;
@@ -905,33 +903,31 @@ void cservice::OnPrivateMessage(iClient* theClient, const string& Message, bool 
                        << ")" << ends;
 
                 if (!SQLDb->Exec(theLog)) {
-                    LOGSQL_ERROR(SQLDb);
                 }
             }
 
             /* Log command to logfile here, if command logging enabled */
             if (commandLog) {
-                std::string jsonMessage;
-                std::string jsonParams = "\"command\":\"" + Command + "\"";
-                /*if( secure )
-                        jsonParams += ",\"secure\":true" ;
-                else
-                        jsonParams += ",\"secure\":false" ;*/
-
-                if (theClient->isModeR())
-                    jsonParams += ",\"user_id\":" + std::to_string(theClient->getAccountID()) +
-                                  ",\"user_name\":\"" + theClient->getAccount() + "\"";
-
-                jsonParams += ",\"client_nick\":\"" + escapeJsonString(theClient->getNickName()) +
-                              "\",\"client_userhost\":\"" +
-                              escapeJsonString(theClient->getRealUserHost()) + "\"";
-
-                jsonMessage = Command;
+                std::string commandLine = Command;
                 if (Command != "NEWPASS" && Command != "SUSPENDME" && Command != "LOGIN" &&
                     st.size() > 0)
-                    jsonMessage += " " + escapeJsonString(st.assemble(1));
+                    commandLine += " " + st.assemble(1);
 
-                logger->writeLog(INFO, "cservice::OnPrivateMessage", jsonParams, jsonMessage);
+                /* The sentence names the command and the nick and nothing else:
+                 * a reader of a log file has the whole line in command_line,
+                 * and a reader of a notice or of a console has no business with
+                 * the e-mail address of a HELLO or the host of a SCANHOST */
+                Logger::MessageTemplate record =
+                    LOG_MSG_TO(commandsLogger, INFO, "{command} by {client}");
+
+                record.with("command", Command).with("command_line", commandLine);
+                /*record.with( "secure", secure ) ;*/
+
+                if (theClient->isModeR())
+                    record.with("user_id", static_cast<std::uint64_t>(theClient->getAccountID()))
+                        .with("user_name", theClient->getAccount());
+
+                record.with("client", theClient).log();
             }
         }
     }
@@ -1532,7 +1528,6 @@ sqlUser* cservice::getUserRecord(int Id) {
     stringstream theQuery;
     theQuery << "SELECT user_name FROM users WHERE id = " << Id << ends;
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return NULL;
     } else if (SQLDb->Tuples() == 0) {
         LOG(ERROR, "getUserRecordUserIdQuery = 0 ({})!", Id);
@@ -1689,7 +1684,6 @@ bool cservice::updateIPRlast_used(sqlUser* theUser, const string& ipr_ipvalue) {
              << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     return true;
@@ -1717,7 +1711,6 @@ bool cservice::hasIPR(sqlUser* theUser) {
              << "ip_restrict WHERE user_id = " << theUser->getID() << " AND type = 1" << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -1777,7 +1770,6 @@ bool cservice::checkIPR(const string& ip, sqlUser* theUser, unsigned int& ipr_ts
 
     if (!SQLDb->Exec(theQuery, true)) {
         /* SQL error, fail them */
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -1806,7 +1798,6 @@ bool cservice::checkIPR(const string& ip, sqlUser* theUser, unsigned int& ipr_ts
              << ") AND ((expiry IS NULL) OR (expiry = 0)) AND (type = 1)" << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -2218,7 +2209,6 @@ void cservice::expireSuspends() {
                 << ends;
 
     if (!SQLDb->Exec(expireQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -2273,7 +2263,6 @@ void cservice::expireSuspends() {
 
     if (!SQLDb->Exec(updateQuery)) {
         LOG(ERROR, "Unable to update record while unsuspending.");
-        LOGSQL_ERROR(SQLDb);
     }
 }
 
@@ -2328,7 +2317,6 @@ void cservice::expireBans() {
                 << ends;
 
     if (!SQLDb->Exec(expireQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -2412,7 +2400,6 @@ void cservice::expireBans() {
                 << "WHERE expires <= " << expiredTime << " AND expires <> 0" << ends;
 
     if (!SQLDb->Exec(deleteQuery)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 }
@@ -2570,7 +2557,6 @@ bool cservice::deleteUserFromTable(unsigned int userId, const string& table) {
 
     if (!SQLDb->Exec(queryString, true)) {
         LOG(ERROR, "FAILED to delete user {} from {}", userId, table);
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     return true;
@@ -2641,7 +2627,6 @@ void cservice::ExpireUsers() {
                 << currentTime() - UsersExpireDBDays << " AND last_seen > 0" << ends;
 
     if (!SQLDb->Exec(queryString, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
     if (SQLDb->Tuples() < 1) {
@@ -2658,7 +2643,6 @@ void cservice::ExpireUsers() {
                 << ends;
 
     if (!SQLDb->Exec(queryString, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
     for (unsigned int i = 0; i < SQLDb->Tuples(); i++)
@@ -2710,7 +2694,6 @@ void cservice::updateChannels() {
              << " AND channels.registered_ts <> 0";
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -2786,7 +2769,6 @@ void cservice::updateUserLevels(sqlUser* theUser) {
              << " FROM levels WHERE user_id = " << theUser->getID() << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -2843,7 +2825,6 @@ void cservice::updateLevels(int channelId) {
     }
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -2925,7 +2906,6 @@ void cservice::updateUsers() {
              << "users WHERE last_updated >= " << lastUserRefresh << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -3081,8 +3061,7 @@ void cservice::OnTimer(const xServer::timerID& timer_id, void* parms) {
                 sprintf(web_ts, "%li", webrelay_ts);
                 webrelayQuery = "DELETE FROM webnotices WHERE created_ts <= ";
                 webrelayQuery += web_ts;
-                if (!SQLDb->Exec(webrelayQuery))
-                    LOGSQL_ERROR(SQLDb);
+                SQLDb->Exec(webrelayQuery);
             }
         }
 
@@ -3204,49 +3183,43 @@ void cservice::OnJoin(const std::string& chanName) {
  * Register log handlers for custom objects.
  */
 void cservice::registerLogHandlers() {
-    // Register sqlUser* handler
-    logger->registerObjectHandler<sqlUser>([](std::map<std::string, std::string>& fields,
-                                              const std::string& key, sqlUser* user) -> bool {
-        if (!user) {
-            fields[key + "_name"] = "nullptr";
-            return true;
-        }
+    // Register sqlUser* extractor
+    registerLogExtractor<sqlUser>([](const sqlUser* user) {
+        LogObject object;
 
-        fields[key + "_id"] = std::to_string(user->getID());
-        fields[key + "_name"] = user->getUserName();
-        // fields[key + "_is_authed"] = user->isAuthed() ? "true" : "false";
+        object.display = user->getUserName();
 
-        return true;
+        object.fields.emplace_back("id", static_cast<std::uint64_t>(user->getID()));
+        object.fields.emplace_back("name", user->getUserName());
+        // object.fields.emplace_back("is_authed", user->isAuthed());
+
+        return object;
     });
 
-    // Register sqlChannel* handler
-    logger->registerObjectHandler<sqlChannel>([](std::map<std::string, std::string>& fields,
-                                                 const std::string& key,
-                                                 sqlChannel* channel) -> bool {
-        if (!channel) {
-            fields[key + "_name"] = "nullptr";
-            return true;
-        }
+    // Register sqlChannel* extractor
+    registerLogExtractor<sqlChannel>([](const sqlChannel* channel) {
+        LogObject object;
 
-        fields[key + "_id"] = std::to_string(channel->getID());
-        fields[key + "_name"] = channel->getName();
-        // fields[key + "_ts"] = std::to_string(channel->getRegisteredTS());
+        object.display = channel->getName();
 
-        return true;
+        object.fields.emplace_back("id", static_cast<std::uint64_t>(channel->getID()));
+        object.fields.emplace_back("name", channel->getName());
+        // object.fields.emplace_back("ts", static_cast<std::uint64_t>(
+        //                                      channel->getRegisteredTS()));
+
+        return object;
     });
 
-    // Register sqlBan* handler
-    logger->registerObjectHandler<sqlBan>([](std::map<std::string, std::string>& fields,
-                                             const std::string& key, sqlBan* ban) -> bool {
-        if (!ban) {
-            fields[key + "_id"] = "nullptr";
-            return true;
-        }
+    // Register sqlBan* extractor
+    registerLogExtractor<sqlBan>([](const sqlBan* ban) {
+        LogObject object;
 
-        fields[key + "_id"] = std::to_string(ban->getID());
-        fields[key + "_mask"] = ban->getBanMask();
+        object.display = ban->getBanMask();
 
-        return true;
+        object.fields.emplace_back("id", static_cast<std::uint64_t>(ban->getID()));
+        object.fields.emplace_back("mask", ban->getBanMask());
+
+        return object;
     });
 }
 
@@ -3352,7 +3325,6 @@ bool cservice::isValidUser(const string& userName) {
         << "SELECT user_name,email,type FROM noreg WHERE user_name IS NOT NULL OR email IS NOT NULL"
         << ends;
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     } else if (SQLDb->Tuples() != 0) {
         ValidUserDataListType ValidUserDataList;
@@ -3438,7 +3410,6 @@ bool cservice::isValidChannel(const string& chName) {
     theQuery << "SELECT channel_name,type FROM noreg WHERE channel_name IS NOT NULL" << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.isValidChannelchannel_nameQuery");
-        LOGSQL_ERROR(SQLDb);
         return false;
     } else if (SQLDb->Tuples() != 0) {
         for (unsigned int i = 0; i < SQLDb->Tuples(); i++)
@@ -3461,7 +3432,6 @@ bool cservice::isDBRegisteredChannel(const string& chanName) {
              << escapeSQLChars(string_lower(chanName)) << "'" << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     unsigned int isReg = atoi(SQLDb->GetValue(0, 0));
@@ -3481,7 +3451,6 @@ bool cservice::RejectChannel(unsigned int chanId, const string& reason) {
              << " WHERE channel_id = " << chanId << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     } else if (SQLDb->Tuples() != 0)
         return true;
@@ -3497,7 +3466,6 @@ bool cservice::ReviewChannel(unsigned int chanId) {
              << "WHERE channel_id = " << chanId << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     } else if (SQLDb->Tuples() != 0)
         return true;
@@ -3515,7 +3483,6 @@ bool cservice::AcceptChannel(unsigned int chanId, const string& reason) {
              << " WHERE channel_id = " << chanId << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     } else if (SQLDb->Tuples() != 0)
         return true;
@@ -3578,7 +3545,6 @@ bool cservice::sqlRegisterChannel(iClient* theClient, sqlUser* mngrUsr, const st
     theQuery << "DELETE FROM levels WHERE channel_id = " << newChan->getID() << ends;
 
     if (!SQLDb->Exec(theQuery)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -3620,7 +3586,6 @@ bool cservice::sqlRegisterChannel(iClient* theClient, sqlUser* mngrUsr, const st
              << ends;
 
     if (!SQLDb->Exec(theQuery)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -3706,21 +3671,18 @@ bool cservice::wipeChannel(unsigned int id) {
     theQuery << "DELETE FROM pending WHERE channel_id = " << id << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.WipePendingQuery");
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     theQuery.str("");
     theQuery << "DELETE FROM objections WHERE channel_id = " << id << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.WipeObjectionsQuery");
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     theQuery.str("");
     theQuery << "DELETE FROM supporters WHERE channel_id = " << id << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.WipeSupportersQuery");
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     return true;
@@ -3738,7 +3700,6 @@ void cservice::checkValidUsersAndChannelsState() {
         << "AND (pending.status <> 3 AND pending.status <> 9 AND pending.status <> 4)" << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.validChanAndMngrQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         for (unsigned int i = 0; i < SQLDb->Tuples(); i++) {
@@ -3789,7 +3750,6 @@ void cservice::checkValidUsersAndChannelsState() {
              << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.validSuppsQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         LOG(DEBUG, "Checking all supporters validity ...");
@@ -3870,7 +3830,6 @@ void cservice::checkNewIncomings() {
              << " AND users.id = manager_id" << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.IncomingQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         logTheJudgeMessage("List of expiring Incoming applications:");
@@ -3974,7 +3933,6 @@ void cservice::checkTrafficPass() {
                      << "WHERE channel_id = " << pendingChan->channel_id << ends;
             if (!SQLDb->Exec(theQuery, true)) {
                 LOG(ERROR, "Error on update pending trafficCheck -> notification");
-                LOGSQL_ERROR(SQLDb);
             } else
                 logTheJudgeMessage("Channel %s has passed traffic checking, successfully moved to "
                                    "Notification stage",
@@ -4026,7 +3984,6 @@ void cservice::checkObjections() {
 
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.ObjectionkQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         logTheJudgeMessage("List of applications moved to Ready to review:");
@@ -4070,7 +4027,6 @@ void cservice::checkAccepts() {
 
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.AcceptQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         // logTheJudgeMessage("List of completed applications:");
@@ -4120,7 +4076,6 @@ void cservice::checkReviews() {
 
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.checkReviewsQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         // logTheJudgeMessage("List of completed applications:");
@@ -4166,7 +4121,6 @@ void cservice::cleanUpReviews() {
 
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.cleanUpReviewsQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         logTheJudgeMessage("List of Wiped applications:");
@@ -4205,7 +4159,6 @@ void cservice::cleanUpPendings() {
              << ") < date_part('epoch', CURRENT_TIMESTAMP)::int " << ends;
     if (!SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "Error on Judge.checkPendingCleanupsQuery");
-        LOGSQL_ERROR(SQLDb);
         return;
     } else if (SQLDb->Tuples() != 0) {
         LOG(INFO, "Found {} channel(s) to pendingCleanup", SQLDb->Tuples());
@@ -6239,7 +6192,6 @@ void cservice::setSupporterNoticedStatus(int suppId, int chanId, bool noticed) {
              << "' WHERE channel_id = " << chanId << " AND user_id = " << suppId << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
     }
 }
 
@@ -6251,7 +6203,6 @@ void cservice::setSupporterNoticedStatus(int suppId, const string& chanName, boo
     theQuery << "SELECT id FROM channels WHERE name = '" << chanName << "'" << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
     }
 
     int chanId = atoi(SQLDb->GetValue(0, 0).c_str());
@@ -6264,7 +6215,6 @@ void cservice::setSupporterNoticedStatus(int suppId, const string& chanName, boo
              << "' WHERE channel_id = " << chanId << " AND user_id = " << suppId << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
     }
 }
 
@@ -6281,7 +6231,6 @@ void cservice::UpdatePendingOpLists() {
             doXQOplist(channelName);
         }
     } else {
-        LOGSQL_ERROR(SQLDb);
     }
     return;
 }
@@ -6320,7 +6269,6 @@ void cservice::checkIncomings(bool FirstNoticing) {
             suppIdList[suppId].push_back(current);
         }
     } else {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
     if ((int)suppIdList.size() == 0)
@@ -6498,7 +6446,6 @@ void cservice::loadPendingChannelList() {
         if (!SQLDb->Exec("BEGIN;"))
         //	if( PGRES_COMMAND_OK != beginStatus )
         {
-            LOGSQL_ERROR(SQLDb);
         }
 
         while (ptr != pendingChannelList.end()) {
@@ -6518,7 +6465,6 @@ void cservice::loadPendingChannelList() {
         if (!SQLDb->Exec("END;"))
         //	if( PGRES_COMMAND_OK != endStatus )
         {
-            LOGSQL_ERROR(SQLDb);
         }
 
         pendingChannelList.clear();
@@ -6626,7 +6572,6 @@ void cservice::checkDbConnectionStatus() {
 
         if (SQLDb->ConnectionBad()) {
             LOG(ERROR, "Unable to connect to SQL server.");
-            LOGSQL_ERROR(SQLDb);
 
             connectRetries++;
             if (connectRetries == connectRetry) {
@@ -6679,7 +6624,6 @@ void cservice::preloadChannelCache() {
 
         } // for()
     } else {
-        LOGSQL_ERROR(SQLDb);
     } // if()
 
     elog << "*** [CMaster::preloadChannelCache]: Done. Loaded " << SQLDb->Tuples()
@@ -6905,7 +6849,6 @@ void cservice::NoteAllAuthedClients(sqlUser* theUser, const char* Message, ...) 
 
         if (!SQLDb->Exec(queryString, true)) {
             LOG(ERROR, "Something went wrong in the DELETE FROM query:");
-            LOGSQL_ERROR(SQLDb);
             return;
         }
         static const char* queryHeader =
@@ -6917,7 +6860,6 @@ void cservice::NoteAllAuthedClients(sqlUser* theUser, const char* Message, ...) 
 
         if (!SQLDb->Exec(queryString, true)) {
             LOG(ERROR, "Something went wrong in the INSERT INTO query:");
-            LOGSQL_ERROR(SQLDb);
             return;
         }
     } // if MyUpLink
@@ -7015,7 +6957,6 @@ void cservice::doCoderStats(iClient* theClient) {
     if (!SQLDb->Exec(theQuery, true))
     //	if (PGRES_TUPLES_OK != status)
     {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
     if (SQLDb->Tuples() > 0)
@@ -7030,7 +6971,6 @@ void cservice::doCoderStats(iClient* theClient) {
              << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
     userDBTOTPTotal = atoi(SQLDb->GetValue(0, 0));
@@ -7041,7 +6981,6 @@ void cservice::doCoderStats(iClient* theClient) {
     theQuery << "SELECT COUNT(*) FROM (SELECT DISTINCT user_id FROM ip_restrict) AS temp" << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
     userDBIPRTotal = atoi(SQLDb->GetValue(0, 0));
@@ -7055,7 +6994,6 @@ void cservice::doCoderStats(iClient* theClient) {
              << " > 0 AND users.id = ip_restrict.user_id" << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return;
     }
     userDBTOTPIPRTotal = atoi(SQLDb->GetValue(0, 0));
@@ -7261,26 +7199,6 @@ void cservice::loadConfigVariables(bool rehash) {
     for (auto& entry : configBindings)
         entry.load(rehash);
 
-    /* Load pushover settings if enabled. */
-    if (pushoverEnable) {
-        pushoverUserKeys.clear();
-        if (rehash) {
-            pushoverToken =
-                cserviceConfig->TryRequire<std::string>("pushover_token", pushoverToken);
-            pushoverVerbosity =
-                cserviceConfig->TryRequire<unsigned int>("pushover_verbosity", pushoverVerbosity);
-        } else {
-            pushoverToken = cserviceConfig->Require<std::string>("pushover_token");
-            pushoverVerbosity = cserviceConfig->Require<unsigned int>("pushover_verbosity");
-        }
-
-        auto confPtr = cserviceConfig->Find("pushover_userkey");
-        while (confPtr != cserviceConfig->end() && confPtr->first == "pushover_userkey") {
-            pushoverUserKeys.push_back(confPtr->second);
-            ++confPtr;
-        }
-    }
-
 /* Load prometheus settings if enabled. */
 #ifdef HAVE_PROMETHEUS
     if (prometheusEnable) {
@@ -7313,13 +7231,9 @@ void cservice::loadConfigVariables(bool rehash) {
         daySeconds = 1;
     UsersExpireDBDays *= daySeconds;
 
-    /* Initiate logger. */
-    logger->setChannel(debugChan);
-    logger->setLogVerbosity(logVerbosity);
-    logger->setChanVerbosity(chanVerbosity);
-    logger->setConsoleVerbosity(consoleVerbosity);
-    logger->setLogSQL(logSQL);
-    logger->setConsoleSQL(consoleSQL);
+    /* Nothing configures logging here any more: where this module's records go,
+     * at what level, and whether a statement of its database handle is among
+     * them, is what logging.conf says about the logger "cservice" */
 }
 
 void cservice::rehashConfigVariables() {
@@ -7336,43 +7250,23 @@ void cservice::rehashConfigVariables() {
 #ifdef HAVE_PROMETHEUS
     if (prometheusEnable && !prometheus) {
         try {
-            prometheus = std::make_shared<PrometheusClient>(this, prometheusIP, prometheusPort);
-            logger->addNotifier(prometheus);
+            prometheus =
+                std::make_shared<PrometheusClient>(getNickName(), prometheusIP, prometheusPort);
+            logger->addSink(prometheus);
         } catch (const std::exception& e) {
             LOG(ERROR, "Unable to start Prometheus on {}:{} - {}", prometheusIP, prometheusPort,
                 e.what());
             prometheus.reset();
         }
     } else if (!prometheusEnable && prometheus) {
-        logger->removeNotifier(prometheus);
+        logger->removeSink(prometheus);
         prometheus.reset();
     }
 #endif
 
-    /* Pushover is enabled in config. */
-    if (pushoverEnable) {
-        /* We have a running instance of pushover. Rehash settings. */
-        if (pushover) {
-            pushover->setUserKeys(pushoverUserKeys);
-            pushover->setToken(pushoverToken);
-            logger->updateNotifierVerbosity(pushover, pushoverVerbosity);
-        } else {
-            /* Pushover is enabled in config, but not in gnuworld. Enable. */
-#ifdef USE_THREAD
-            pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys,
-                                                        &threadWorker);
-#else
-            pushover = std::make_shared<PushoverClient>(this, pushoverToken, pushoverUserKeys);
-#endif
-            logger->addNotifier(pushover, pushoverVerbosity);
-        }
-    } else {
-        /* Pushover is disabled in config, but still enabled in gnuworld. Disable. */
-        if (pushover) {
-            logger->removeNotifier(pushover);
-            pushover.reset();
-        }
-    }
+    /* A pushover sink is logging.conf's, and a rehash of this file has nothing
+     * to say about one: the SIGHUP that rehashes this reads logging.conf again
+     * too, which is what changes a pager's token, its users or its level */
 }
 
 cservice::AuthResult cservice::authenticateUser(AuthStruct& auth) {
@@ -8368,7 +8262,6 @@ bool cservice::doXQIsCheck(iServer* theServer, const string& Routing, const stri
         theQuery << ") " << std::endl;
 
         if (!SQLDb->Exec(theQuery, true)) {
-            LOGSQL_ERROR(SQLDb);
             return false;
         }
 
@@ -8458,7 +8351,6 @@ bool cservice::doXQIsCheck(iServer* theServer, const string& Routing, const stri
 
         if (!SQLDb->Exec(theQuery, true)) {
             LOG(ERROR, "ISCHAN SQL Error:");
-            LOGSQL_ERROR(SQLDb);
             return false;
         }
 
@@ -8729,7 +8621,6 @@ bool cservice::doXROplist(iServer* /*theServer*/, const string& Routing, const s
 
                 // send to SQL
                 if (!SQLDb->Exec(updateQuery, true)) {
-                    LOGSQL_ERROR(SQLDb);
                     return false;
                 }
             } // successful query
@@ -8939,7 +8830,6 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
              << "levels WHERE user_id = " << theUser->getID() << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -9071,7 +8961,6 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
                    << " AND user_id = " << theUser->getID() << ends;
 
     if (!SQLDb->Exec(supporterQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -9168,7 +9057,6 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
 
     if (!SQLDb->Exec(noticeQuery, true)) {
         LOG(ERROR, "Something went wrong when loading notes:");
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -9184,7 +9072,6 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
 
     if (!SQLDb->Exec(noticeQuery, true)) {
         LOG(ERROR, "Something went wrong when deleting notes:");
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -9226,7 +9113,6 @@ void cservice::outputChannelAccesses(iClient* theClient, sqlUser* theUser, sqlUs
     if (!SQLDb->Exec(channelsQuery, true)) {
         Notice(theClient, "Internal error: SQL failed");
 
-        LOGSQL_ERROR(SQLDb);
         return;
     }
 
@@ -9344,7 +9230,6 @@ bool cservice::loadGlines() {
     stringstream eraseQuery;
     eraseQuery << "DELETE FROM glines";
     if (!SQLDb->Exec(eraseQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -9352,7 +9237,6 @@ bool cservice::loadGlines() {
     theQuery << Main << ends;
 
     if (!SQLDb->Exec(theQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -9412,7 +9296,6 @@ bool cservice::expireWhitelist() {
                    << "expiresat != 0" << ends;
 
     if (!SQLDb->Exec(whitelistQuery, true)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
     return true;
@@ -9448,7 +9331,6 @@ bool cservice::InsertUserHistory(iClient* theClient, const string& command) {
              << "date_part('epoch', CURRENT_TIMESTAMP)::int)" << ends;
 
     if (!SQLDb->Exec(theQuery)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

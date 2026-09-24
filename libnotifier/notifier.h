@@ -22,16 +22,23 @@
 
 #include <string>
 
+#include "LogRecord.h"
+#include "LogSink.h"
+
 namespace gnuworld {
 
 /**
  * Base class for all notification systems
  * Provides a common interface for sending messages
+ *
+ * A notifier is a sink of the logging system: attach one to a logger with
+ * addSink() and every record the threshold lets through arrives at
+ * sendMessage().
  */
-class notifier {
+class notifier : public LogSink {
   public:
     notifier() = default;
-    virtual ~notifier() = default;
+    ~notifier() override = default;
 
     /**
      * Send a notification message with verbosity level
@@ -40,6 +47,24 @@ class notifier {
      * @return true if message was sent successfully, false otherwise
      */
     virtual bool sendMessage(int level, const std::string message) = 0;
+
+    /**
+     * Delivers one log record as a notification: the sentence, behind the
+     * function it was logged from at every level but INFO.
+     */
+    void emit(const LogRecord& r) override {
+        sendMessage(static_cast<int>(r.level),
+                    (r.level == INFO ? std::string() : r.function + "> ") + r.message);
+    }
+
+    /**
+     * Sending a notification logs on its own account, so a notifier takes no
+     * record that was logged from inside a sink dispatch.
+     */
+    bool suppressOnReentry() const override { return true; }
+
+    /// A notifier is somebody else's service: a pager, a metrics gateway
+    bool leavesTheHost() const override { return true; }
 
     /**
      * Get the number of successful notifications sent

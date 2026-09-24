@@ -210,7 +210,6 @@ bool ADDUSERCommand::Exec(iClient* theClient, const string& Message) {
         }
     } else {
         LOG(ERROR, "ADDUSER SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         bot->dbErrorMessage(theClient);
     }
 

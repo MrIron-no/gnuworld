@@ -99,7 +99,6 @@ class sqlBan {
     string reason;
     time_t last_updated;
 
-    Logger* logger;
     dbHandle* SQLDb;
 };
 

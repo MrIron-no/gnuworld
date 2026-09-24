@@ -65,7 +65,6 @@ class sqlPendingChannel {
     trafficListType uniqueSupporterList;
 
     cservice* bot;
-    Logger* logger;
     dbHandle* SQLDb;
 };
 

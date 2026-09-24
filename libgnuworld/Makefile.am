@@ -9,9 +9,15 @@ libgnuworld_la_SOURCES = \
 	libgnuworld/ConnectionManager.cc \
 	libgnuworld/EConfig.cc \
 	libgnuworld/ELog.cc \
+	libgnuworld/LogConfig.cc \
+	libgnuworld/LogFormat.cc \
+	libgnuworld/LogManager.cc \
+	libgnuworld/LogRender.cc \
+	libgnuworld/LogSinks.cc \
 	libgnuworld/Signal.cc \
 	libgnuworld/StringTokenizer.cc \
 	libgnuworld/gThread.cc \
+	libgnuworld/logger.cc \
 	libgnuworld/match.cc \
 	libgnuworld/md5hash.cc \
 	libgnuworld/threadworker.cc \
@@ -36,9 +42,18 @@ EXTRA_DIST += \
 	libgnuworld/ConnectionManager.h \
 	libgnuworld/EConfig.h \
 	libgnuworld/ELog.h \
+	libgnuworld/LogConfig.h \
+	libgnuworld/LogFormat.h \
+	libgnuworld/LogManager.h \
+	libgnuworld/LogRateLimit.h \
+	libgnuworld/LogRecord.h \
+	libgnuworld/LogRender.h \
+	libgnuworld/LogSink.h \
+	libgnuworld/LogSinks.h \
 	libgnuworld/MigrationChecker.h \
 	libgnuworld/gThread.h \
 	libgnuworld/ircd_chattr.h \
+	libgnuworld/logger.h \
 	libgnuworld/match.h \
 	libgnuworld/match_table.h \
 	libgnuworld/md5hash.h \

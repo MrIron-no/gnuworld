@@ -46,7 +46,6 @@ class Command {
     virtual bool Exec(iClient*, const string&) = 0;
 
     void setServer(xServer* _server) { server = _server; }
-    void setLogger(Logger* _logger) { logger = _logger; }
     virtual string getInfo() const { return commName + ' ' + help; }
     virtual void Usage(iClient* theClient);
 
@@ -60,7 +59,6 @@ class Command {
     string commName;
     string help;
     unsigned short flood_points;
-    Logger* logger;
 };
 
 #define DECLARE_COMMAND(commName)                                                                  \

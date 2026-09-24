@@ -73,11 +73,42 @@ xClient::xClient(const string& fileName) : configFileName(fileName) {
         stealth = conf.Require<bool>("stealth");
     }
 
-    /* Initialize logger */
-    logger = std::make_unique<Logger>(this);
+    /* The logger of this module is the one the registry keeps under the module's
+     * name, which the loader left behind for us; a module that was not loaded
+     * through xServer::AttachClient() is named after its configuration file */
+    string loggerName = LogManager::takeLoadingModule();
+
+    if (loggerName.empty()) {
+        const string::size_type slash = getConfigFileName().find_last_of('/');
+        const string baseName =
+            string::npos == slash ? getConfigFileName() : getConfigFileName().substr(slash + 1);
+        const string::size_type baseDot = baseName.find('.');
+
+        loggerName = string::npos == baseDot ? baseName : baseName.substr(0, baseDot);
+    }
+
+    // Nothing named the module at all: its nick is the last thing left, and is
+    // in any case better than the root logger
+    if (loggerName.empty())
+        loggerName = nickName;
+
+    logger = LogManager::get(loggerName);
+
+    /* No sink is attached here: the module's records walk up to whatever
+     * logging.conf gave the root, and a module with reason to write somewhere of
+     * its own attaches that sink itself */
+    logger->setContext("bot", nickName);
 }
 
-xClient::~xClient() {}
+xClient::~xClient() {
+    // Whatever this module taught the logging system about its own types goes
+    // with the module itself
+    Logger::removeExtractors(this);
+
+    // The logger itself stays: it is the registry's, and a module that is loaded
+    // again finds that very logger
+    logger = nullptr;
+}
 
 void xClient::BurstChannels() {}
 
@@ -2182,7 +2213,7 @@ bool xClient::checkMigrationsAfterDBConnect(const std::string& moduleName, dbHan
     }
 
     // Create MigrationChecker and run check
-    MigrationChecker checker(moduleName, db, logger.get(), migrationsDir);
+    MigrationChecker checker(moduleName, db, logger, migrationsDir);
     return checker.check();
 #else
     return true;

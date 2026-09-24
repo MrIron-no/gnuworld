@@ -112,7 +112,7 @@ sqlChannel::sqlChannel(cservice* _bot)
 #ifdef THERETURN_ENABLED
       hasw(false), w_ts(0),
 #endif
-      logger(_bot->getLogger()), SQLDb(_bot->SQLDb) {
+      SQLDb(_bot->SQLDb) {
 }
 
 bool sqlChannel::loadData(const string& channelName) {
@@ -240,7 +240,6 @@ bool sqlChannel::setW(const bool status) {
                 << "RETURNING timestamp";
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -286,7 +285,6 @@ bool sqlChannel::commit() {
                 << id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -304,7 +302,6 @@ bool sqlChannel::insertRecord() {
                 << "date_part('epoch', CURRENT_TIMESTAMP)::int," << no_take << ")" << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

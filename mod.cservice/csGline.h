@@ -97,7 +97,6 @@ class csGline {
     time_t LastUpdated;
     string Reason;
 
-    Logger* logger;
     dbHandle* SQLDb;
 
 }; // class csGline

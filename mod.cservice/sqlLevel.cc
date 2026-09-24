@@ -51,8 +51,7 @@ const sqlLevel::flagType sqlLevel::F_AUTOINVITE = 0x20;
 sqlLevel::sqlLevel(cservice* _bot)
     : channel_id(0), user_id(0), access(0), forced_access(0), flags(0), suspend_expires(0),
       suspend_level(0), suspend_by(), suspend_reason(), added(0), added_by(),
-      last_modif(::time(NULL)), last_modif_by(), last_used(0), logger(_bot->getLogger()),
-      SQLDb(_bot->SQLDb) {}
+      last_modif(::time(NULL)), last_modif_by(), last_used(0), SQLDb(_bot->SQLDb) {}
 
 bool sqlLevel::loadData(unsigned int userID, unsigned int channelID) {
     /*
@@ -130,7 +129,6 @@ bool sqlLevel::commit() {
                 << " WHERE channel_id = " << channel_id << " AND user_id = " << user_id << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 
@@ -149,7 +147,6 @@ bool sqlLevel::insertRecord() {
                 << "date_part('epoch', CURRENT_TIMESTAMP)::int)" << ends;
 
     if (!SQLDb->Exec(queryString)) {
-        LOGSQL_ERROR(SQLDb);
         return false;
     }
 

@@ -1,0 +1,1313 @@
+# GNUWorld Logger System
+
+One hierarchical logger for the whole tree: a process-wide registry of named
+loggers under an unnamed root, sinks (file, console, IRC channel, a Pushover
+pager) attached to any of them, and one `logging.conf` that says which
+records go where — cservice's Prometheus exporter is a sink as well, but one
+that module attaches in code rather than one this file names. `libgnuworld/logger.h` is the only structured logger in
+gnuworld; the legacy `elog` stream is a compatibility shim on top of it (see
+[Migration from elog](#migration-from-elog)), and log4cplus, used only by
+`mod.dronescan` today, is untouched and may be replaced at a module
+maintainer's own pace (see [Migration from log4cplus](#migration-from-log4cplus)).
+
+6 October 2025 (mriron@undernet.org)
+MrIron
+- Initial version.
+
+19 September 2026 (mriron@undernet.org)
+MrIron
+- Full rewrite for the hierarchical logger: one Logger class in libgnuworld,
+  LogManager's registry and configuration, logging.conf, the elog shim, and
+  migration guides from elog and from log4cplus. The old per-bot
+  `LOG_MSG(...).logStructured()` / `registerObjectHandler` / `setChanVerbosity`
+  API this file used to document is gone, and so are cservice's own five
+  logging keys: it is configured in `logging.conf` like everything else (see
+  [cservice](#cservice) and [Upgrade notes](#upgrade-notes)).
+- Pushover is a sink type of `logging.conf` rather than something cservice
+  attaches in code, so any logger — the root included — can page. With that
+  it has a rate limit, a loop guard and a token in a file to keep private;
+  the `irc` sink gained an opt-in rate limit of the same kind, and
+  cservice's four `pushover_*` keys are gone (see [Upgrade
+  notes](#upgrade-notes) and [Security Notes](#security-notes)).
+
+## Table of Contents
+
+- [Concepts](#concepts)
+- [Quick Start for Operators](#quick-start-for-operators)
+- [logging.conf Reference](#loggingconf-reference)
+- [cservice](#cservice)
+- [Upgrade notes](#upgrade-notes)
+- [Logger Names](#logger-names)
+- [Output Formats](#output-formats)
+- [Levels and Inheritance](#levels-and-inheritance)
+- [Module Author's Guide](#module-authors-guide)
+- [Writing a Sink](#writing-a-sink)
+- [Threading and Re-entrancy](#threading-and-re-entrancy)
+- [Security Notes](#security-notes)
+- [Migration from elog](#migration-from-elog)
+- [Migration from log4cplus](#migration-from-log4cplus)
+- [Testing with every optional dependency](#testing-with-every-optional-dependency)
+- [Limitations](#limitations)
+- [Troubleshooting](#troubleshooting)
+
+## Concepts
+
+A **log statement** becomes one `LogRecord`: a level, a message template
+rendered into a sentence, a function name, and typed fields (`bool`,
+`int64_t`, `uint64_t`, `double`, `string`, or null). A **logger** has a name,
+a level and a list of sinks with a threshold each; it hands every record it
+accepts to its sinks and, unless told otherwise, to its parent's.
+
+Loggers form a **dotted hierarchy** under one unnamed **root**, written
+`root` in `logging.conf`: `cservice.sql` sits below `cservice`, which sits
+below the root. `LogManager::get(name)` creates a logger and every missing
+ancestor of it, and always returns the same pointer for the same name — a
+logger lives for as long as the process does. Core has a fixed set of
+sub-loggers (`core`, `core.net`, `core.proto`, `core.state`, `core.config`,
+`core.modules`); every module gets one logger named after its library file
+(`libcservice.la` → `cservice`); every module that opens a `dbHandle` gets
+`<module>.sql`; the old `elog` stream feeds `legacy`. See
+[Logger Names](#logger-names).
+
+A **sink** is a destination: a file, the console, an IRC channel, a
+Pushover or Prometheus client. Dispatch is **additive**: a record logged on
+`cservice.sql` goes to the sinks of `cservice.sql`, then of `cservice`, then
+of the root, unless a logger along the way has `additivity = no`, which
+stops the walk after it. A sink attached at more than one point of that walk
+hears the record once, at the most permissive of its thresholds there.
+
+A logger's **effective level** is decided in this order, highest precedence
+first:
+
+1. an explicit `logger.<name>` line of `logging.conf`;
+2. a **code default**, set once by whoever asked for the logger — this is
+   the one exception to plain inheritance: `db->getLogger()->child("sql",
+   ERROR)` gives `<module>.sql` the level `ERROR` of its own even though its
+   parent may be at `INFO` or `DEBUG`;
+3. inherited from the nearest ancestor that has a level;
+4. `INFO`, for the root, when nothing at all was said.
+
+No module has a say of its own in any of this: every logger of every module,
+cservice's included, is configured by `logging.conf`.
+
+## Quick Start for Operators
+
+```
+$ ./gnuworld -h
+Usage: ./gnuworld [options]
+
+Options:
+  -c                    Verbose output
+  -d <debug filename>   Specify the debug output file
+  -D                    Disable debug logging
+  -f <conf filename>    Specify the config file name
+  -h                    Print this help menu
+  -l <log file>         Capture raw socket data to log file
+  -L                    Disable logging of socket data to file
+  -s <socket file>      Run in simulation mode
+```
+
+- `-c` turns the console on: without it, nothing the logger writes reaches
+  the terminal, whatever `logging.conf` configures.
+- `-d <file>` and `-D` are about one sink only, the one with the special id
+  `debuglog`: `-d` puts it at `<file>` instead of whatever `logging.conf`
+  gave it, `-D` removes it altogether — and every logger line that named it
+  — so "no debug log" keeps meaning no debug log whatever the file asks for.
+- `-f <conf>` is the main configuration file; the optional key
+  `logging_conf` in it names the logging configuration (default
+  `logging.conf`, resolved like every other file name, relative to the
+  working directory).
+
+With **no `logging.conf`** GNUWorld logs exactly as it always has: a
+human-readable `debug.log` (appended, never truncated) plus, in verbose
+mode, the same lines on the terminal. This is the built-in default:
+
+```
+sink.console.type   = console
+sink.debuglog.type  = file
+sink.debuglog.path  = debug.log      # or the -d value
+sink.debuglog.format = text
+logger.root   = INFO, debuglog, console
+logger.legacy = on
+```
+
+and it logs, once, at INFO on `core`:
+
+```
+No logging.conf found; using built-in defaults (see bin/logging.example.conf)
+```
+
+Real captured output of a bare start (`-c`, no `logging.conf`), from
+`debug.log`:
+
+```
+2026-09-19 09:59:52.425  INFO   core         No logging.conf found; using built-in defaults (see bin/logging.example.conf)
+2026-09-19 09:59:52.425  INFO   core         Running in verbose mode...
+2026-09-19 09:59:52.426  INFO   core.modules  Loaded 52 command handlers
+2026-09-19 09:59:52.427  FATAL  core.net      Failed to establish connection to 127.0.0.1:1  (xServer::OnConnectFail)
+```
+
+`logging.conf` is **re-read on SIGHUP**, at the same time the signal reopens
+every file sink's path — that is GNUWorld's whole part in log rotation; see
+[Log rotation](#log-rotation-is-external). A file that cannot be read, or
+that has a mistake in it, is reported as one ERROR record per problem on
+`core.config` and then ignored: the configuration in force stays in force,
+and a broken file can neither stop nor silence a running process. A
+successful reload logs `Reloaded <file>` at INFO on `core`.
+
+### Log rotation is external
+
+GNUWorld does not rotate its own files. Let `logrotate` (or anything else)
+move a sink's file away and send GNUWorld a SIGHUP; the next record lands in
+a fresh file at the same path. A logrotate stanza is no more than:
+
+```
+/path/to/gnuworld/*.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+        kill -HUP $(cat /path/to/gnuworld/gnuworld.pid)
+    endscript
+}
+```
+
+## logging.conf Reference
+
+Optional; the file is `EConfig` syntax, `key = value`, `#` starts a
+comment on its own line. Copy `bin/logging.example.conf` to `logging.conf`
+to start from a working file.
+
+```
+sink.<id>.type      = file | console | irc | pushover
+sink.<id>.path      = <file>                                  # file only, required
+sink.<id>.format    = json | text                             # file only; default json
+sink.<id>.level     = OFF|FATAL|ERROR|WARN|INFO|DEBUG|TRACE    # default TRACE (pushover: ERROR)
+sink.<id>.colour    = auto | yes | no                          # console only, default auto
+sink.<id>.channel   = #chan                                    # irc only, required
+sink.<id>.highlight = yes | no                                 # console and irc, default yes
+sink.<id>.rate      = <N>/min | <N>/hour | <N>/sec             # irc: default none; pushover: 10/min
+sink.<id>.token     = <application token>                      # pushover only, required
+sink.<id>.userkey   = <key>[, <key> ...]                       # pushover only, required
+sink.<id>.url       = <endpoint>                               # pushover only, default the service
+
+logger.<dotted.name>     = LEVEL[, sinkid[, sinkid ...]]        # "root" names the root logger
+logger.legacy            = on | off[, sinkid[, sinkid ...]]     # the elog stream: a switch, not a level
+additivity.<dotted.name> = yes | no                             # default yes
+```
+
+`irc` is registered by core, which is the only layer that knows what an IRC
+channel is; `pushover` by the notifier. `prometheus` is **not** a kind of
+sink this file names: cservice attaches its metrics exporter in code, and it
+is a metrics exporter rather than a log destination (see
+`bin/cservice.example.conf`'s `prometheus_*` keys).
+
+**A `pushover` sink** is a pager: one Pushover notification per record per
+user key, `token` and `userkey` required, `rate` defaulting to `10/min`, and
+`level` defaulting to **`ERROR`** rather than to `TRACE` — a pager is opt-in
+for anything chattier than that. `url` exists so a test can point one at a
+local endpoint (`http://` is allowed for that reason). A build without
+libcurl has no pushover sink at all: a file that names one is rejected as a
+whole, with
+`sink.<id>.type: pushover support is not compiled in (libcurl was not found at build time)`.
+See the [Security Notes](#security-notes) for the token, and
+`bin/logging.example.conf`'s commented-out section for a worked example.
+
+**`sink.<id>.rate` on an `irc` sink** is optional and has no default: without
+it a channel sink sends everything it is given, as it always has. With it, at
+most N **records** a period are sent — however many notices each of them is —
+and the rest are dropped and counted; the next record that does go out is
+preceded by one notice of the shape
+`[W] [core] <N> log records were not sent to this channel (rate limit 5/min)`.
+A configuration reload rebuilds the sink, which starts its bucket full again.
+
+**Type-specific settings.** `type`, `level` and `highlight` are common to
+every kind of sink and read by the parser. Everything else belongs to a kind:
+for the built-in ones (`file`, `console`, `irc`) an unknown setting is a parse
+error, as it always was; for any other type the settings the parser does not
+know are collected and handed to that type's **factory**, which validates them
+and whose complaint (`sink.page.token: a pushover sink needs an application
+token`) rejects the whole file. The type line may come after the settings it
+gives meaning to, so this is decided once the whole file has been read. An
+error about such a setting names its **key** and never its value: a value may
+be a token.
+
+**Console defaults**: `colour = auto` means colour only when the process's
+stdout really is a terminal (`isatty`) and the environment variable
+`NO_COLOR` is unset or empty. A console sink is written to only when the
+process is verbose (`-c`), whatever `logging.conf` says.
+
+**Names and ids**: a logger name's segments are separated by `.`; empty
+segments are dropped (`a..b` and `.a.b.` both mean `a.b`), names are
+case-sensitive, a name may have at most 16 segments and 255 bytes total, and
+a sink id is at most 64 bytes of `[A-Za-z0-9_-]`. The root's name is
+written `root`, however given.
+
+**Whole-file error handling**: any problem in the file — an unknown key
+prefix, an unknown sink type or level, a sink id a logger line does not
+know, a missing required key (`path` for a file, `channel` for an irc
+sink, `token` and `userkey` for a pushover one), two file sinks sharing a
+path, or a logger named twice — rejects the
+**whole file**: nothing in it is applied, so a configuration is never half
+in force. Every problem found is reported, each naming the key it is about,
+up to 20 of them (the rest are counted, not listed). A file that does not
+exist is one more such problem, `cannot open <file>`, never a crash and
+never a reason to stop the process. CRLF line endings and a UTF-8 byte
+order mark on the first line are tolerated.
+
+**What a reload keeps**: sinks attached by a module's own code
+(`Logger::addSink`), a module's code-supplied default level
+(`child("sql", ERROR)`), and an additivity the code asked for all survive a
+reload; `logging.conf` only ever adds a *configured* level, sink list and
+additivity on top of them, and clears those three (not the code's own) when
+it is read again.
+
+The `debuglog` sink id, `-d`/`-D`, and the fallback when nothing at all can
+be applied (an unwritable path even in the built-in default: the process
+starts and logs wherever it still can) are covered under
+[Quick Start](#quick-start-for-operators).
+
+## cservice
+
+cservice is configured here and nowhere else — its paging included, since a
+pushover sink is an ordinary sink of this file. It has three loggers —
+`cservice` (the module itself), `cservice.commands` (one record per user
+command) and `cservice.sql` (its statements) — and `bin/logging.example.conf`
+ships an **active** section for them, which is what cservice used to do with
+five keys of its own:
+
+```
+sink.cservice.type     = file
+sink.cservice.path     = cservice.log
+sink.cservice.format   = json
+sink.debugchan.type    = irc
+sink.debugchan.channel = #coder-com
+sink.debugchan.level   = INFO
+logger.cservice              = DEBUG, cservice, debugchan, console
+additivity.cservice          = no
+logger.cservice.commands     = INFO, cservice
+additivity.cservice.commands = no
+#logger.cservice.sql         = DEBUG
+```
+
+Line by line:
+
+- `sink.cservice` is the module's own JSON log, one object per line — the
+  `cservice.log` the module used to write beside its configuration file.
+- `sink.debugchan.channel` should be the channel cservice's own
+  `debug_channel` key names (`#coder-com` as `bin/cservice.example.conf`
+  ships it). The sink is at `INFO` on purpose: the logger below is at
+  `DEBUG`, and a channel is no place for a DEBUG record, least of all a SQL
+  statement.
+- `logger.cservice = DEBUG, cservice, debugchan, console` is the module at
+  `DEBUG` to all three.
+- `additivity.cservice = no` keeps cservice's records out of the root's
+  sinks. **Drop that line** to have them in `debug.log` and `gnuworld.log`
+  as well.
+- `logger.cservice.commands = INFO, cservice` sends the command log to the
+  file only, and `additivity.cservice.commands = no` keeps it there: the
+  sentence (`LOGIN by nick`) is noise on a channel, and the arguments — in
+  the JSON field `command_line` and nowhere else — are not for a channel at
+  all (see [Security Notes](#security-notes)).
+- `cservice.sql` needs no line: its code default is `ERROR`, so a statement
+  that **fails** is always reported. `logger.cservice.sql = DEBUG`, shipped
+  commented out, adds every statement in full — which is why the channel
+  sink above stops at `INFO`. Never route that logger, at `DEBUG`, to a
+  channel or to a notifier.
+
+A module that is not loaded never logs to its loggers, so the section is
+harmless in a GNUWorld running without cservice.
+
+## Upgrade notes
+
+An install from before this rewrite has five keys in its `cservice.conf`
+that configured cservice's logging: `log_verbosity`, `chan_verbosity`,
+`console_verbosity`, `log_sql` and `console_sql`. **They are gone.** The
+file keeps working with them in it — they are simply not read.
+
+What an operator has to do: **copy the cservice section above into
+`logging.conf`** (adjusting `sink.debugchan.channel` to whatever the
+install's own `debug_channel` is). Without it, and this is the whole of the
+change:
+
+- cservice's records go to the sinks of the **root**, at the root's level,
+  like every other module's;
+- `cservice.log` is **no longer written** at all;
+- **nothing** is sent to the debug channel by the logger (cservice's own
+  notices to that channel, which are not log records, are unaffected);
+- a statement is logged only when it fails, whatever `log_sql` said —
+  `logger.cservice.sql = DEBUG` is what asks for the rest.
+
+### The four pushover keys are gone too
+
+An install that paged through cservice has four more keys in its
+`cservice.conf`: `pushover_enable`, `pushover_token`, `pushover_userkey` and
+`pushover_verbosity`. **They are gone as well**, and for the same reason: a
+pager is a sink of `logging.conf`, so it can be attached to any logger rather
+than to cservice's alone — which is what made the records most worth a page
+(a `FATAL` on `core` or `core.net`, another module's failure) the ones that
+never reached Pushover. The file keeps working with the keys in it; they are
+not read.
+
+What to put into `logging.conf` instead — the four keys, line for line:
+
+```
+sink.page.type    = pushover
+sink.page.token   = <what pushover_token was>
+sink.page.userkey = <what pushover_userkey was, comma separated if several>
+sink.page.level   = WARN                # what pushover_verbosity = 3 meant
+sink.page.rate    = 10/min              # new, and the default
+
+# pushover_enable = yes was cservice and nothing else:
+logger.cservice = DEBUG, cservice, debugchan, console, page
+
+# ... but the records worth a page are everywhere, so prefer the root:
+logger.root = INFO, debuglog, console, main, page
+```
+
+and then `chmod 600 logging.conf`, because it now holds the token (see
+[Security Notes](#security-notes) item 5). `pushover_enable = no` needs
+nothing at all: no sink, no line. Two details of the old behaviour change
+with it — the notification `cmaster init / cmaster connecting...` cservice
+used to send by hand is an ordinary INFO record on `cservice` now, and there
+is a rate limit where there was none.
+
+`prometheus_enable` and the other `prometheus_*` keys are **not** affected:
+Prometheus is a metrics exporter cservice also calls directly, and it stays
+where it is.
+
+## Logger Names
+
+```
+root            everything; the ancestor of all of the below
+legacy          every line still written through the old elog stream
+core            the server itself: xServer, main, the timers
+core.net        the connection layer
+core.proto      the protocol layer: one record per message is TRACE
+core.state      network state: clients, servers, channels
+core.config     configuration files, this one included
+core.modules    loading, attaching and unloading modules
+core.notifier   the Pushover and Prometheus clients themselves.  A pushover
+                sink NEVER takes a record of this logger or of anything below
+                it: that is the loop guard (see Security Notes item 5)
+```
+
+and one logger per module, named after its library file
+(`moduleNameFromLibrary`: the basename, minus a leading `lib`, minus
+everything from the first `.` on — `libcservice.la` → `cservice`,
+`libchanfix.la` → `chanfix`, which is `mod.openchanfix`):
+
+```
+cservice  ccontrol  chanfix  dronescan  nickserv  cloner  gnutest  ...
+```
+
+Every module that opens a `dbHandle` also gets `<module>.sql` below it —
+`cservice.sql`, `ccontrol.sql`, `chanfix.sql`, `dronescan.sql`,
+`nickserv.sql` — code default `ERROR`, so a failed query is always logged
+and a successful one is not unless the logger is turned up to `DEBUG`. And
+cservice has one more of its own, `cservice.commands`: one INFO record per
+user command, the sentence naming only the command and the nick, the
+arguments in the JSON field `command_line` and nowhere else (see
+[Security Notes](#security-notes)).
+
+## Output Formats
+
+Every sink formats the same `LogRecord` in its own way; nothing about a
+format is a matter of the logger call site.
+
+### Text (file and console)
+
+```
+<time>  <LEVEL>  <name>  <message>[  (<function>)]
+```
+
+Columns are two spaces apart. Time is local: the console shows
+`HH:MM:SS.mmm`, a file the full `YYYY-MM-DD HH:MM:SS.mmm`. `LEVEL` is padded
+to five characters (`FATAL`, `ERROR`, `WARN `, `INFO `, `DEBUG`, `TRACE`).
+The name column is padded to `min(longest registered logger name, 20)`; a
+name longer than the column keeps its last `width - 1` characters behind a
+`~`; the root prints as `root`. The function — `Class::method`, parsed from
+`__PRETTY_FUNCTION__` — is left out at `INFO` and when it is empty, and
+follows the last line of the message. A multi-line message's continuation
+lines are indented to the message column. Every C0 control character other
+than the newline, `0x7f`, and every C1 control byte (`U+0080`–`U+009F`) is
+written as `\xNN`, so a field value can move no cursor and paint no colour
+of its own; every other byte of `0x80` and up passes through as text.
+
+Real captured lines (`debug.log`, no `logging.conf`, `-c`):
+
+```
+2026-09-19 09:59:52.425  INFO   core         No logging.conf found; using built-in defaults (see bin/logging.example.conf)
+2026-09-19 09:59:52.426  INFO   core.modules  Loaded 52 command handlers
+2026-09-19 09:59:52.427  FATAL  core.net      Failed to establish connection to 127.0.0.1:1  (xServer::OnConnectFail)
+```
+
+(name column width here is 12, the length of `core.modules`; `core` is
+padded out to it.)
+
+**Colour** (console, when enabled): level `FATAL` bold red, `ERROR` red,
+`WARN` yellow, `INFO` green, `DEBUG`/`TRACE` dim; the logger name takes one
+of six hues from the sum of the bytes of its first segment, so a module and
+every one of its sub-loggers share a colour, and the part of the name from
+the first `.` on is additionally dim; a substituted value is bold when
+`highlight = yes`; the function suffix is dim. Real captured bytes (console,
+under a real terminal, `repr()`'d so the escapes are visible):
+
+```
+'10:04:55.910  \x1b[1;31mFATAL\x1b[0m  \x1b[96mcore\x1b[2;96m.net\x1b[0m      Failed to establish connection to \x1b[1m127.0.0.1\x1b[22m:\x1b[1m1\x1b[22m  \x1b[2m(xServer::OnConnectFail)\x1b[0m'
+```
+
+— `FATAL` in `\x1b[1;31m` (bold red), the name `core` in `\x1b[96m` (bright
+cyan) with `.net` additionally dim (`\x1b[2;96m`), the two substituted
+values (`127.0.0.1`, `1`) bold (`\x1b[1m…\x1b[22m`), and the function suffix
+dim (`\x1b[2m…`), each run closed by `\x1b[0m`.
+
+### JSON (file)
+
+One object per line, `\n` terminated, flushed as it is written. Key order:
+`timestamp` (UTC), `level` (`WARN` prints as `"WARNING"`), `logger`,
+`function` (only when not empty — unlike text, JSON does not drop it at
+INFO), the record's **context** fields (such as `bot`: what `setContext` put on
+the logger the record was logged on, followed by what its ancestors set —
+a sub-logger inherits its parents' context, whatever the additivity, and
+the nearer logger wins for a key both set), the record's own fields
+in insertion order, and `message`. A field marked display-only (added so a
+template could show it, not so JSON would) is left out. Values keep their
+type: strings are quoted and escaped, everything else is not; a `NaN` or
+infinite double is emitted as `null`.
+
+Real captured lines, `sink.main.type = file`, `format = json`:
+
+```json
+{"timestamp":"2026-09-19T08:00:12Z","level":"INFO","logger":"core","function":"xServer::initializeSystem","message":"Uplink Name: 127.0.0.1"}
+{"timestamp":"2026-09-19T08:00:12Z","level":"FATAL","logger":"core.net","function":"xServer::OnConnectFail","message":"Failed to establish connection to 127.0.0.1:1"}
+```
+
+A record with context and fields (real, from cservice's command log):
+
+```json
+{
+  "timestamp": "2026-09-19T08:10:36Z",
+  "level": "INFO",
+  "logger": "cservice.commands",
+  "function": "cservice::OnPrivateMessage",
+  "bot": "X",
+  "command": "SCANEMAIL",
+  "command_line": "SCANEMAIL nobody-42@scan.example.invalid",
+  "user_id": 1,
+  "user_name": "Admin",
+  "client_nick": "adminone",
+  "client_userhost": "adminone@fake.testnet",
+  "client_ip": "127.0.0.1",
+  "client_numeric": "ABAAA",
+  "client_account": "Admin",
+  "client_account_id": 1,
+  "client_is_oper": false,
+  "message": "SCANEMAIL by adminone"
+}
+```
+
+and, on `cservice` itself, where `setContext("bot", ...)` is called (its
+sub-loggers `cservice.sql` and `cservice.commands` inherit that field, so
+their records carry `"bot":"X"` right after `function` as well):
+
+```json
+{"timestamp":"2026-09-19T08:10:36Z","level":"INFO","logger":"cservice","function":"cservice::BurstChannels","bot":"X","message":"Channel join complete."}
+```
+
+Note the argument of `SCANEMAIL` is in `command_line` and nowhere in
+`message` — see [Security Notes](#security-notes).
+
+### IRC (channel sink)
+
+One server `NOTICE` per non-empty line of the message:
+
+```
+<colour><tag> [<name>] <function-prefix><line><reset>
+```
+
+`<tag>` is `[F] [E] [W] [I] [D] [T]`; `<colour>` is mIRC `\00304` for
+FATAL/ERROR, `\00307` for WARN, nothing otherwise, and `<reset>` (`\003`) is
+written only when a colour was; the function prefix `Class::method> ` is
+added at every level but INFO and only when the function is not empty.
+Every control character of the message — including anything a field value
+happened to contain, `\002`, `\003`, `\r` included — is removed before the
+sink adds its own; a substituted value is wrapped in `\002…\002` when
+`highlight = yes`.
+
+Real captured wire lines (`sink.chan.type = irc`, `logger.core = INFO,
+chan`, a SIGHUP reload logging `Reloaded <path>`; INFO gets no colour and no
+function prefix):
+
+```
+highlight = yes:  [I] [core] Reloaded \x02/etc/gnuworld/logging.conf\x02
+highlight = no:   [I] [core] Reloaded /etc/gnuworld/logging.conf
+```
+
+(`\x02` is the literal bold control character, shown escaped here for
+legibility; the actual bytes on the wire are `\x02` around the file name and
+nothing else added — no colour and no `Class::method>` prefix, because the
+record is INFO.)
+
+## Levels and Inheritance
+
+```
+OFF    0   nothing at all
+FATAL  1   the process exits right after
+ERROR  2   an operation failed
+WARN   3   a protocol or state anomaly that is survived
+INFO   4   lifecycle: connected, module loaded, shutdown
+DEBUG  5   development detail
+TRACE  6   per message, per line, per timer, per loop iteration
+```
+
+A record of level `v` passes a threshold `t` when `v <= t` — the numbers
+run from most urgent to most verbose, the opposite of "priority". `WARN` is
+accepted as `WARN` or `WARNING` in `logging.conf`; JSON always prints
+`WARNING`.
+
+**Worked example.** Given:
+
+```
+logger.root         = INFO
+logger.cservice      = DEBUG, filesink
+logger.cservice.sql  =           # no level: "cservice.sql" is not configured
+additivity.cservice.sql = no
+```
+
+- `cservice` has an explicit level, `DEBUG`: it logs at DEBUG regardless of
+  what its parent (the root, `INFO`) says.
+- `cservice.sql` has no `logger.` line of its own — the `additivity.` line
+  alone does not give it a level — so it falls through: it *does* have a code
+  default (`ERROR`, from `bot->getLogger()->child("sql", ERROR)`), which wins
+  over the inherited `DEBUG`. It logs at `ERROR`.
+- A `DEBUG` query record on `cservice.sql` is therefore dropped before it
+  ever reaches a sink (`ERROR` is stricter than `DEBUG`). An error record
+  passes; because `additivity.cservice.sql = no`, it goes to `cservice.sql`'s
+  own sinks (there are none here) and stops — it does **not** reach
+  `filesink` on `cservice`, let alone the root's.
+- Had `logging.conf` instead said `logger.cservice.sql = DEBUG`, that
+  explicit line would outrank the code default, and every query would be
+  logged.
+
+This is exactly the precedence list under [Concepts](#concepts): configured
+level, then code default, then inheritance, then `INFO`.
+
+## Module Author's Guide
+
+**Getting a logger.** Once per module, at global scope (outside every
+namespace) in the module's common header:
+
+```cpp
+GNUWORLD_MODULE_LOGGER("mymodule");
+```
+
+This defines an internal-linkage `moduleLogger()` that `LOG`/`LOG_MSG`
+resolve; every translation unit of the module that includes the header logs
+under the same name. It has internal linkage on purpose: modules are
+separate shared objects, and an exported symbol would have every module
+that forgot to redefine it bind to whichever one loaded first. Core code
+(one binary, not a module) instead puts one `GNUWORLD_CORE_LOGGER(<which>)`
+per `.cc` file — `GNUWORLD_CORE_LOGGER(Proto);` — naming that file's own
+logger by its `CoreLogger` value rather than by a string, and never in a
+header.
+
+**Logging.**
+
+```cpp
+LOG(INFO, "Server started");
+LOG(DEBUG, "User {} connected from {}", username, ip);
+
+LOG_MSG(WARN, "{nick} failed to add to {chan}")
+    .with("nick", clientPtr)
+    .with("chan", channelPtr)
+    .log();                       // logStructured() is an alias
+```
+
+`LOG`/`LOG_MSG` always go to the module's own logger (`moduleLogger()`).
+`LOG_TO`/`LOG_MSG_TO` name a logger explicitly — for a sub-logger, for
+shared code (a `dbHandle`) holding a `Logger*` it was given, or for a class
+member such as `xClient::getLogger()`:
+
+```cpp
+LOG_TO(myLogger, INFO, "listening");
+LOG_MSG_TO(sqlLog, DEBUG, "{query}").with("query", theQuery).log();
+```
+
+Core names its own loggers with an enum rather than a string:
+`LOG_CORE(which, level, ...)` and `LOG_MSG_CORE(which, level, template, ...)`,
+where `which` is a `CoreLogger` — `Core`, `Net`, `Proto`, `State`, `Config`,
+`Modules`, `Notifier`, for `core`, `core.net` and so on. It is for a
+statement that belongs to another of core's loggers than its file's, and for
+a header, which cannot name a logger of its own:
+
+```cpp
+LOG_CORE(Modules, ERROR, "Error closing module: {}", error);
+LOG_MSG_CORE(State, WARN, "{client} is on no server").with("client", theClient).log();
+```
+
+A new logger of core is one line of the enum and one of `coreLogger()`, both
+in `libgnuworld/logger.h`.
+
+`Logger* child(const std::string&)` is a sub-logger (`logger->child("sub")`
+== `LogManager::get(moduleName + ".sub")`), or, giving it a level unless
+`logging.conf` overrides it, `child("sub", codeDefault)`.
+
+**A statement that is not going to be logged costs almost nothing**: `LOG`
+and `.with()` both call `shouldLog()` first, so an extractor never runs and
+nothing is formatted for a record that will be dropped.
+
+**Templating.** Single pass; substituted text is never rescanned:
+
+- `{{` and `}}` are literal `{` and `}`.
+- `{}` or `{:spec}` takes the next positional argument, formatted with
+  `std::vformat("{:spec}", ...)` — any `std::format` spec works, e.g.
+  `"{:>5}"`, save for a width or precision above 4096 (see below).
+- `{name}` (`name` matching `[A-Za-z0-9_]+`) is the first field of that key,
+  substituted at **every** occurrence.
+- An unknown name, an exhausted positional argument, a spec `std::format`
+  rejects, and an unmatched `{` or lone `}` are all copied verbatim — as is a
+  width or precision above 4096, which `std::format` itself would accept but
+  this renderer will not honour. Honouring one costs an allocation the size of
+  the width, and under libc++ the exception that follows escapes the render.
+  The same 4096 is enforced a second time, differently: a `Write`, `Notice`,
+  `Message` or `Wallops` whose format is a source literal refuses a wider one at
+  **compile time**, so that is a build error rather than a placeholder. A
+  template is read from a config file and must fail gracefully; a literal is a
+  typo in the tree, and the only person who can fix it is the one compiling it.
+
+Because substituted text is never rescanned, a value that happens to look
+like a placeholder is safe: `nick="{reason}"`, `reason="spam"`, template
+`"{nick}: {reason}"` renders `"{reason}: spam"`, not `"spam: spam"`.
+**Never pass a value that came from outside the process — a nickname, a
+channel topic, anything from the network — as the *template* string
+itself; pass it as an argument or a field.** The template is what decides
+which placeholders exist; letting external text be the template lets
+whoever sent it choose what gets substituted into what.
+
+**Display forms**, for `.with(key, objectPtr)` when `objectPtr`'s type has
+a registered extractor: the template's `{key}` shows the object's display
+form, and JSON gets `key_<sub>` fields, one per sub-field the extractor
+gives. Built in for core types:
+
+| Type | Display | Fields |
+|---|---|---|
+| `iClient*` | nick | `nick`, `userhost`, `ip`, `numeric`, then `account`/`account_id` if `isModeR()`, then `is_oper` |
+| `iServer*` | name | `name`, `numeric`, `uplink`, `is_bursting` |
+| `Channel*` | name | `name`, `modes` |
+| `ChannelUser*` | its client's nick | `is_op`, `is_voice` |
+
+and, registered by `mod.cservice` itself: `sqlUser*` (display: user name),
+`sqlChannel*` (display: channel name), `sqlBan*` (display: the ban mask).
+A **null** pointer of a type *with* an extractor renders `(null)` in the
+sentence and `"key":null` in JSON; a null pointer of a type *without* one
+is the plain string `"(null)"`; a non-null pointer nobody registered is its
+own address, `0x...`. A field `.with()` adds that the template never names
+still shows up in JSON, in insertion order — text, console and IRC show
+only the rendered sentence, never a field the template did not ask for.
+
+**Registering your own extractor:**
+
+```cpp
+theClient->registerLogExtractor<MyType>([](const MyType* t) -> LogObject {
+    if (nullptr == t)
+        return {};
+    return LogObject{t->getName(), {{"id", static_cast<std::int64_t>(t->getID())}}};
+});
+```
+
+registered against the `xClient` instance that made it, and removed
+automatically in `~xClient()` — a module that is unloaded takes its
+extractors with it (a pointer of the same C++ type registered by a
+*different* still-loaded module keeps working; only this owner's
+registration is gone). Core's own extractors for `iClient`/`iServer`/
+`Channel`/`ChannelUser` are registered once at start-up under owner
+`nullptr` and never removed.
+
+**Database errors.** Any module with a `dbHandle` gets `<module>.sql` for
+free, no setup, and nothing to write: a failed statement is reported by the
+handle itself, naming the **caller** — `Exec()` takes a defaulted
+`std::source_location`, evaluated at the call site, so leave it alone. Add
+a sentence beside it only for what the handle cannot say, and never the
+database's message again.
+
+```cpp
+if (!db->Exec(query)) {
+    return false;       // already an ERROR record on "<module>.sql"
+}
+```
+
+The record is `"SQL Error: {error} (line {line})"` — `line` is the caller's,
+which says which statement of a function failed — with the field `error`, the database's
+**primary** message (`PG_DIAG_MESSAGE_PRIMARY`) rather than the whole of
+`PQerrorMessage()`, whose `LINE 1:` excerpt and `DETAIL: Key (...)=(...)`
+would put the failing statement's literal values — a password hash among
+them — back into the log `Exec(query, false)` keeps them out of; a lost
+connection, with no result to ask, still gives the whole message. The
+statement is not part of that record: ask for `logger.<module>.sql = DEBUG`
+and it is the record right before it. Every `Exec()` call itself is a
+`DEBUG` record on the same logger with field `query`, unless it is called
+`Exec(query, false)`, in which case it is skipped entirely — used for the
+handful of statements that carry a password hash, a TOTP secret or a SCRAM
+record, whose failure is reported all the same and names no statement:
+
+```cpp
+// carries a credential: kept out of the query log
+if (!SQLDb->Exec(queryString, false)) {
+    return false;
+}
+```
+
+**Do:**
+- pass external text (nicks, hosts, message bodies, SQL results) as
+  arguments or `.with()` fields, never as the template;
+- add a field even when the template does not show it, if a JSON reader
+  might want it (`.with("client_ip", ...)`  alongside a sentence that only
+  names the nick);
+- guard anything expensive that is not itself a log call with
+  `logger->shouldLog(level)`.
+
+**Don't:**
+- build the template string from anything the network, a user, or a
+  database sent;
+- assume text or console shows a field the template did not name — only
+  JSON does;
+- call `.log()` more than once on the same `MessageTemplate` (it is meant
+  to be built and logged in one expression).
+
+## Writing a Sink
+
+```cpp
+class LogSink {
+  public:
+    virtual ~LogSink() = default;
+    virtual void emit(const LogRecord&) = 0;       // thread-safe, never throws, never logs
+    virtual void reopen() {}                       // SIGHUP: close and reopen a file, say
+    virtual Verbosity defaultThreshold() const { return TRACE; }  // with no sink.<id>.level
+    virtual bool mainThreadOnly() const { return false; }
+    virtual bool suppressOnReentry() const { return false; }
+};
+```
+
+The reference example is `CaptureSink` (`libgnuworld/LogSinks.h`), used by
+the unit tests: take the lock, do the one thing, return.
+
+```cpp
+class CaptureSink : public LogSink {
+  public:
+    std::vector<LogRecord> records;
+
+    void emit(const LogRecord& record) override {
+        const std::lock_guard<std::mutex> guard(lock);
+        records.push_back(record);
+    }
+
+    void clear() { const std::lock_guard<std::mutex> guard(lock); records.clear(); }
+    std::size_t size() const { const std::lock_guard<std::mutex> guard(lock); return records.size(); }
+
+  private:
+    mutable std::mutex lock;
+};
+```
+
+`emit()` is called from whatever thread logged the record, so a sink locks
+itself; nothing about a `Logger`'s own mutex is held while a sink runs.
+
+`defaultThreshold()` is the level `LogManager::configure()` attaches this
+kind of sink at when the file gives no `sink.<id>.level`: `TRACE` — every
+record the logger sends — for a file, a console, a channel; `ERROR` for the
+pushover sink, because nobody wants a push notification per protocol
+message. A level the file *did* give always wins. **A sink does no
+filtering of its own**: the per-sink threshold the logger holds is the one
+filter there is, so a sink with a second threshold inside it is a sink with
+two answers to the same question.
+
+Two flags change how the logger treats a sink:
+
+- `mainThreadOnly()` — true for the IRC sink: writing to the network
+  connection is only safe from the thread that owns it, so a record that
+  arrives on another thread is queued (at most 1,000 per sink; a full queue
+  drops what arrives and reports it in one `WARN` per flush) and delivered
+  from the main loop instead, in order.
+- `suppressOnReentry()` — true for the IRC sink and every notifier: sending
+  a notice or a push notification is itself something that might log (a
+  connection failure, an HTTP error), and a sink that took *that* record
+  too would feed itself. A thread-local flag marks "already inside a sink
+  dispatch"; a record logged while it is set reaches only sinks whose
+  `suppressOnReentry()` is false.
+- `leavesTheHost()` — true for the IRC sink and every notifier: what they
+  are given goes to a channel or to somebody else's service. A record
+  marked `localOnly()` (an SQL statement) is never given to such a sink.
+  A sink of your own that sends records anywhere must say so too.
+
+To make a sink `logging.conf` can name by a `sink.<id>.type = ...` line,
+register a factory once, at start-up:
+
+```cpp
+LogManager::registerSinkType("mytype",
+    [](const SinkSpec& spec, std::string& error) -> std::shared_ptr<LogSink> {
+        // read whatever fields of spec this kind of sink uses; on failure,
+        // set error and return nullptr, which fails the WHOLE configuration
+        return std::make_shared<MySink>(spec.path);
+    });
+```
+
+`file` and `console` are pre-registered; `irc` is registered by core
+(`src/server.cc`), the only layer that knows what a channel is; `pushover` by
+the notifier (`PushoverClient::registerSinkType()`, called from
+`xServer::setupLogging` beside the `irc` one). Prometheus is not a sink of
+this file: cservice attaches its exporter in code.
+
+**Settings of your own.** A type name the parser does not know is one whose
+settings the parser does not know either: everything but `type`, `level` and
+`highlight` arrives in `spec.options`, a `map<string, string>` with the keys
+lower-cased and the values trimmed. A factory reads the ones it has and
+**refuses the ones it has not**, naming the key:
+
+```cpp
+for (const auto& option : spec.options) {
+    if ("token" == option.first)
+        token = option.second;
+    else {
+        error = "sink." + spec.id + "." + option.first + ": unknown setting for a mytype sink";
+        return nullptr;   // the whole configuration is refused
+    }
+}
+```
+
+Two conventions matter here. An error that already begins with
+`sink.<id>` is quoted as it stands, so a factory can name a key of its own
+(`sink.page.token: ...`) instead of a key behind a second prefix. And an
+error **never quotes an option's value**: an option may be a credential, and
+this text goes into a log file. An error that begins with `sink.<id>` but not
+with `sink.<id>.` is prefixed like any other, so a sink named `a` cannot pass
+off a complaint about `sink.ab`.
+
+A factory says nothing about the level: `spec.levelGiven` tells
+`configure()` whether the file gave one, and where it did not the level is
+this kind of sink's `defaultThreshold()`.
+
+## Threading and Re-entrancy
+
+- Every sink has its own lock; `Logger::log()` copies the list of targets
+  to deliver to under each logger's mutex, one logger at a time, and
+  releases every one of them before the first `emit()` — no logger mutex is
+  ever held while a sink writes a file, a terminal or the network.
+- A `FileSink` and a `ConsoleSink` are safe to call from any thread at
+  once; two console sinks at different thresholds share one lock so their
+  lines cannot interleave.
+- The IRC sink only ever writes to the network from the main thread
+  (`mainThreadOnly()`); records from any other thread are queued and
+  flushed from the main loop (`IrcLogSink::flushAll()`, called once per
+  main-loop iteration).
+- A record logged from *inside* a sink's own `emit()` — the thread-local
+  re-entrancy guard — reaches only sinks with `suppressOnReentry() ==
+  false` (file, console): a notifier or the IRC sink cannot feed itself.
+- A configuration reload (`LogManager::configure`) swaps each logger's
+  level, additivity and configured sinks atomically, under that logger's
+  own mutex: a record logged concurrently sees the configuration that was,
+  or the configuration that now is, never one with its sinks taken away
+  and not yet given back. There is no such promise *across* loggers — a
+  record walking up the hierarchy may meet a child already reconfigured and
+  a parent not yet — which needs no fixing, because nothing about a single
+  record's delivery depends on it.
+
+## Security Notes
+
+1. **A JSON sink is the whole record**: client IPs, accounts, user@host, a
+   cservice command line (`command_line`), and - where a `<module>.sql`
+   logger is at `DEBUG` - every SQL statement (`query`). cservice keeps its
+   own credential-bearing statements (password hash, TOTP secret, SCRAM
+   record) out of that with `Exec(query, false)`; no other module's queries are
+   reviewed for what they may contain. Treat a JSON log as sensitive,
+   especially once it leaves this host for a log-shipping stack.
+2. **File permissions**: a log file this process creates is mode `0640`
+   (less the umask); a file that is already there keeps whatever mode it
+   had; a file sink follows a symlink rather than refusing one. The
+   directory a log lives in has to be writable by nobody but GNUWorld's own
+   user.
+3. **`logger.<module>.sql = DEBUG` logs every statement in full** — for
+   cservice and ccontrol that includes the `UPDATE ... SET password = ...`
+   the credential exemption above does not cover simply by being a
+   different query. **No configuration can send a statement to a channel or a
+   pager, though:** the db handle marks the record `localOnly()`, and the
+   logger gives such a record to no sink whose `leavesTheHost()` is true —
+   the `irc` sink and every notifier — whatever `logging.conf` routes where
+   and at whatever level. Files and the console get it. Any code that logs
+   something of that kind does the same:
+   `LOG_MSG(DEBUG, "{query}").with("query", q).localOnly().log();`. The error
+   record of a failed statement is NOT local-only — it is what should page
+   somebody — and carries the database's primary message, never the
+   statement.
+4. **An `irc` sink is driven by whatever the uplink sends**, one notice per
+   anomaly, and has no rate limit unless `sink.<id>.rate` asks for one. Put
+   it on a module's own logger at `WARN` or above rather than on
+   `core.state`, `core.proto`, `core.net` or the root — or give it a rate.
+5. **Pushover is a third party, and its token lives in `logging.conf`.**
+   - Only the rendered sentence and the title (`[core.net] FATAL`) leave
+     this host: no fields, no context, no query.
+   - **Every value of the request is percent-encoded**, the token and the
+     user key included. A sentence carries whatever a remote server or an
+     IRC user put into it, and a channel name may legally hold `&`, `=`,
+     `%`, `#` and `+`: unescaped, such a name would add form fields of its
+     own — a second `user` sending the page, with this deployment's token,
+     to somebody else's account. The sentence is also cut on a UTF-8
+     character boundary at Pushover's limit (250 bytes of title, 1024 of
+     message) and stripped of every control character but the newline.
+   - **`chmod 600 logging.conf`.** The file holds an application token, and
+     GNUWorld says so once at `WARN` on `core.config` when it does not:
+     `<file> holds a token and is readable by others (mode 0644); chmod 600
+     it`. That is a warning and nothing more — a configuration file is data.
+   - The token and the user keys reach nothing but the request body. No log
+     record and no error message about the file ever contains either: a
+     record about a user names its **position** in the list (`user #1`).
+   - The default level of a pushover sink is **`ERROR`**, not `TRACE`, and
+     its default rate is `10/min`. Both are worth keeping: a pager that goes
+     off per protocol message is a pager nobody reads.
+   - A pushover sink is safe on the **root**, which is where the records
+     worth a page are (a `FATAL` of `core` or `core.net`, any module's
+     failures): a record of `core.notifier` — where the sink logs its own
+     delivery failures, from its worker thread, where the re-entrancy guard
+     does not apply — is dropped by the sink itself, so it cannot page about
+     failing to page. Those failures are logged at most once a minute per
+     sink, each record saying how many went unsaid behind it.
+6. **`logger.legacy = on` sends every unconverted module's `elog`
+   chatter** to every sink the root has — ccontrol's own password `UPDATE`
+   debug line among it. On a production install keep `legacy` `off`,
+   or `on` only with a text file of its own and nowhere else.
+7. **`logging.conf` is trusted input**: a path it names is used exactly as
+   given, with no check against what an operator did or did not mean.
+8. **What each sink shows**, most revealing first:
+
+   | Sink | Shows |
+   |---|---|
+   | file, JSON | everything: every field, unredacted |
+   | file/console, text | the sentence; control characters escaped as `\xNN`, every other byte of `0x80`+ passed through as text — read an untrusted log with `less` or `cat -v`, not a terminal left to interpret whatever is in it |
+   | IRC | the sentence, every control character removed |
+   | notifier | the sentence, and nothing else; control characters but the newline removed, every field of the request percent-encoded |
+
+The most important of these are repeated as comments in
+`bin/logging.example.conf`, next to the settings they are about.
+
+## Migration from elog
+
+`elog` is a **deprecated** stream front end kept only for source
+compatibility: every one of the roughly one thousand `elog << ... <<
+std::endl` statements outside `libgnuworld/ELog.{h,cc}` still compiles and
+still logs, unchanged. What it now does: text is buffered per thread (one
+`std::ostringstream` per thread, format state such as `std::hex` persists
+across statements exactly as a real stream's would) and, on `std::endl`,
+becomes one **`DEBUG`** record on the logger **`legacy`** — no function, no
+fields. An elog line says nothing of how bad it is, so that logger is not
+filtered but switched: `logger.legacy = on` (every line) or `off` (none).
+`DEBUG`, `TRACE` and `OFF` are still read, as `on`, `on` and `off`; a
+severity in between, which looks like a filter and would hide everything, is
+an error that says so. A sink still applies its own `sink.<id>.level`, which
+has to let `DEBUG` through to show the stream. A `std::flush` is a no-op (there is nothing buffered to flush anywhere but
+memory). `elog.setStream(p)` turns the console sink on or off
+(`ConsoleSink::setEnabled(p != nullptr)`); `elog.openFile(name)` gives the
+root logger a file at that path (`LogManager::bootstrapFile`) — core itself
+no longer calls either of these to decide anything; both exist purely for
+whatever module code still calls them.
+
+New code does not use `elog`. It uses `LOG`/`LOG_MSG` (see
+[Module Author's Guide](#module-authors-guide)), which name a real logger,
+carry a level of their own instead of always `DEBUG`, and add typed fields
+instead of a flat streamed sentence.
+
+**Core is compiled with `-DGNUWORLD_NO_ELOG`**, under which `extern ELog
+elog;` is not declared: an `elog` statement freshly added to `src/`,
+`libircu/`, `libgnuworld/`, `include/` or `libnotifier/` fails to compile.
+This is on six build targets only (`libgnuworld`, `libgnuworldcore`,
+`gnuworld`, `libircu`, `libnotifier`, `libgnuworldDB`); every module and
+every test program still has `elog` available. A module may opt into the
+same guard once it has converted its own `elog` statements, by adding
+`-DGNUWORLD_NO_ELOG` to its own `_CXXFLAGS` in `Makefile.am` — nothing
+forces this.
+
+### Conversion rules (as applied to core; usable for a module too)
+
+- One `GNUWORLD_CORE_LOGGER(<which>)` per `.cc` file (core), or one
+  `GNUWORLD_MODULE_LOGGER("<name>")` in the module's common header (a module); a header that logs on its own
+  uses `LOG_CORE(<which>, ...)` in core, and
+  `LOG_TO(::gnuworld::LogManager::get("<name>"), ...)` in a module.
+- One `elog` statement becomes one `LOG`/`LOG_MSG` call; a hand-written
+  `Class::method> ` prefix is dropped (the function is captured
+  automatically).
+- An `iClient`, `Channel` or `iServer` the statement streamed becomes a
+  `.with()` field with a role key (`client`, `target`, `source`, `chan`,
+  `server`, `uplink`); everything else is a positional `{}` argument.
+- Levels: **FATAL** — the process exits right after; **ERROR** — an
+  operation failed; **WARN** — a protocol or state anomaly that is
+  survived (unknown mode, client/channel/server not found, wrong parameter
+  count); **INFO** — lifecycle (connected, burst complete, module
+  loaded/unloaded, signal received, shutdown); **TRACE** — per protocol
+  message, per line, per timer, per loop iteration; **DEBUG** — everything
+  else.
+- A commented-out `elog` line, and any `clog`/`cout`/`cerr` statement, is
+  left untouched. `elog.setStream`/`getStream`/`isOpen` calls are not
+  converted (they are not log statements, they are the compatibility
+  surface itself).
+
+### Before/after, real converted code
+
+Simple positional (`libircu/msg_B.cc`):
+
+```cpp
+// before
+elog << "msg_B> Failed to add channel: " << Param[1] << endl;
+// after
+LOG(ERROR, "Failed to add channel: {}", std::string(Param[1]));
+```
+
+An object streamed by its name, now a field (`libircu/msg_B.cc`):
+
+```cpp
+// before
+elog << "msg_B::parseBurstUsers> Failed to add "
+     << "channel " << *theChan << " to iClient " << *theClient << endl;
+// after
+LOG_MSG(ERROR, "Failed to add channel {chan} to iClient {client}")
+    .with("chan", theChan)
+    .with("client", theClient)
+    .log();
+```
+
+A statement inside a class that already has a `Logger*` of its own, not a
+`GNUWORLD_MODULE_LOGGER` (`libnotifier/pushover.cc`, `core.notifier`):
+
+```cpp
+// before
+elog << "[PUSHOVER-ERROR] Failed to send message: " << message << std::endl;
+// after
+LOG(ERROR, "Failed to send message: {}", message);
+```
+
+Network state (`src/Network.cc`, `core.state`):
+
+```cpp
+// before
+elog << "xNetwork::addServer> Insert into serverMap failed"
+     << " for server: " << *newServer << endl;
+// after
+LOG_MSG(WARN, "Insert into serverMap failed for server: {server}")
+    .with("server", newServer)
+    .log();
+```
+
+## Migration from log4cplus
+
+Nothing here is forced. `mod.dronescan` (the only module using log4cplus
+today) and the log4cplus configurator call in `src/main.cc` are untouched
+by this work and keep working exactly as before; a module maintainer may
+move to `logging.conf` and the logger at their own pace, or not at all.
+
+dronescan's `bin/logging.properties` has four `log4cplus.logger.gnuworld.*`
+categories, each with its own daily rolling file appender:
+
+```
+log4cplus.logger.gnuworld.ds.jf.glined=INFO, DS-JFGLINED
+log4cplus.appender.DS-JFGLINED=log4cplus::DailyRollingFileAppender
+log4cplus.appender.DS-JFGLINED.File=jf-glined.log
+...
+log4cplus.logger.gnuworld.ds.jf.cservice=INFO, DS-CSERVICE
+...
+log4cplus.logger.gnuworld.ds.spam.action=INFO, DS-SPAMACTION
+...
+log4cplus.logger.gnuworld.ds.event=INFO, DS-EVENT
+...
+```
+
+The same shape as `logger.<name>.<sub> = LEVEL, sinkid`, rewritten for
+`logging.conf` (each an audit trail of its own, not additive, so it goes to
+its file and nowhere else — no console, no root):
+
+```
+sink.jfglined.type   = file
+sink.jfglined.path   = jf-glined.log
+sink.jfglined.format = json
+logger.dronescan.jf.glined = INFO, jfglined
+additivity.dronescan.jf.glined = no
+
+sink.jfcservice.type   = file
+sink.jfcservice.path   = jf-cservice.log
+sink.jfcservice.format = json
+logger.dronescan.jf.cservice = INFO, jfcservice
+additivity.dronescan.jf.cservice = no
+
+sink.spamaction.type   = file
+sink.spamaction.path   = spam-action.log
+sink.spamaction.format = json
+logger.dronescan.spam.action = INFO, spamaction
+additivity.dronescan.spam.action = no
+
+sink.dsevent.type   = file
+sink.dsevent.path   = dronescan-event.log
+sink.dsevent.format = json
+logger.dronescan.event = INFO, dsevent
+additivity.dronescan.event = no
+```
+
+(`bin/logging.example.conf` ships the `spam.action` one of these,
+commented out, as a worked example.)
+
+On the C++ side, log4cplus's `getLogger("gnuworld.ds.spam.action")`
+becomes a sub-logger reached from the module's own:
+
+```cpp
+Logger* spamAction = moduleLogger()->child("spam")->child("action");
+LOG_MSG_TO(spamAction, INFO, "Blocked {nick} in {chan} for {reason}")
+    .with("nick", clientPtr)
+    .with("chan", channelPtr)
+    .with("reason", reasonText)
+    .log();
+```
+
+log4cplus's `DailyRollingFileAppender` has no equivalent here: this
+logger's file sinks never rotate themselves. Replace daily rolling with
+logrotate and a SIGHUP, the same as every other sink in the tree — see
+[Log rotation is external](#log-rotation-is-external) for a sample stanza.
+
+## Testing with every optional dependency
+
+Two of this system's sinks are only compiled where an optional library is:
+the `pushover` one needs libcurl, and cservice's Prometheus exporter needs
+prometheus-cpp. A machine without them builds and tests everything else
+without a word, which is exactly how that code goes stale.
+
+`test/docker/full-deps/run.sh`, run from the repository root, is the build
+that has them:
+
+```
+$ test/docker/full-deps/run.sh
+=== Building the image gnuworld-full-deps
+=== Streaming the working tree into a container
+=== configure --enable-modules=... --with-test
+checking for libcurl... yes
+checking for prometheus-cpp-core prometheus-cpp-pull... yes
+=== make -j6
+warnings in the whole build: 0
+=== make check
+# TOTAL: 14
+# PASS:  14
+=== test_pushover_delivery, 20 times
+20 of 20 runs passed
+=== A second configuration: --with-log4cplus
+the log4cplus configuration built, 0 warnings in all
+```
+
+What it does: builds a Debian image with every optional dependency
+(`test/docker/full-deps/Dockerfile` — prometheus-cpp is built from source
+there, because Debian ships no C++ Prometheus client at all, and its tarball
+is checked against a SHA-256 pinned beside the version, so a moved tag fails
+the image build rather than getting built), then streams
+the **working tree's tracked files** into a container through a tar on stdin,
+so uncommitted edits are included and no build product of the host is.
+Inside: `autogen.sh`, the full `configure`, an assertion that libcurl and
+prometheus-cpp really were found, `make -j$(nproc)` with **no warning from
+`libnotifier/` or `mod.cservice/`**, `make check`, and the delivery test.
+Then the whole thing again with `--with-log4cplus`. Its exit status is all of
+that; nothing is mounted and nothing it writes reaches the host. A new file
+has to be `git add`ed to be streamed in.
+
+`test_pushover_delivery` (`test/pushover_delivery.cc`) is the one test that
+really puts a notification on a wire: a python3 endpoint records every request
+twice — the raw body and the form fields decoded out of it — and answers
+Pushover's own success JSON, `/fail` answers 500, `/slow` answers half a
+second late. It asserts one POST per user key with the token, the title and
+the sentence in it; that **no sentence can add, remove or alter a field** — a
+channel name of `#x&user=ATTACKERKEY&priority=2&html=1` arrives as one `user`,
+one `priority`, no `html` and a message equal to the sentence byte for byte;
+that a two-line message keeps its newline; that a pager with no level hears an
+`ERROR` and not a `WARN`, and one with `level = INFO` hears an `INFO`; that a
+record of `core.notifier` is not posted; that `rate = 2/min` posts two of ten
+records; that a failing endpoint produces one `core.notifier` ERROR and no
+crash; that two sinks used from two threads at once deliver all their pages;
+that destroying a sink with fifty requests queued costs no time at all; and
+that no log record of the whole run carries the token or a user key. It is
+built only where libcurl is (`COND_LIBCURL`), and without `PUSHOVER_TEST_URL`
+in the environment it says so and passes, so `make check` on an ordinary
+machine needs no endpoint and no network. The run script runs it twenty times:
+a race between two sinks' worker threads does not show up in one.
+
+`test_pushover_text` (`test/pushover_text.cc`) covers the same sink's two text
+helpers — the UTF-8-safe cut and the control-character clean-up — and needs no
+libcurl, so it runs under `make check` everywhere.
+
+## Limitations
+
+- **Two instances of the same module library share one logger** (loading
+  `cloner` twice does not give the second instance a logger of its own).
+  The `bot` context field then holds whichever instance's nick was set
+  last, and it is that instance's `xClient::~xClient()` — the first to
+  unload — that removes context and extractors the other may still be
+  relying on. Accepted; not enforced against.
+- No rolling or daily file appender: rotation is logrotate + SIGHUP only
+  (see above).
+- No pattern layouts (a text line's shape is fixed), no async logging
+  worker, no syslog or network sink.
+- The rate limit of an `irc` sink is **opt-in** (`sink.<id>.rate`): without
+  it a chatty logger routed to a channel is exactly as chatty on the
+  channel. A `pushover` sink always has one, `10/min` unless the file says
+  otherwise.
+- A rate limit is per sink and lives only as long as the sink: a
+  configuration reload builds new sinks, and their buckets start full.
+- The IRC sink's "N log records were not sent" notice and the pushover
+  sink's `[gnuworld] suppressed` message both need the bucket to refill
+  before they can be seen, so no automated test waits for one: the counting
+  behind them is covered by `test_logger_ratelimit`
+  (`LogRateLimit::takeSuppressed`), and what the two sinks do with that
+  count is not itself asserted anywhere.
+
+## Troubleshooting
+
+**Nothing appears on the console.** Check `-c` was given: without it the
+console sink never writes, no matter what `logging.conf` configures.
+
+**A change to `logging.conf` did not take effect.** Confirm SIGHUP reached
+the right process (`kill -HUP $(cat gnuworld.pid)`), and check for an ERROR
+record on `core.config` — a mistake in the file leaves the previous
+configuration exactly as it was.
+
+**A module's log lines are missing.** Check the module's own logger name
+matches its library file (`moduleNameFromLibrary`) — a module loaded
+outside `xServer::AttachClient` (a stand-alone test, say) falls back to its
+configuration file's basename up to the first `.`. Check the level: a
+message below the logger's effective level is dropped before it is even
+built (see [Levels and Inheritance](#levels-and-inheritance) for how that
+level is decided).
+
+**Nothing arrives in an `irc` sink's channel.** A server notice goes to a
+channel the network has, and a channel exists only while somebody is in it:
+name a channel one of your bots joins, or sit in it. Until the uplink's burst
+is over the sink drops what it is given in silence (the channel may not have
+arrived yet); after that, the first record it cannot deliver makes one `WARN`
+on `core` — "The log channel #x does not exist on the network" — which the
+other sinks show, once per channel until the channel turns up. Then check the
+levels: a module that still writes to `elog` logs on `legacy` at `DEBUG`, so
+it needs `logger.legacy = on, <sink>` and a `sink.<id>.level` that lets
+`DEBUG` through.
+
+**A field is not showing up in the text/console/IRC line.** Only JSON shows
+every field; text, console and IRC show only the rendered sentence — a
+field the template did not name with `{key}` never appears outside JSON.
+This is not a bug to fix by adding it to the template if the field is
+sensitive (see [Security Notes](#security-notes)).
+
+**`cservice.log` is not written any more, and nothing reaches the debug
+channel.** cservice has no logging keys of its own: `logging.conf` is what
+gives it a file and a channel. Copy the section under [cservice](#cservice)
+into it; see [Upgrade notes](#upgrade-notes).
+
+**A query never shows up.** A statement is a `DEBUG` record of
+`cservice.sql`, whose code default is `ERROR`: only a statement that fails is
+logged until `logger.cservice.sql = DEBUG` asks for the rest.
+
+**Compilation fails with "elog" undeclared.** The six core targets build
+with `-DGNUWORLD_NO_ELOG`; a fresh `elog` statement there has to be a
+`LOG`/`LOG_MSG` call instead (see
+[Migration from elog](#migration-from-elog)). Modules are unaffected unless
+they opted into the same flag.

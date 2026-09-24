@@ -76,8 +76,8 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * parameters from the command line.
      */
     xServer(bool verbose, bool doDebug, bool logSocket, const std::string& elogFileName,
-            const std::string& socketFileName, const std::string& configFileName,
-            const std::string& simFileName);
+            bool elogFileGiven, const std::string& socketFileName,
+            const std::string& configFileName, const std::string& simFileName);
 
     /**
      * Destroy the server and its clients, disconnect
@@ -813,6 +813,12 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     inline void setBurstEnd(const time_t newVal) { burstEnd = newVal; }
 
     /**
+     * The time the uplink's burst ended on this link, 0 for as long as
+     * it has not.
+     */
+    inline time_t getBurstEnd() const { return burstEnd; }
+
+    /**
      * Set the time of the most recent start of burst.
      * This method should ONLY be called by the server command
      * handlers.
@@ -846,6 +852,19 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * Output server statistics to the console (clog).
      */
     virtual void dumpStats();
+
+    /**
+     * Sets the logging system up from logging.conf, or from the built-in
+     * default when there is no such file, and applies the command line on top
+     * of it.
+     *
+     * Called once before the first module is loaded, so that a module finds
+     * logging configured, and again with reload true for every SIGHUP.  On a
+     * reload a file that cannot be read or cannot be applied changes nothing
+     * and is reported on "core.config": a mistake in logging.conf can neither
+     * stop nor silence a running process.
+     */
+    virtual void setupLogging(bool reload = false);
 
     /**
      * Start logging.
@@ -1426,6 +1445,13 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     std::string elogFileName;
 
     /**
+     * True when that name came from the command line rather than from the
+     * default, which is what lets it override the path logging.conf gives the
+     * sink named "debuglog".
+     */
+    bool elogFileGiven;
+
+    /**
      * The name of the file to write socket info
      */
     std::string socketFileName;
@@ -1455,6 +1481,12 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      * True if autoreconnect is enabled, false otherwise.
      */
     bool autoConnect;
+
+    /**
+     * The name of the logging configuration file: the optional "logging_conf"
+     * key of the main configuration file, or logging.conf when it says nothing.
+     */
+    std::string loggingConfFileName() const;
 
     /**
      * This method initializes the entire server.

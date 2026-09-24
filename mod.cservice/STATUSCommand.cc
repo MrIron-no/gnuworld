@@ -275,7 +275,6 @@ bool STATUSCommand::Exec(iClient* theClient, const string& Message) {
 
     if (!bot->SQLDb->Exec(authQuery, true)) {
         LOG(ERROR, "STATUSCommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 

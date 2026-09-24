@@ -35,6 +35,8 @@
 
 #include "misc.h"
 #include "logger.h"
+#include "LogManager.h"
+#include "LogSink.h"
 #include "client.h"
 #include "iClient.h"
 #include "iServer.h"
@@ -50,12 +52,16 @@
 #include "sqlPendingChannel.h"
 #include "csGline.h"
 #include "dbHandle.h"
-#include "pushover.h"
 #include "prometheus.h"
 
 #ifdef USE_THREAD
 #include "threadworker.h"
 #endif
+
+/* Every file of this module logs under the module's name.  This is what the LOG
+ * and LOG_MSG macros resolve, so no class here has to carry a Logger* of its own
+ * for them; it has to stand outside every namespace. */
+GNUWORLD_MODULE_LOGGER("cservice");
 
 namespace gnuworld {
 using std::map;
@@ -248,9 +254,6 @@ class cservice : public xClient {
     // Cache of TLS fingerprints.
     fpMapType fingerprintMap;
 
-    /* Pushover object. */
-    std::shared_ptr<PushoverClient> pushover;
-
     /* Prometheus object. */
     std::shared_ptr<PrometheusClient> prometheus;
 
@@ -264,24 +267,6 @@ class cservice : public xClient {
      * Will be 0 if prometheusEnable is false.
      */
     unsigned short prometheusPort = 9091;
-
-    /**
-     * Non-required configurable variable for pushover API token.
-     * Will be empty if pushoverEnable is false.
-     */
-    std::string pushoverToken;
-
-    /**
-     * Non-required configurable list of pushover userkeys.
-     * Will be empty if pushoverEnable is false.
-     */
-    pushoverKeysType pushoverUserKeys;
-
-    /**
-     * Non-required configurable verbose level for pushover.
-     * WARN is default value.
-     */
-    unsigned short pushoverVerbosity = 3;
 
     /* Tracker for re-connection attempts to SQL database. */
     unsigned int connectRetries = 0;
@@ -979,6 +964,21 @@ class cservice : public xClient {
      */
     void sendAccountFlags(sqlUser*) const;
     void sendAccountFlags(sqlUser*, iClient*) const;
+
+  private:
+    /**
+     * The logger of the command log, "cservice.commands", looked up once and
+     * held: one record per command a user sends X.
+     *
+     * It is a logger of its own because a command log has readers the arguments
+     * of a HELLO or a SCANHOST are none of the business of: its sentence names
+     * the command and the nick only, and "logger.cservice.commands" is what an
+     * operator routes or silences it with.
+     *
+     * It belongs to the registry and outlives this client, like the module's
+     * own logger.
+     */
+    Logger* commandsLogger = nullptr;
 };
 
 } // namespace gnuworld

@@ -1,0 +1,227 @@
+#!/bin/bash
+#
+# What runs INSIDE the full-dependency image (see Dockerfile): it unpacks the
+# working tree from stdin, configures it, asserts that configure really found
+# libcurl and prometheus-cpp, builds it, and runs every test - the delivery test
+# among them, against a local endpoint this script starts.
+#
+# Its exit status is the whole of it: a warning from libnotifier/ or
+# mod.cservice/, a missing optional dependency, or any failing test fails it.
+#
+# Nothing here is specific to a container except the paths; test/docker/full-deps/run.sh
+# is what builds the image and streams the tree in.
+
+set -u
+set -o pipefail
+
+readonly MODULES='debug,gnutest,ccontrol,cloner,dronescan,nickserv,openchanfix,cservice'
+readonly ENDPOINT_PORT=18999
+readonly CAPTURE=/tmp/pushover-posts.txt
+readonly BUILD_LOG=/tmp/build.log
+
+failed=0
+
+say() { printf '\n=== %s\n' "$*"; }
+
+fail() {
+    printf '*** FAILED: %s\n' "$*"
+    failed=1
+}
+
+# ---------------------------------------------------------------- the tree
+
+say 'Unpacking the working tree'
+tar -xf - -C /src || {
+    fail 'could not unpack the tree from stdin'
+    exit 1
+}
+printf 'unpacked %s files\n' "$(find /src -type f | wc -l)"
+
+cd /src || exit 1
+
+# ---------------------------------------------------------------- configure
+
+say 'autogen.sh'
+./autogen.sh > /tmp/autogen.log 2>&1 || {
+    tail -40 /tmp/autogen.log
+    fail 'autogen.sh'
+    exit 1
+}
+
+say "configure --enable-modules=$MODULES --with-test"
+./configure --enable-modules="$MODULES" --with-test > /tmp/configure.log 2>&1
+configure_status=$?
+
+grep -iE 'libcurl|prometheus' /tmp/configure.log
+
+if [ $configure_status -ne 0 ]; then
+    tail -40 /tmp/configure.log
+    fail 'configure'
+    exit 1
+fi
+
+# The point of this image: both of these have to have been found
+if ! grep -q '^#define HAVE_LIBCURL 1' include/defs.h; then
+    fail 'configure did not find libcurl (HAVE_LIBCURL is not defined in include/defs.h)'
+fi
+
+if ! grep -q '^#define HAVE_PROMETHEUS 1' include/defs.h; then
+    fail 'configure did not find prometheus-cpp (HAVE_PROMETHEUS is not defined in include/defs.h)'
+    printf 'pkg-config says:\n'
+    pkg-config --list-all 2>/dev/null | grep -i prometheus || printf '  no prometheus-cpp .pc file\n'
+fi
+
+[ $failed -eq 0 ] || exit 1
+
+# ---------------------------------------------------------------- build
+
+say "make -j$(nproc)"
+make -j"$(nproc)" > "$BUILD_LOG" 2>&1
+build_status=$?
+
+if [ $build_status -ne 0 ]; then
+    grep -E 'error:' "$BUILD_LOG" | head -40
+    tail -40 "$BUILD_LOG"
+    fail 'make'
+    exit 1
+fi
+
+warnings=$(grep -c 'warning:' "$BUILD_LOG")
+printf 'warnings in the whole build: %s\n' "$warnings"
+
+# The two directories this run is really about: their code is compiled here for
+# the first time, so not one warning of theirs is acceptable
+own_warnings=$(grep 'warning:' "$BUILD_LOG" | grep -E 'libnotifier/|mod\.cservice/')
+
+if [ -n "$own_warnings" ]; then
+    printf '%s\n' "$own_warnings"
+    fail 'warnings from libnotifier/ or mod.cservice/'
+fi
+
+if [ "$warnings" != "0" ]; then
+    printf 'warnings elsewhere (not fatal, but listed):\n'
+    grep 'warning:' "$BUILD_LOG" | head -20
+fi
+
+# ---------------------------------------------------------------- the endpoint
+
+say 'Starting the local Pushover endpoint'
+/usr/local/bin/gnuworld-pushover-endpoint --port "$ENDPOINT_PORT" --capture "$CAPTURE" &
+endpoint_pid=$!
+
+trap 'kill $endpoint_pid 2>/dev/null' EXIT
+
+for _ in $(seq 1 50); do
+    if python3 - "$ENDPOINT_PORT" <<'PROBE'
+import socket, sys
+s = socket.socket()
+s.settimeout(0.2)
+try:
+    s.connect(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(1)
+sys.exit(0)
+PROBE
+    then
+        break
+    fi
+    sleep 0.1
+done
+
+export PUSHOVER_TEST_URL="http://127.0.0.1:$ENDPOINT_PORT/1/messages.json"
+export PUSHOVER_TEST_CAPTURE="$CAPTURE"
+
+# ---------------------------------------------------------------- the tests
+
+say 'make check'
+make check > /tmp/check.log 2>&1
+check_status=$?
+
+grep -E '^# (TOTAL|PASS|SKIP|XFAIL|FAIL|XPASS|ERROR)' /tmp/check.log
+
+if [ $check_status -ne 0 ]; then
+    sed -n '/FAIL:/,$p' /tmp/check.log | head -60
+    fail 'make check'
+fi
+
+# Twenty runs and not one: a pushover sink has a worker thread of its own, so two
+# of them race into libcurl, and a race that is fixed and a race that happened not
+# to show up look the same in a single run.  Only a failing run says anything, so
+# twenty of them are twenty lines at most.
+readonly DELIVERY_RUNS=20
+
+say "test_pushover_delivery, $DELIVERY_RUNS times"
+
+delivery_failures=0
+
+for run in $(seq 1 $DELIVERY_RUNS); do
+    if ! ./test_pushover_delivery > "/tmp/delivery-$run.log" 2>&1; then
+        printf 'run %s of %s failed:\n' "$run" "$DELIVERY_RUNS"
+        cat "/tmp/delivery-$run.log"
+        delivery_failures=$((delivery_failures + 1))
+    fi
+done
+
+printf '%s of %s runs passed\n' "$((DELIVERY_RUNS - delivery_failures))" "$DELIVERY_RUNS"
+
+[ $delivery_failures -eq 0 ] || fail "test_pushover_delivery, $delivery_failures of $DELIVERY_RUNS runs"
+
+printf 'the capture file holds %s bodies at the end (the test empties it between cases)\n' \
+    "$(wc -l < "$CAPTURE")"
+
+# Whatever it received had to carry the token, and no log file may
+if ! grep -q 'token=SECRET' "$CAPTURE"; then
+    fail 'the endpoint never saw a token: nothing was delivered at all'
+fi
+
+# ---------------------------------------------------------------- log4cplus
+
+if [ "$(cat /usr/local/share/gnuworld-have-log4cplus 2>/dev/null)" = "yes" ]; then
+    say 'A second configuration: --with-log4cplus'
+
+    make distclean > /dev/null 2>&1
+
+    # Debian keeps the library under the multiarch directory, which is not the
+    # "<prefix>/lib" configure.ac derives from --with-log4cplus on its own
+    ./configure --enable-modules="$MODULES" --with-test --with-log4cplus \
+        --with-log4cplus-lib="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" \
+        --with-log4cplus-include=/usr/include \
+        > /tmp/configure-log4cplus.log 2>&1
+    log4cplus_configure=$?
+
+    if [ $log4cplus_configure -ne 0 ]; then
+        tail -30 /tmp/configure-log4cplus.log
+        fail 'configure --with-log4cplus'
+    else
+        make -j"$(nproc)" > /tmp/build-log4cplus.log 2>&1 || {
+            grep -E 'error:' /tmp/build-log4cplus.log | head -30
+            fail 'make with log4cplus'
+        }
+
+        log4cplus_warnings=$(grep 'warning:' /tmp/build-log4cplus.log |
+            grep -E 'libnotifier/|mod\.cservice/')
+
+        if [ -n "$log4cplus_warnings" ]; then
+            printf '%s\n' "$log4cplus_warnings"
+            fail 'warnings from libnotifier/ or mod.cservice/ with log4cplus'
+        fi
+
+        printf 'the log4cplus configuration built, %s warnings in all\n' \
+            "$(grep -c 'warning:' /tmp/build-log4cplus.log)"
+    fi
+else
+    say 'liblog4cplus-dev is not in this image: the second configuration is skipped'
+fi
+
+# ---------------------------------------------------------------- the verdict
+
+say 'Summary'
+
+if [ $failed -eq 0 ]; then
+    printf 'ALL GOOD: libcurl and prometheus-cpp were found, the build is clean,\n'
+    printf 'make check passed and the pushover delivery test delivered.\n'
+else
+    printf 'SOMETHING FAILED, see above.\n'
+fi
+
+exit $failed

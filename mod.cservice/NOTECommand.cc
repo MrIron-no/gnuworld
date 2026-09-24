@@ -120,7 +120,6 @@ bool NOTECommand::Exec(iClient* theClient, const string& Message) {
 
         if (!bot->SQLDb->Exec(queryString)) {
             LOG(ERROR, "NOTECommand SQL Error:");
-            LOGSQL_ERROR(bot->SQLDb);
 
             bot->Notice(theClient, "An unknown error occured delivering the note.");
             return false;
@@ -156,7 +155,6 @@ bool NOTECommand::Exec(iClient* theClient, const string& Message) {
             if (!bot->SQLDb->Exec(allNotesQuery, true))
             //	if( PGRES_TUPLES_OK != status )
             {
-                LOGSQL_ERROR(bot->SQLDb);
 
                 bot->Notice(theClient, "An unknown error occured while reading your notes.");
                 return false;
@@ -199,7 +197,6 @@ bool NOTECommand::Exec(iClient* theClient, const string& Message) {
 
             if (!bot->SQLDb->Exec(queryString)) {
                 LOG(ERROR, "NOTECommand SQL Error:");
-                LOGSQL_ERROR(bot->SQLDb);
                 bot->Notice(theClient, "An unknown error occured while deleting your notes.");
                 return false;
             }
@@ -224,7 +221,6 @@ bool NOTECommand::Exec(iClient* theClient, const string& Message) {
 
         if (!bot->SQLDb->Exec(queryString, true)) {
             LOG(ERROR, "NOTECommand SQL Error:");
-            LOGSQL_ERROR(bot->SQLDb);
             bot->Notice(theClient, "An error occured while deleting note-id %i.", messageId);
             return false;
         }

@@ -83,7 +83,6 @@ bool SCANUNAMECommand::Exec(iClient* theClient, const string& Message) {
                    << ends;
 
     if (!bot->SQLDb->Exec(scanunameQuery, true)) {
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 

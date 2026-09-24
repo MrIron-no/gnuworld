@@ -27,10 +27,12 @@
 
 #include <string>
 #include <exception>
+#include <source_location>
 
 #include "libpq-fe.h"
 #include "gnuworldDB.h"
 #include "client.h"
+#include "logger.h"
 
 namespace gnuworld {
 
@@ -40,14 +42,25 @@ class pgsqlDB : public gnuworldDB {
     PGconn* theDB;
     PGresult* lastResult;
 
+    /// "<module>.sql": statements at DEBUG, failures at ERROR
+    Logger* sqlLog;
+
   public:
     pgsqlDB(xClient* bot, const std::string& dbHost, const unsigned short int dbPort,
             const std::string& dbName, const std::string& userName, const std::string& password);
     pgsqlDB(xClient* bot, const std::string& connectInfo);
     virtual ~pgsqlDB();
 
-    virtual bool Exec(const std::string&, bool = true);
-    virtual bool Exec(const std::stringstream&, bool = true);
+    /**
+     * A failed statement is an ERROR record of "<module>.sql" naming the
+     * function that ran it: "where" is defaulted, so it is the call site's,
+     * and needs no argument of its own.  The "log" flag governs the DEBUG
+     * record of the statement, not the report of a failure.
+     */
+    virtual bool Exec(const std::string&, bool log = true,
+                      std::source_location where = std::source_location::current());
+    virtual bool Exec(const std::stringstream&, bool log = true,
+                      std::source_location where = std::source_location::current());
     virtual bool isConnected() const;
 
     virtual bool PutLine(const std::string&);

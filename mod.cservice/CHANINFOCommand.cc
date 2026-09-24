@@ -199,7 +199,6 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
             //	if( PGRES_TUPLES_OK != status )
             {
                 LOG(ERROR, "CHANINFO SQL Error:");
-                LOGSQL_ERROR(bot->SQLDb);
                 return false;
             }
             if (bot->SQLDb->Tuples() > 0) {
@@ -480,7 +479,6 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
             << lastdays << "))" << ends;
         if (!bot->SQLDb->Exec(theQuery, true)) {
             LOG(ERROR, "Error on CHANInfo.status query:");
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         } else if (bot->SQLDb->Tuples() != 0) {
             unsigned int chanID = atoi(bot->SQLDb->GetValue(0, 0));
@@ -566,7 +564,6 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
                 << chanID << " AND users.id = supporters.user_id" << ends;
             if (!bot->SQLDb->Exec(theQuery, true)) {
                 LOG(ERROR, "Error on CHANINFO.supporters query:");
-                LOGSQL_ERROR(bot->SQLDb);
             }
             if (bot->SQLDb->Tuples() == 0) {
                 /*
@@ -630,7 +627,6 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
                      << " AND admin_only='N'" << ends;
             if (!bot->SQLDb->Exec(theQuery, true)) {
                 LOG(ERROR, "Error on CHANINFO.objections user objections query:");
-                LOGSQL_ERROR(bot->SQLDb);
             }
             if (bot->SQLDb->Tuples() > 0)
                 objCount = atoi(bot->SQLDb->GetValue(0, 0));
@@ -643,7 +639,6 @@ bool CHANINFOCommand::Exec(iClient* theClient, const string& Message) {
                          << " AND admin_only='Y'" << ends;
                 if (!bot->SQLDb->Exec(theQuery, true)) {
                     LOG(ERROR, "Error on CHANINFO.objections admin comment query:");
-                    LOGSQL_ERROR(bot->SQLDb);
                 }
                 if (bot->SQLDb->Tuples() > 0)
                     comCount = atoi(bot->SQLDb->GetValue(0, 0));

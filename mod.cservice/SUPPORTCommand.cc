@@ -77,7 +77,6 @@ bool SUPPORTCommand::Exec(iClient* theClient, const string& Message) {
 
     if (!bot->SQLDb->Exec(theQuery, true)) {
         LOG(ERROR, "SUPPORTCommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 
@@ -102,7 +101,6 @@ bool SUPPORTCommand::Exec(iClient* theClient, const string& Message) {
 
     if (!bot->SQLDb->Exec(supQuery, true)) {
         LOG(ERROR, "SUPPORTCommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
         return false;
     }
 
@@ -135,7 +133,6 @@ bool SUPPORTCommand::Exec(iClient* theClient, const string& Message) {
 
     if (!bot->SQLDb->Exec(updateQuery)) {
         LOG(ERROR, "SUPPORTCommand SQL Error:");
-        LOGSQL_ERROR(bot->SQLDb);
 
         bot->Notice(theClient, "An Error occured whilst processing your support. Please contact a "
                                "CService Administrator.");
@@ -164,7 +161,6 @@ bool SUPPORTCommand::Exec(iClient* theClient, const string& Message) {
 
         if (!bot->SQLDb->Exec(tenQuery, true)) {
             LOG(ERROR, "SUPPORTCommand SQL Error:");
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         }
 
@@ -236,7 +232,6 @@ bool SUPPORTCommand::Exec(iClient* theClient, const string& Message) {
 
         if (!bot->SQLDb->Exec(mgrQuery, true)) {
             LOG(ERROR, "SUPPORTCommand SQL Error:");
-            LOGSQL_ERROR(bot->SQLDb);
             return false;
         }
 

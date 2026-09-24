@@ -807,7 +807,7 @@ class xClient : public TimerHandler, public NetworkTarget {
     /**
      * Returns a pointer to the logger object of this client.
      */
-    inline Logger* getLogger() { return logger.get(); }
+    inline Logger* getLogger() { return logger; }
 
     /**
      * Return true if the server is connected to a network.
@@ -936,9 +936,23 @@ class xClient : public TimerHandler, public NetworkTarget {
     std::string configFileName;
 
     /**
-     * Logger instance.
+     * The logger of this module, which is the one the registry keeps under the
+     * module's name: it is not owned here and it outlives this client, so that a
+     * module which is unloaded and loaded again writes to the same logger.
+     *
+     * It has no sink of its own: where the records of a module go is what
+     * logging.conf says, and the sinks of the root are where they go when it
+     * says nothing.  A module that wants more attaches it itself.
      */
-    std::unique_ptr<Logger> logger;
+    Logger* logger = nullptr;
+
+    /**
+     * Teaches the logging system how to show one of this module's own object
+     * types in a log message, for as long as the module is loaded.
+     */
+    template <class T> void registerLogExtractor(std::function<LogObject(const T*)> f) {
+        Logger::registerExtractor<T>(this, std::move(f));
+    }
 
     /**
      * Flag to track whether migrations have been checked for this module.

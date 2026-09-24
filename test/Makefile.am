@@ -14,10 +14,27 @@ noinst_PROGRAMS = test_burst \
 	test_bot \
 	test_kick_transaction \
 	test_xparameters_tags \
-	test_stringtokenizer_trailing
+	test_stringtokenizer_trailing \
+	test_logger_render \
+	test_logger_format \
+	test_logger_sinks \
+	test_logger_basic \
+	test_logger_hierarchy \
+	test_logger_config \
+	test_logger_ratelimit \
+	test_elog_shim \
+	test_logger_adversarial \
+	test_pushover_text
 
 if COND_PCRE
 noinst_PROGRAMS += test_regex
+endif
+
+# The pushover sink really talking to an HTTP endpoint, which needs the libcurl
+# the sink is compiled against: where there is none there is no sink either, so
+# there is nothing for this program to test.
+if COND_LIBCURL
+noinst_PROGRAMS += test_pushover_delivery
 endif
 
 test_burst_SOURCES = test/burst.cc
@@ -94,4 +111,88 @@ EXTRA_DIST += \
 	test/README.signal \
 	test/README.stringtokenizer \
 	test/README.testBot \
+	test/README.logger \
 	test/README.test_kick_transaction
+
+test_logger_render_SOURCES = test/logger_render.cc
+test_logger_render_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_render_LDADD = libgnuworld.la $(threadLib)
+
+test_logger_format_SOURCES = test/logger_format.cc
+test_logger_format_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_format_LDADD = libgnuworld.la $(threadLib)
+
+test_logger_sinks_SOURCES = test/logger_sinks.cc
+test_logger_sinks_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_sinks_LDADD = libgnuworld.la $(threadLib)
+
+# libgnuworld.la and nothing else: the proof that the logger has no dependency
+# on the core any more.  libnotifier is on the include path but not on the link
+# line: notifier.h is the whole of the base class the notifier cases exercise,
+# and it names nothing outside libgnuworld either.
+test_logger_basic_SOURCES = test/logger_basic.cc
+test_logger_basic_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier
+test_logger_basic_LDADD = libgnuworld.la $(threadLib)
+
+# The registry, the hierarchy and the module names, on libgnuworld alone.
+test_logger_hierarchy_SOURCES = test/logger_hierarchy.cc
+test_logger_hierarchy_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_hierarchy_LDADD = libgnuworld.la $(threadLib)
+
+# The logging.conf parser and the configuration apply, on libgnuworld alone.
+# The example file that ships in bin/ is one of the files it parses, so that a
+# mistake in the documentation of the syntax is a failing test.
+test_logger_config_SOURCES = test/logger_config.cc
+test_logger_config_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-DLOGGING_EXAMPLE_CONF=\"$(top_srcdir)/bin/logging.example.conf\"
+test_logger_config_LDADD = libgnuworld.la $(threadLib)
+
+# The token bucket a sink that talks to the outside world holds, on libgnuworld
+# alone.  Every case that is about the refill injects the clock rather than
+# sleeping, so this is as fast as any other unit test here.
+test_logger_ratelimit_SOURCES = test/logger_ratelimit.cc
+test_logger_ratelimit_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_ratelimit_LDADD = libgnuworld.la $(threadLib)
+
+# The deprecated elog in front of the logger, on libgnuworld alone.
+test_elog_shim_SOURCES = test/elog_shim.cc
+test_elog_shim_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_elog_shim_LDADD = libgnuworld.la $(threadLib)
+
+# Adversarial and integration-adjacent tests written from the spec: hostile
+# field values and templates through the full render/format pipeline, the
+# coloured name column's exact boundaries, a null pointer of an unregistered
+# type, and concurrent logging under a churning configuration.  libgnuworld
+# alone, like every other test_logger_* program.
+test_logger_adversarial_SOURCES = test/logger_adversarial.cc
+test_logger_adversarial_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld
+test_logger_adversarial_LDADD = libgnuworld.la $(threadLib)
+
+# The two text helpers of the pushover sink: the cut that never lands inside a
+# UTF-8 character and the control-character clean-up.  Both are pure text and are
+# defined outside pushover.cc's HAVE_LIBCURL, so this is built and run
+# everywhere - which is the point of having them outside it.
+test_pushover_text_SOURCES = test/pushover_text.cc
+test_pushover_text_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier
+test_pushover_text_LDADD = libnotifier.la libgnuworld.la $(threadLib)
+
+# What a pushover sink of logging.conf really puts on the wire: libnotifier for
+# the sink, libgnuworld for the configuration that builds it, libcurl for the
+# request.  It posts to whatever PUSHOVER_TEST_URL names and says so and passes
+# where that is unset, so "make check" needs no endpoint and no network.
+test_pushover_delivery_SOURCES = test/pushover_delivery.cc
+test_pushover_delivery_CXXFLAGS = -I${top_srcdir}/include -I${top_srcdir}/libgnuworld \
+	-I${top_srcdir}/libnotifier
+test_pushover_delivery_LDADD = libnotifier.la libgnuworld.la $(threadLib)
+
+# Run by "make check".  The other programs in this directory are
+# interactive or benchmarks, not tests.
+TESTS = test_logger_render test_logger_format test_logger_sinks test_logger_basic \
+	test_logger_hierarchy test_logger_config test_logger_ratelimit test_elog_shim \
+	test_logger_adversarial test_pushover_text
+
+if COND_LIBCURL
+TESTS += test_pushover_delivery
+endif

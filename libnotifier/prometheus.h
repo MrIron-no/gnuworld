@@ -35,7 +35,6 @@
 
 #include "gnuworld_config.h"
 #include "notifier.h"
-#include "client.h"
 
 namespace gnuworld {
 
@@ -60,7 +59,7 @@ namespace gnuworld {
  * Example Usage:
  * @code
  * try {
- *   auto prometheus = std::make_unique<PrometheusClient>(this, "0.0.0.0", 9090);
+ *   auto prometheus = std::make_unique<PrometheusClient>(getNickName(), "0.0.0.0", 9090);
  *   prometheus->incrementCounter("user_connections");
  *   prometheus->setGauge("active_channels", 150);
  * } catch (const std::exception& e) {
@@ -77,7 +76,8 @@ class PrometheusClient : public notifier {
      * Initializes the Prometheus exposer and registry, starts the HTTP server
      * to serve metrics on the specified IP and port.
      *
-     * @param bot Pointer to the xClient instance (for logging and identification)
+     * @param instance Name this instance's metrics are prefixed with, so that
+     *                 two services exposing the same metric do not collide
      * @param ip IP address to bind the HTTP server (e.g., "0.0.0.0", "127.0.0.1")
      * @param port Port number for the HTTP server (e.g., 9090)
      *
@@ -87,7 +87,7 @@ class PrometheusClient : public notifier {
      * @note The constructor will throw if the port is already in use or if
      *       the Prometheus library cannot initialize properly
      */
-    PrometheusClient(xClient* bot, const std::string& ip, unsigned short port);
+    PrometheusClient(std::string instance, const std::string& ip, unsigned short port);
 
     /**
      * @brief Destroy the Prometheus Client
@@ -118,7 +118,7 @@ class PrometheusClient : public notifier {
      *
      * Creates the counter if it doesn't exist, then increments by 1.
      * Counter names are automatically sanitized to comply with Prometheus naming rules.
-     * The counter name will be prefixed with the bot's nickname to avoid conflicts.
+     * The counter name will be prefixed with the instance name to avoid conflicts.
      *
      * @param counterName Name of the counter (will be sanitized)
      *
@@ -150,7 +150,7 @@ class PrometheusClient : public notifier {
      *
      * Creates the gauge if it doesn't exist, then sets it to the specified value.
      * Gauges can increase or decrease and represent current state.
-     * The gauge name will be prefixed with the bot's nickname to avoid conflicts.
+     * The gauge name will be prefixed with the instance name to avoid conflicts.
      *
      * @param gaugeName Name of the gauge (will be sanitized)
      * @param value Value to set the gauge to (can be any double)
@@ -164,7 +164,8 @@ class PrometheusClient : public notifier {
     void setGauge(const std::string& gaugeName, double value);
 
   private:
-    xClient* bot = nullptr;
+    /** @brief What every metric name of this instance is prefixed with */
+    std::string instance;
 
     /**
      * @brief Sanitize metric names to comply with Prometheus standards
@@ -174,15 +175,15 @@ class PrometheusClient : public notifier {
      * - Converts to lowercase
      * - Replaces invalid characters with underscores
      * - Ensures the first character is valid
-     * - Adds bot name prefix to avoid conflicts
+     * - Adds the instance name as a prefix to avoid conflicts
      *
      * @param name Original metric name
      * @return std::string Sanitized metric name safe for Prometheus
      *
-     * @note Examples:
-     *       - "user-count" → "botname_user_count"
-     *       - "123invalid" → "botname_123invalid"
-     *       - "SASL.SUCCESS" → "botname_sasl_success"
+     * @note Examples, for the instance "instance":
+     *       - "user-count" → "instance_user_count"
+     *       - "123invalid" → "instance_123invalid"
+     *       - "SASL.SUCCESS" → "instance_sasl_success"
      */
     std::string sanitizeMetricName(const std::string& name);
 

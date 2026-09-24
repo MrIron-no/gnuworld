@@ -61,7 +61,12 @@
 #include "EConfig.h"
 #include "match.h"
 #include "ELog.h"
+#include "IrcLogSink.h"
+#include "LogConfig.h"
+#include "LogManager.h"
+#include "LogSinks.h"
 #include "StringTokenizer.h"
+#include "pushover.h"
 #include "xparameters.h"
 #include "moduleLoader.h"
 #include "ServerTimerHandlers.h"
@@ -145,6 +150,10 @@ void xServer::initializeSystem() {
  * Deallocate this xServer instance.
  */
 xServer::~xServer() {
+    // A channel sink of the logging configuration outlives this server: it must
+    // not write through it any more
+    IrcLogSink::forgetServer(this);
+
     // All deallocations are performed in doShutdown()
     elog.closeFile();
     if (logSocket) {
@@ -931,11 +940,19 @@ bool xServer::AttachClient(const string& moduleName, const string& configFileNam
     moduleLoader<xClient*>* ml = new (std::nothrow) moduleLoader<xClient*>(moduleName);
     assert(ml != 0);
     xClient* clientPtr = NULL;
+
+    // The module's logger is named after its library file, and the xClient the
+    // module creates picks the name up from here
+    LogManager::setLoadingModule(LogManager::moduleNameFromLibrary(moduleName));
+
     try {
         // Attempt to instantiate an xClient instance from the module
         clientPtr = ml->loadObject(configFileName);
     } catch (...) {
     }
+
+    // Whether the module took the name or not, it is not the next one's
+    LogManager::takeLoadingModule();
 
     // Check if the object was loaded successfully
     if (NULL == clientPtr) {
@@ -1764,6 +1781,61 @@ void xServer::dumpStats() {
          << " commands over the last " << (::time(0) - burstStart) << " seconds." << endl;
 }
 
+/// The name logging.conf is looked for under when the main conf says nothing
+static const string defaultLoggingConf("logging.conf");
+
+/**
+ * The name of the logging configuration file: the optional "logging_conf" key
+ * of the main configuration file, or logging.conf.  A relative name is relative
+ * to the working directory, like every other file name of this process.
+ *
+ * The key is read with Find() and not with Require(), which exits: this runs
+ * before the main configuration file has been read properly, and a main conf
+ * that cannot be read is the business of the start-up code that reads it next -
+ * it reports it, and it is the one that stops.
+ */
+string xServer::loggingConfFileName() const {
+    {
+        std::ifstream probe(configFileName.c_str());
+
+        if (!probe.is_open())
+            return defaultLoggingConf;
+    }
+
+    EConfig mainConf(configFileName);
+    const EConfig::const_iterator named = mainConf.Find("logging_conf");
+
+    if (mainConf.end() == named || named->second.empty())
+        return defaultLoggingConf;
+
+    return named->second;
+}
+
+void xServer::setupLogging(bool reload) {
+    /* The console is written to only when the process was asked to be verbose,
+     * which is the condition the old logger wrote to it under.  A logging.conf
+     * with a console sink in it still says nothing on a daemon's terminal */
+    ConsoleSink::setEnabled(verbose);
+
+    /* The kind of sink only core can make, because only core knows what a
+     * channel is.  A reload registers the same thing again, which replaces it */
+    LogManager::registerSinkType(
+        "irc", [this](const SinkSpec& spec, string&) -> std::shared_ptr<LogSink> {
+            return std::make_shared<IrcLogSink>(this, spec.channel, spec.highlight, spec.rate);
+        });
+
+    /* And the one the notifier makes, which is registered here rather than by
+     * whoever wants to be paged: a pager is a sink of logging.conf like any
+     * other, so it exists before the file that may name it is read */
+    PushoverClient::registerSinkType();
+
+    LogManager::start({.fileName = loggingConfFileName(),
+                       .debugLog = doDebug,
+                       .debugLogFileGiven = elogFileGiven,
+                       .debugLogFile = elogFileName,
+                       .reload = reload});
+}
+
 void xServer::startLogging(bool logrotate) {
     if (doDebug) {
         elog.openFile(elogFileName);
@@ -1800,9 +1872,13 @@ void xServer::rotateLogs() {
     if (logSocket && socketFile.is_open()) {
         socketFile.close();
     }
-    for (const auto& client : clientModuleList) {
-        client->getObject()->getLogger()->rotateLogs();
-    }
+
+    /* Every sink of every logger opens its path anew, the ones a module attached
+     * in code included, so that the next record lands in a new file rather than
+     * in the one logrotate moved away.  A module's logger holds no file of its
+     * own any more: the sinks do, and this reaches all of them */
+    LogManager::reopenAll();
+
     startLogging(true);
 }
 
