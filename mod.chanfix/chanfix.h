@@ -49,7 +49,6 @@ class chanfix : public xClient {
     virtual void BurstChannels();
     virtual void OnCTCP(iClient*, const std::string&, const std::string&, bool);
     virtual void OnPrivateMessage(iClient*, const std::string&, bool);
-    virtual void OnTimer(const TimerHandler::timerID&, void*);
 
     /***************************
      * C H A N F I X   M I S C *
@@ -96,6 +95,13 @@ class chanfix : public xClient {
      ***************/
     /** Counting timer. */
     xServer::timerID timerCount;
+
+    /**
+     * Book the counting timer for the given number of seconds from now.  Its
+     * callback counts and books the next run, so the timerID member is
+     * assigned in one place and the period is read afresh every time round.
+     */
+    void scheduleCountUpdate(time_t delay);
 
     /*******************
      * C O M M A N D S *

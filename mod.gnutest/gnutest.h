@@ -206,11 +206,6 @@ class gnutest : public xClient {
                             const std::string& message, bool secure = false) override;
 
     /**
-     * This method is called when a timer expires.
-     */
-    virtual void OnTimer(const xServer::timerID&, void*) override;
-
-    /**
      * Core destroyed a timer of ours without being asked.  Report the id and
      * the payload it handed us, the same way an event is reported.
      */
@@ -329,11 +324,6 @@ class gnutest : public xClient {
     /// "<#channel> <timestamp> [<modes> [<args>]]" to BurstChannel() during
     /// our burst; empty for none.
     std::string burstChannel;
-
-    /**
-     * I have no idea what this is.
-     */
-    std::string timerChan;
 
     /**
      * The payload of every timer "timer" registered, each one the void* handed

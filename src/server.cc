@@ -1164,12 +1164,14 @@ void xServer::LoadClient(const string& moduleName, const string& configFileName)
         fileName = libPrefix + moduleName;
     }
 
-    // Next, queue the load request
+    /* Next, queue the load request.  Two seconds out, so that an instance being
+     * replaced has had its unload run first.  The handler owns the timer that
+     * loads, and books it itself. */
     LoadClientTimerHandler* handler =
-        new (std::nothrow) LoadClientTimerHandler(this, fileName, configFileName);
+        new (std::nothrow) LoadClientTimerHandler(this, fileName, configFileName, 2);
     assert(handler != 0);
 
-    RegisterTimer(::time(0) + 2, handler, 0);
+    handler->schedule();
 }
 
 void xServer::UnloadClient(const string& moduleName, const string& reason) {
@@ -1195,7 +1197,9 @@ void xServer::UnloadClient(xClient* theClient, const string& reason) {
         new (std::nothrow) UnloadClientTimerHandler(this, theClient, reason);
     assert(handler != nullptr);
 
-    RegisterTimer(::time(0), handler, 0);
+    /* The handler owns the timer, so unregisterClient()'s removeAllTimers() for
+     * the client being unloaded does not cancel the unload itself. */
+    handler->schedule();
 }
 
 void xServer::unregisterClient(xClient* theClient) {

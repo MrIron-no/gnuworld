@@ -182,24 +182,22 @@ void stats::OnAttach() {
 
     MyUplink->RegisterChannelEvent("*", this);
 
-    // Register to receive timed events every minute
-    // This event will be used to flush data to the log files
-    MyUplink->RegisterTimer(::time(0) + 60, this);
+    // Start flushing data to the log files every minute
+    scheduleLogFlush();
 }
 
-void stats::OnTimer(const xServer::timerID&, void*) {
-    // elog	<< "stats::OnTimer"
-    //	<< endl ;
+void stats::scheduleLogFlush() {
+    MyUplink->RegisterTimer(::time(0) + 60, this, [this]() {
+        // Timed events are once-run, make sure to book the next one
+        // 1 minute from now
+        scheduleLogFlush();
 
-    // Timed events are once-run, make sure to request a new
-    // timed event 1 minute from now
-    MyUplink->RegisterTimer(::time(0) + 60, this);
+        // Flush logs
+        writeLog();
 
-    // Flush logs
-    writeLog();
-
-    // Reset the minutely event counters
-    memset(eventMinuteTotal, 0, sizeof(eventMinuteTotal));
+        // Reset the minutely event counters
+        memset(eventMinuteTotal, 0, sizeof(eventMinuteTotal));
+    });
 }
 
 void stats::OnPrivateNotice(iClient* theClient, const string& theMessage, bool secure) {

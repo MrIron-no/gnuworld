@@ -39,10 +39,13 @@ using std::pair;
 using std::stack;
 
 void xServer::registerServerTimers() {
-    RegisterTimer(::time(0) + glineUpdateInterval, new GlineUpdateTimer(this, glineUpdateInterval),
-                  static_cast<void*>(this));
-    RegisterTimer(::time(0) + pingUpdateInterval, new PINGTimer(this, pingUpdateInterval),
-                  static_cast<void*>(this));
+    /* Each of these handlers owns the timer that runs it, and books the next run
+     * itself, so it lives for as long as the server does. */
+    GlineUpdateTimer* glineTimer = new GlineUpdateTimer(this, glineUpdateInterval);
+    glineTimer->schedule();
+
+    PINGTimer* pingTimer = new PINGTimer(this, pingUpdateInterval);
+    pingTimer->schedule();
 }
 
 xServer::timerID xServer::RegisterTimer(const time_t& absTime, TimerHandler* theHandler,

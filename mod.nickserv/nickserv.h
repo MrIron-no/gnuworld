@@ -84,9 +84,6 @@ class nickserv : public xClient, public logging::logTarget {
     /** This is called when a client quits */
     virtual void OnQuit(iClient*, std::string_view) override;
 
-    /** This method is called when a timer expires */
-    virtual void OnTimer(const gnuworld::xServer::timerID&, void*) override;
-
     /*********************************
      ** N I C K S E R V   T Y P E S **
      *********************************/
@@ -213,6 +210,14 @@ class nickserv : public xClient, public logging::logTarget {
 
     /** TimerID for processing the queue */
     gnuworld::xServer::timerID processQueue_timerID;
+
+    /**
+     * Book the queue processing timer for the given number of seconds from
+     * now.  The timer runs the queue and then calls this method again for the
+     * next run, so the timerID member is assigned in one place and the
+     * frequency is read afresh every time round.
+     */
+    void scheduleProcessQueue(time_t delay);
 
   private:
     /*******************************************

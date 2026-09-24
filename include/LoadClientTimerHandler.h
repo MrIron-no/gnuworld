@@ -52,11 +52,12 @@ class LoadClientTimerHandler : public ServerTimerHandler {
      * Constructor receives:
      * - The xServer instance for the system
      * - The xClient's module name
-     * - The configuration file name for the xClient.
+     * - The configuration file name for the xClient
+     * - How long from now the load is to happen.
      */
     LoadClientTimerHandler(xServer* theServer, const std::string& _moduleName,
-                           const std::string& _configFileName)
-        : ServerTimerHandler(theServer, 0), moduleName(_moduleName),
+                           const std::string& _configFileName, time_t _delay)
+        : ServerTimerHandler(theServer, _delay), moduleName(_moduleName),
           configFileName(_configFileName) {}
 
     /**
@@ -65,10 +66,10 @@ class LoadClientTimerHandler : public ServerTimerHandler {
     virtual ~LoadClientTimerHandler() {}
 
     /**
-     * The method that is called by the server when this handler's
-     * time to perform has arrived.
+     * Book the timer that performs the load.  This handler owns that
+     * timer, and deletes itself once the load has been attempted.
      */
-    virtual void OnTimer(const timerID&, void*);
+    virtual void schedule() override;
 };
 
 } // namespace gnuworld

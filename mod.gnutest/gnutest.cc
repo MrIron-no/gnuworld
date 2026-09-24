@@ -1109,12 +1109,20 @@ void gnutest::OnPrivateMessage(iClient* theClient, const string& message, bool) 
             return;
         }
 
-        xServer::timerID id = MyUplink->RegisterTimer(::time(0) + 60, this);
+        const string chanName = theChan->getName();
+        xServer::timerID id = MyUplink->RegisterTimer(::time(0) + 60, this, [this, chanName]() {
+            Channel* thePlace = Network->findChannel(chanName);
+            if (NULL == thePlace) {
+                LOG(WARN, "Unable to find channel: {}", chanName);
+                return;
+            }
+
+            Message(thePlace, "Respect my authoritah!");
+        });
         if (0 == id) {
             Notice(theClient, "Failed");
         } else {
             Notice(theClient, "Scheduled for 1 minute from now");
-            timerChan = theChan->getName();
         }
     } else if (st[0] == "spawnclient") {
         spawnClient(theClient, st);
@@ -1357,16 +1365,6 @@ void gnutest::spawnClient(iClient* requestingClient, const StringTokenizer& st) 
         Notice(requestingClient, "Created new client {}", nickName);
         LOG_MSG(INFO, "Added client: {client}").with("client", newClient).log();
     }
-}
-
-void gnutest::OnTimer(const xServer::timerID&, void*) {
-    Channel* theChan = Network->findChannel(timerChan);
-    if (NULL == theChan) {
-        LOG(WARN, "Unable to find channel: {}", timerChan);
-        return;
-    }
-
-    Message(theChan, "Respect my authoritah!");
 }
 
 void gnutest::OnTimerDestroy(xServer::timerID id, void* data) {

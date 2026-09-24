@@ -31,22 +31,17 @@ GNUWORLD_CORE_LOGGER(Modules);
 
 namespace gnuworld {
 
-void LoadClientTimerHandler::OnTimer(const timerID&, void*) {
-    // elog	<< "LoadClientTimerHandler::OnTimer("
-    //	<< moduleName
-    //	<< ", "
-    //	<< configFileName
-    //	<< ")"
-    //	<< std::endl ;
+void LoadClientTimerHandler::schedule() {
+    theServer->RegisterTimer(::time(0) + updateInterval, this, [this]() {
+        // Load the client from the module, attach it to the server, and
+        // burst it onto the network
+        if (!theServer->AttachClient(moduleName, configFileName, true)) {
+            LOG(ERROR, "Failed to load client module: {}", moduleName);
+            return;
+        }
 
-    // Load the client from the module, attach it to the server, and
-    // burst it onto the network
-    if (!theServer->AttachClient(moduleName, configFileName, true)) {
-        LOG(ERROR, "Failed to load client module: {}", moduleName);
-        return;
-    }
-
-    delete this;
+        delete this;
+    });
 }
 
 } // namespace gnuworld
