@@ -347,30 +347,23 @@ void dronescan::OnAttach() {
     MyUplink->RegisterChannelEvent(xServer::CHANNEL_ALL, this);
 
     /* Set up clearing active channels */
-    time_t theTime = time(0) + dcInterval;
-    tidClearActiveList = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleClearActiveList();
 
     /* Set up our JC counter */
-    theTime = time(0) + jcInterval;
-    tidClearJoinCounter = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleClearJoinCounter();
 
-    theTime = time(0) + ncInterval;
-    tidClearNickCounter = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleClearNickCounter();
 
-    theTime = time(0) + gbInterval;
-    tidGlineQueue = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleGlineQueue();
 
     /* Periodic GC of expired TEXT_REPEAT tracking entries (fixed 60s) */
-    theTime = time(0) + 60;
-    tidRepeatGC = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleRepeatGC();
 
     /* Periodic sweep for 2nd-spy-client joins (fixed 60s) */
-    theTime = time(0) + 60;
-    tidSecondSpyCheck = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleSecondSpyCheck();
 
     /* Periodic sweep retrying channels with no live primary spy client (fixed 60s) */
-    theTime = time(0) + 60;
-    tidSpyJoinRetry = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleSpyJoinRetry();
 
     xClient::OnAttach();
 } // dronescan::OnAttach()
@@ -1154,74 +1147,29 @@ void dronescan::OnShutdown(const std::string& message) {
     xClient::OnShutdown(message);
 }
 
-/** Receive our own timed events. */
-void dronescan::OnTimer(const xServer::timerID& theTimer, void*) {
-    time_t theTime;
-
-    /* Handle pending spy client join timers */
-    {
-        pendingJoinTimersType::iterator pit = pendingJoinTimers.find(theTimer);
-        if (pit != pendingJoinTimers.end()) {
-            bool forcejoin = pit->second.first;
-            string chanName = pit->second.second;
-            pendingJoinTimers.erase(pit);
-            doSpyClientJoin(chanName, forcejoin);
-            return;
-        }
-    }
-
-    /* Handle pending (delayed) spam action timers */
-    {
-        pendingSpamActionTimersType::iterator sit = pendingSpamActionTimers.find(theTimer);
-        if (sit != pendingSpamActionTimers.end()) {
-            PendingSpamAction pending = sit->second;
-            pendingSpamActionTimers.erase(sit);
-            executeSpamAction(pending.actionType, pending.reason, pending.duration,
-                              pending.prefixAuto, pending.actor, pending.ruleName,
-                              pending.detectorNick);
-            return;
-        }
-    }
-
-    /* Handle pending spy client personal-quit timers */
-    {
-        pendingSpyQuitTimersType::iterator qit = pendingSpyQuitTimers.find(theTimer);
-        if (qit != pendingSpyQuitTimers.end()) {
-            int scId = qit->second;
-            pendingSpyQuitTimers.erase(qit);
-            handleSpyClientPersonalQuit(scId);
-            return;
-        }
-    }
-
-    /* Handle deferred spy client reintroductions (see retireAndReplaceSpyClient()) */
-    {
-        pendingSpyReintroduceTimersType::iterator rit = pendingSpyReintroduceTimers.find(theTimer);
-        if (rit != pendingSpyReintroduceTimers.end()) {
-            int scId = rit->second;
-            pendingSpyReintroduceTimers.erase(rit);
-            spyClientsMapType::const_iterator scit = spyClientsMap.find(scId);
-            if (scit != spyClientsMap.end() && !liveSpyClientsMap.count(scId))
-                introduceSpyClient(scit->second);
-            return;
-        }
-    }
-
-    if (theTimer == tidSecondSpyCheck) {
+/**
+ * Our periodic timers. Each books a timer whose callback does the work and
+ * then calls this same method again for the next run, so the timerID member
+ * is assigned in one place and the interval is read afresh every time round.
+ * The callbacks capture the module, which outlives them - the server cancels
+ * whatever is still pending when the module unloads.
+ */
+void dronescan::scheduleSecondSpyCheck() {
+    tidSecondSpyCheck = MyUplink->RegisterTimer(time(0) + 60, this, [this]() {
         checkSecondSpyJoins();
-        theTime = time(0) + 60;
-        tidSecondSpyCheck = MyUplink->RegisterTimer(theTime, this, 0);
-        return;
-    }
+        scheduleSecondSpyCheck();
+    });
+}
 
-    if (theTimer == tidSpyJoinRetry) {
+void dronescan::scheduleSpyJoinRetry() {
+    tidSpyJoinRetry = MyUplink->RegisterTimer(time(0) + 60, this, [this]() {
         checkMissingSpyJoins();
-        theTime = time(0) + 60;
-        tidSpyJoinRetry = MyUplink->RegisterTimer(theTime, this, 0);
-        return;
-    }
+        scheduleSpyJoinRetry();
+    });
+}
 
-    if (theTimer == tidClearActiveList) {
+void dronescan::scheduleClearActiveList() {
+    tidClearActiveList = MyUplink->RegisterTimer(time(0) + dcInterval, this, [this]() {
         droneChannelsType::iterator dcitr, next_dcitr;
         time_t joinSince = ::time(0) - dcInterval;
 
@@ -1237,19 +1185,23 @@ void dronescan::OnTimer(const xServer::timerID& theTimer, void*) {
             }
         }
 
-        theTime = time(0) + dcInterval;
-        tidClearActiveList = MyUplink->RegisterTimer(theTime, this, 0);
-    }
+        scheduleClearActiveList();
+    });
+}
 
-    if (theTimer == tidClearJoinCounter) {
-        processJoinPartChannels();
-    }
+void dronescan::scheduleClearJoinCounter() {
+    /* processJoinPartChannels() books the next run itself, at its end, which
+     * is where the re-arm has always been. */
+    tidClearJoinCounter = MyUplink->RegisterTimer(time(0) + jcInterval, this,
+                                                  [this]() { processJoinPartChannels(); });
+}
 
-    if (theTimer == tidClearNickCounter) {
+void dronescan::scheduleClearNickCounter() {
+    tidClearNickCounter = MyUplink->RegisterTimer(time(0) + ncInterval, this, [this]() {
         for (ncChanMapType::const_iterator itr = ncChanMap.begin(); itr != ncChanMap.end(); ++itr) {
             Channel* theChan = Network->findChannel(itr->first);
             if (0 == theChan) {
-                elog << "dronescan::OnTimer> Unable "
+                elog << "dronescan::scheduleClearNickCounter> Unable "
                      << "to find channel: " << itr->first << std::endl;
                 continue;
             }
@@ -1262,18 +1214,19 @@ void dronescan::OnTimer(const xServer::timerID& theTimer, void*) {
         log(DBG, "Clearing %u records from the join counter.", ncChanMap.size());
         ncChanMap.clear();
 
-        theTime = time(0) + ncInterval;
-        tidClearNickCounter = MyUplink->RegisterTimer(theTime, this, 0);
-    }
+        scheduleClearNickCounter();
+    });
+}
 
-    if (theTimer == tidGlineQueue) {
+void dronescan::scheduleGlineQueue() {
+    tidGlineQueue = MyUplink->RegisterTimer(time(0) + gbInterval, this, [this]() {
         processGlineQueue();
+        scheduleGlineQueue();
+    });
+}
 
-        theTime = time(0) + gbInterval;
-        tidGlineQueue = MyUplink->RegisterTimer(theTime, this, 0);
-    }
-
-    if (theTimer == tidRepeatGC) {
+void dronescan::scheduleRepeatGC() {
+    tidRepeatGC = MyUplink->RegisterTimer(time(0) + 60, this, [this]() {
         // Reclaim expired TEXT_REPEAT tracking entries
         time_t nowGC = ::time(0);
         for (repeatTrackMapType::iterator rit = repeatTrackMap.begin();
@@ -1284,9 +1237,8 @@ void dronescan::OnTimer(const xServer::timerID& theTimer, void*) {
                 ++rit;
         }
 
-        theTime = time(0) + 60;
-        tidRepeatGC = MyUplink->RegisterTimer(theTime, this, 0);
-    }
+        scheduleRepeatGC();
+    });
 }
 
 /*******************************************
@@ -1573,8 +1525,7 @@ void dronescan::processJoinPartChannels() {
     log(DBG, "Clearing %u records from the join counter.", jcChanMap.size());
     jcChanMap.clear();
 
-    time_t theTime = time(0) + jcInterval;
-    tidClearJoinCounter = MyUplink->RegisterTimer(theTime, this, 0);
+    scheduleClearJoinCounter();
 }
 
 void dronescan::outputNames(const std::string& chanName, std::stringstream& names, bool exclude,
@@ -3478,8 +3429,19 @@ void dronescan::fireRuleActions(sqlSpamRule* rule, const SpamActor& actor,
         pending.detectorNick = detectorNick;
 
         time_t fireAt = ::time(nullptr) + static_cast<time_t>(r.delay);
-        xServer::timerID tid = MyUplink->RegisterTimer(fireAt, this, nullptr);
-        pendingSpamActionTimers[tid] = pending;
+        timerIDHolder tid = newTimerIDHolder();
+        *tid = MyUplink->RegisterTimer(fireAt, this, [this, tid]() {
+            pendingSpamActionTimersType::iterator sit = pendingSpamActionTimers.find(*tid);
+            if (sit == pendingSpamActionTimers.end())
+                return;
+
+            PendingSpamAction pending = sit->second;
+            pendingSpamActionTimers.erase(sit);
+            executeSpamAction(pending.actionType, pending.reason, pending.duration,
+                              pending.prefixAuto, pending.actor, pending.ruleName,
+                              pending.detectorNick);
+        });
+        pendingSpamActionTimers[*tid] = pending;
     }
 }
 
@@ -4086,8 +4048,18 @@ void dronescan::scheduleSpyClientJoin(const std::string& chanName, bool forcejoi
         delay += rand() % (maxDelay - minDelay + 1);
 
     time_t fireAt = ::time(nullptr) + static_cast<time_t>(delay);
-    xServer::timerID tid = MyUplink->RegisterTimer(fireAt, this, nullptr);
-    pendingJoinTimers[tid] = std::make_pair(forcejoin, string_lower(chanName));
+    timerIDHolder tid = newTimerIDHolder();
+    *tid = MyUplink->RegisterTimer(fireAt, this, [this, tid]() {
+        pendingJoinTimersType::iterator pit = pendingJoinTimers.find(*tid);
+        if (pit == pendingJoinTimers.end())
+            return;
+
+        bool pendingForceJoin = pit->second.first;
+        string pendingChanName = pit->second.second;
+        pendingJoinTimers.erase(pit);
+        doSpyClientJoin(pendingChanName, pendingForceJoin);
+    });
+    pendingJoinTimers[*tid] = std::make_pair(forcejoin, string_lower(chanName));
 }
 
 /** Cancel any pending spy-client-join timer(s) scheduled for the given channel. */
@@ -4127,8 +4099,17 @@ void dronescan::scheduleSpyClientPersonalQuit(int scId) {
         delay += rand() % (spyClientQuitMaxSec - spyClientQuitMinSec + 1);
 
     time_t fireAt = ::time(nullptr) + static_cast<time_t>(delay);
-    xServer::timerID tid = MyUplink->RegisterTimer(fireAt, this, nullptr);
-    pendingSpyQuitTimers[tid] = scId;
+    timerIDHolder tid = newTimerIDHolder();
+    *tid = MyUplink->RegisterTimer(fireAt, this, [this, tid]() {
+        pendingSpyQuitTimersType::iterator qit = pendingSpyQuitTimers.find(*tid);
+        if (qit == pendingSpyQuitTimers.end())
+            return;
+
+        int pendingScId = qit->second;
+        pendingSpyQuitTimers.erase(qit);
+        handleSpyClientPersonalQuit(pendingScId);
+    });
+    pendingSpyQuitTimers[*tid] = scId;
 }
 
 /** Cancels scId's pending spontaneous-quit timer, if any. */
@@ -4193,8 +4174,19 @@ void dronescan::retireAndReplaceSpyClient(int scId) {
 
     liveSpyClientsMap.erase(scId);
 
-    xServer::timerID tid = MyUplink->RegisterTimer(::time(nullptr), this, nullptr);
-    pendingSpyReintroduceTimers[tid] = scId;
+    timerIDHolder tid = newTimerIDHolder();
+    *tid = MyUplink->RegisterTimer(::time(nullptr), this, [this, tid]() {
+        pendingSpyReintroduceTimersType::iterator rit = pendingSpyReintroduceTimers.find(*tid);
+        if (rit == pendingSpyReintroduceTimers.end())
+            return;
+
+        int pendingScId = rit->second;
+        pendingSpyReintroduceTimers.erase(rit);
+        spyClientsMapType::const_iterator scit = spyClientsMap.find(pendingScId);
+        if (scit != spyClientsMap.end() && !liveSpyClientsMap.count(pendingScId))
+            introduceSpyClient(scit->second);
+    });
+    pendingSpyReintroduceTimers[*tid] = scId;
 }
 
 /**
