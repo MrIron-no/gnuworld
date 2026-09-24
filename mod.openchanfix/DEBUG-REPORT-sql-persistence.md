@@ -226,7 +226,7 @@ impossible to manage via IRC commands.
 |------|------|
 | `mod.openchanfix/chanfix.cc:2897-2971` | `prepareUpdate()` — snapshots memory, calls `updateDB()` |
 | `mod.openchanfix/chanfix.cc:2978-3116` | `updateDB()` — writes snapshot to SQL, bug location |
-| `mod.openchanfix/chanfix.cc:542-599` | `OnTimer()` — dispatches periodic SQL update |
+| `mod.openchanfix/chanfix.cc:437-446` | `scheduleUpdateDB()` — the periodic SQL update timer |
 | `mod.openchanfix/chanfix.cc:601-630` | `OnDetach()` — final save attempt on shutdown |
 | `mod.openchanfix/chanfix_config.h:126` | `SQL_UPDATE_TIME` — 86400s (24h) update interval |
 | `mod.openchanfix/chanfix.h:497` | `updateInProgress` flag declaration |

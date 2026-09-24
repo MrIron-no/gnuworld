@@ -148,7 +148,7 @@ same window keep scoring.
    value - action type, reason, duration, the `SpamActor` snapshot, rule
    name) into a `PendingSpamAction` and scheduled on a one-shot timer
    (`pendingSpamActionTimers`), the same delayed-timer pattern used for spy
-   client joins (`scheduleSpyClientJoin`). `OnTimer()` calls
+   client joins (`scheduleSpyClientJoin`). The timer's own callback calls
    `executeSpamAction()` when it fires.
 6. **`executeSpamAction(actionType, reason, duration, prefixAuto, actor,
    ruleName)`** runs a single resolved action and never touches the
