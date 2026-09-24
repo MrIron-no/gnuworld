@@ -329,6 +329,21 @@ class cservice : public xClient {
     /* TimerID for checking prometheus metrics */
     xServer::timerID prometheus_timerID = 0;
 
+    /* Book each of the periodic timers above.  The timer runs its work and then
+     * calls the same method again to book the next one, so the timerID member
+     * is assigned in one place and the period is read afresh every time round.
+     */
+    void scheduleDbConnectionCheck();
+    void scheduleDbUpdate();
+    void scheduleExpireCheck();
+    void scheduleCacheExpire();
+    void schedulePendingCheck();
+    void schedulePendingNotify();
+    void scheduleLimitCheck();
+    void scheduleWebrelayCheck();
+    void scheduleChannelsFloodCheck();
+    void schedulePrometheusUpdate();
+
     /* Checks whether the SQL database connection is active. */
     void checkDbConnectionStatus();
 
@@ -462,7 +477,6 @@ class cservice : public xClient {
 
     virtual void OnCTCP(iClient* Sender, const string& CTCP, const string& Message,
                         bool Secure = false) override;
-    virtual void OnTimer(const xServer::timerID&, void*) override;
     virtual void OnJoin(const std::string&) override;
     virtual bool Notice(const iClient*, const string&) override;
 
@@ -924,6 +938,13 @@ class cservice : public xClient {
 
     void updateLimits();
     void undoJoinLimits(sqlChannel* reggedChan);
+
+    /* Book the timer that lifts a channel's JOINLIM modes at the given time,
+     * and record it on the channel, which is what stopTimer() and the JOINLIM
+     * logic read.  The timer holds the record itself: ~sqlChannel() cancels it,
+     * and that is what keeps the record good for as long as the timer can run.
+     */
+    void scheduleJoinLimitLift(sqlChannel* reggedChan, const time_t& when);
 
     bool addGline(csGline*);
     bool remGline(csGline*);

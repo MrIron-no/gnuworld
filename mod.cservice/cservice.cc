@@ -103,40 +103,31 @@ void cservice::OnAttach() {
     }
 
     // Start the Db checker timer rolling.
-    time_t theTime = time(NULL) + connectCheckFreq;
-    dBconnection_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleDbConnectionCheck();
 
     // Start the Db update/Reop timer rolling.
-    theTime = time(NULL) + updateInterval;
-    update_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleDbUpdate();
 
     // Start the ban suspend/expire timer rolling.
-    theTime = time(NULL) + expireInterval;
-    expire_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleExpireCheck();
 
     // Start the cache expire timer rolling.
-    theTime = time(NULL) + cacheInterval;
-    cache_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleCacheExpire();
 
     // Start the pending chan timer rolling.
-    theTime = time(NULL) + pendingChanPeriod;
-    pending_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    schedulePendingCheck();
 
     // Start the pending chan notification timer rolling.
-    theTime = time(NULL) + pendingNotifPeriod;
-    pendingNotif_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    schedulePendingNotify();
 
     // Start the floating Limit timer rolling.
-    theTime = time(NULL) + limitCheckPeriod;
-    limit_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleLimitCheck();
 
     // Start the channels flood period timer rolling.
-    theTime = time(NULL) + channelsFloodPeriod;
-    channels_flood_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    scheduleChannelsFloodCheck();
 
     // Start prometheus metrics timer rolling.
-    theTime = time(NULL) + 60;
-    prometheus_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+    schedulePrometheusUpdate();
 
     /* Start the web relay timer rolling.
      * First, empty out any old notices that may be present.
@@ -147,8 +138,7 @@ void cservice::OnAttach() {
          * if the query fails, we most likely don't have
          * the table setup, so pointless checking it.
          */
-        theTime = time(NULL) + webrelayPeriod;
-        webrelay_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
+        scheduleWebrelayCheck();
     } else {
         /* log the error */
         LOG(ERROR, "Unable to empty webnotices table, not checking webnotices.");
@@ -2928,76 +2918,126 @@ void cservice::updateFingerprints() {
 void cservice::updateBans() { /* Todo */ }
 
 /**
- * Timer handler.
- * This member handles a number of timers, dispatching
- * control to the relevant member for the timer
- * triggered.
+ * The module's periodic timers.  Each of these books a timer whose callback
+ * does the work and then calls this same method again for the next run: the
+ * timerID member is assigned in one place, and the period is read afresh every
+ * time round, so a rehash takes effect on the following run.  The callbacks
+ * capture the module, which outlives them -- the server cancels whatever is
+ * still pending when the module unloads.
  */
-void cservice::OnTimer(const xServer::timerID& timer_id, void* parms) {
-    /**
-     * If the timer is called with a param, we check:
-     * 1: Whether the param is a sqlChannel object; and
-     * 2: Whether the timer_id mathes the sqlChannel's getLimitJoinTimer()
-     */
+void cservice::scheduleDbConnectionCheck() {
+    dBconnection_timerID =
+        MyUplink->RegisterTimer(::time(nullptr) + connectCheckFreq, this, [this]() {
+            checkDbConnectionStatus();
+            performReops();
+            scheduleDbConnectionCheck();
+        });
+}
 
-    if (parms != nullptr) {
-        LOG(TRACE, "Called with parms (JOINLIM)");
-        sqlChannel* sqlChan = static_cast<sqlChannel*>(parms);
-        if (sqlChan != nullptr && sqlChan->getLimitJoinTimer() == timer_id &&
-            sqlChan->getLimitJoinActive()) {
-            undoJoinLimits(sqlChan);
-            LOG(DEBUG, "Calling undoJoinLimits for {} (ID: {})", sqlChan->getName(),
-                sqlChan->getID());
-        }
-    }
-
-    if (timer_id == limit_timerID) {
-        updateLimits();
-
-        /* Refresh Timers */
-        time_t theTime = time(NULL) + limitCheckPeriod;
-        limit_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
-
-    if (timer_id == dBconnection_timerID) {
-        checkDbConnectionStatus();
-        performReops();
-
-        /* Refresh Timers */
-        time_t theTime = time(NULL) + connectCheckFreq;
-        dBconnection_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
-
-    if (timer_id == update_timerID) {
+void cservice::scheduleDbUpdate() {
+    update_timerID = MyUplink->RegisterTimer(::time(nullptr) + updateInterval, this, [this]() {
         processDBUpdates();
+        scheduleDbUpdate();
+    });
+}
 
-        /* Refresh Timer */
-        time_t theTime = time(NULL) + updateInterval;
-        update_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
-
-    if (timer_id == expire_timerID) {
+void cservice::scheduleExpireCheck() {
+    expire_timerID = MyUplink->RegisterTimer(::time(nullptr) + expireInterval, this, [this]() {
         expireBans();
         expireSuspends();
         expireSilence();
         expireGlines();
         expireWhitelist();
+        scheduleExpireCheck();
+    });
+}
 
-        /* Refresh Timer */
-        time_t theTime = time(NULL) + expireInterval;
-        expire_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
-
-    if (timer_id == cache_timerID) {
+void cservice::scheduleCacheExpire() {
+    cache_timerID = MyUplink->RegisterTimer(::time(nullptr) + cacheInterval, this, [this]() {
         cacheExpireUsers();
         cacheExpireLevels();
+        scheduleCacheExpire();
+    });
+}
 
-        /* Refresh Timer */
-        time_t theTime = time(NULL) + cacheInterval;
-        cache_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
+void cservice::schedulePendingCheck() {
+    pending_timerID = MyUplink->RegisterTimer(::time(nullptr) + pendingChanPeriod, this, [this]() {
+        checkIncomings(true);
 
-    if (timer_id == webrelay_timerID) {
+//	*** The Judge *** //
+#ifdef USE_INTERNAL_THE_JUDGE
+        checkValidUsersAndChannelsState();
+        checkNewIncomings();
+#endif
+        loadPendingChannelList();
+#ifdef USE_INTERNAL_THE_JUDGE
+        // checkTrafficPass();	// Moved to a faster update_timerID
+        checkObjections();
+        checkAccepts();
+        checkReviews();
+        cleanUpReviews();
+        cleanUpPendings();
+        //-------------------------
+        ExpireUsers(); //(not The Judge member)
+//-------------------------
+#endif
+        schedulePendingCheck();
+    });
+}
+
+void cservice::schedulePendingNotify() {
+    pendingNotif_timerID =
+        MyUplink->RegisterTimer(::time(nullptr) + pendingNotifPeriod, this, [this]() {
+            checkIncomings();
+
+            /*
+             * Load a list of channels in NOTIFICATION stage and send them
+             * a notice.
+             */
+            stringstream theQuery;
+            theQuery << "SELECT channels.name,channels.id,pending.created_ts"
+                     << " FROM pending,channels"
+                     << " WHERE channels.id = pending.channel_id"
+                     << " AND pending.status IN (2, 8);" << ends;
+
+            unsigned int noticeCount = 0;
+            if (SQLDb->Exec(theQuery, true)) {
+                for (unsigned int i = 0; i < SQLDb->Tuples(); i++) {
+                    noticeCount++;
+                    string channelName = SQLDb->GetValue(i, 0);
+                    unsigned int channel_id = atoi(SQLDb->GetValue(i, 1).c_str());
+                    unsigned int created_ts = atoi(SQLDb->GetValue(i, 2).c_str());
+                    Channel* tmpChan = Network->findChannel(channelName);
+
+                    if (tmpChan) {
+                        MyUplink->serverNotice(tmpChan,
+                                               "This channel is currently being processed for "
+                                               "registration. If you wish to view the details of "
+                                               "the application or to object, please visit: "
+                                               "%s?id=%i-%i",
+                                               pendingPageURL.c_str(), created_ts, channel_id);
+                    }
+                }
+            }
+
+            LOG(INFO,
+                "Loaded Pending Channels notification list, I have just notified {} channels that "
+                "they are under registration.",
+                noticeCount);
+
+            schedulePendingNotify();
+        });
+}
+
+void cservice::scheduleLimitCheck() {
+    limit_timerID = MyUplink->RegisterTimer(::time(nullptr) + limitCheckPeriod, this, [this]() {
+        updateLimits();
+        scheduleLimitCheck();
+    });
+}
+
+void cservice::scheduleWebrelayCheck() {
+    webrelay_timerID = MyUplink->RegisterTimer(::time(nullptr) + webrelayPeriod, this, [this]() {
         /* Check for new webrelay messages */
         string webrelayQuery;
 
@@ -3029,92 +3069,23 @@ void cservice::OnTimer(const xServer::timerID& timer_id, void* parms) {
             }
         }
 
-        /* Refresh Timer */
-        time_t theTime = time(NULL) + webrelayPeriod;
-        webrelay_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
+        scheduleWebrelayCheck();
+    });
+}
 
-    if (timer_id == pending_timerID) {
-        checkIncomings(true);
+void cservice::scheduleChannelsFloodCheck() {
+    channels_flood_timerID =
+        MyUplink->RegisterTimer(::time(nullptr) + channelsFloodPeriod, this, [this]() {
+            checkChannelsFlood();
+            scheduleChannelsFloodCheck();
+        });
+}
 
-//	*** The Judge *** //
-#ifdef USE_INTERNAL_THE_JUDGE
-        checkValidUsersAndChannelsState();
-        checkNewIncomings();
-#endif
-        loadPendingChannelList();
-#ifdef USE_INTERNAL_THE_JUDGE
-        // checkTrafficPass();	// Moved to a faster update_timerID
-        checkObjections();
-        checkAccepts();
-        checkReviews();
-        cleanUpReviews();
-        cleanUpPendings();
-        //-------------------------
-        ExpireUsers(); //(not The Judge member)
-//-------------------------
-#endif
-        /* Refresh Timer */
-        time_t theTime = time(NULL) + pendingChanPeriod;
-        pending_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
-
-    if (timer_id == pendingNotif_timerID) {
-
-        checkIncomings();
-
-        /*
-         * Load a list of channels in NOTIFICATION stage and send them
-         * a notice.
-         */
-        stringstream theQuery;
-        theQuery << "SELECT channels.name,channels.id,pending.created_ts"
-                 << " FROM pending,channels"
-                 << " WHERE channels.id = pending.channel_id"
-                 << " AND pending.status IN (2, 8);" << ends;
-
-        unsigned int noticeCount = 0;
-        if (SQLDb->Exec(theQuery, true)) {
-            for (unsigned int i = 0; i < SQLDb->Tuples(); i++) {
-                noticeCount++;
-                string channelName = SQLDb->GetValue(i, 0);
-                unsigned int channel_id = atoi(SQLDb->GetValue(i, 1).c_str());
-                unsigned int created_ts = atoi(SQLDb->GetValue(i, 2).c_str());
-                Channel* tmpChan = Network->findChannel(channelName);
-
-                if (tmpChan) {
-                    MyUplink->serverNotice(
-                        tmpChan,
-                        "This channel is currently being processed for registration. "
-                        "If you wish to view the details of the application or to object, please "
-                        "visit: "
-                        "%s?id=%i-%i",
-                        pendingPageURL.c_str(), created_ts, channel_id);
-                }
-            }
-        }
-
-        LOG(INFO,
-            "Loaded Pending Channels notification list, I have just notified {} channels that they "
-            "are under registration.",
-            noticeCount);
-
-        /* Refresh Timer */
-        time_t theTime = time(NULL) + pendingNotifPeriod;
-        pendingNotif_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
-
-    if (timer_id == channels_flood_timerID) {
-        checkChannelsFlood();
-        time_t theTime = time(NULL) + channelsFloodPeriod;
-        channels_flood_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
-
-    if (timer_id == prometheus_timerID) {
+void cservice::schedulePrometheusUpdate() {
+    prometheus_timerID = MyUplink->RegisterTimer(::time(nullptr) + 60, this, [this]() {
         updatePrometheusMetrics();
-        time_t theTime = time(NULL) + 60;
-        prometheus_timerID = MyUplink->RegisterTimer(theTime, this, NULL);
-    }
+        schedulePrometheusUpdate();
+    });
 }
 
 void cservice::updatePrometheusMetrics() {
@@ -5275,17 +5246,29 @@ void cservice::undoJoinLimits(sqlChannel* reggedChan) {
 
 void cservice::stopTimer(xServer::timerID timerID) { MyUplink->UnRegisterTimer(timerID); }
 
+void cservice::scheduleJoinLimitLift(sqlChannel* reggedChan, const time_t& when) {
+    /* The callback holds the record, rather than looking the channel up again
+     * when it runs: these timers are reset on every unidented join, and a
+     * lookup each time is what that would cost.  ~sqlChannel() cancels the
+     * timer, so a record is never freed while its timer can still run. */
+    reggedChan->setLimitJoinTimer(MyUplink->RegisterTimer(when, this, [this, reggedChan]() {
+        if (!reggedChan->getLimitJoinActive())
+            return;
+
+        LOG(DEBUG, "Calling undoJoinLimits for {} (ID: {})", reggedChan->getName(),
+            reggedChan->getID());
+        undoJoinLimits(reggedChan);
+    }));
+    reggedChan->setLimitJoinTimeExpire(when);
+}
+
 void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
     if (reggedChan->getLimitJoinActive()) {
         // When a new client joins, reset the JOINPERIOD to keep it alive
         MyUplink->UnRegisterTimer(reggedChan->getLimitJoinTimer());
 
         // Start new timer with remaining time + joinsecs
-        time_t theTime = ::time(nullptr) + reggedChan->getLimitJoinPeriod();
-        timerID tmpTimer = MyUplink->RegisterTimer(theTime, this, reggedChan);
-
-        reggedChan->setLimitJoinTimer(tmpTimer);
-        reggedChan->setLimitJoinTimeExpire(theTime);
+        scheduleJoinLimitLift(reggedChan, ::time(nullptr) + reggedChan->getLimitJoinPeriod());
 
         return; // We are already active, just reset the timer
     }
@@ -5362,12 +5345,10 @@ void cservice::doJoinLimit(sqlChannel* reggedChan, Channel* theChan) {
         Mode(theChan, "+" + letters, args, false);
 
         // Register a timer to lift this
-        time_t theTime = time(NULL) + reggedChan->getLimitJoinPeriod();
         if (reggedChan->getLimitJoinTimer() > 0)
             stopTimer(reggedChan->getLimitJoinTimer()); // Unregister old one
 
-        reggedChan->setLimitJoinTimer(MyUplink->RegisterTimer(theTime, this, reggedChan));
-        reggedChan->setLimitJoinTimeExpire(theTime);
+        scheduleJoinLimitLift(reggedChan, ::time(nullptr) + reggedChan->getLimitJoinPeriod());
 
         incStat("CORE.JOINLIM.ALTER");
     }

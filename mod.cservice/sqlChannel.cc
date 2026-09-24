@@ -646,11 +646,11 @@ void sqlChannel::ExpireMessagesForChannel(sqlChannel* theChan) {
 }
 
 sqlChannel::~sqlChannel() {
-    /* A pending JOINLIM timer was given this record as its argument, and the
-     * handler reads the record to tell whether the timer is the one it expects:
-     * a timer that outlives the record it names is a use-after-free. Cancelling
-     * here covers every place a record is deleted, this one's three and the
-     * fourth somebody adds later. */
+    /* A pending JOINLIM timer's callback captured this record, and reads it when
+     * it runs: a timer that outlives the record it holds is a use-after-free.
+     * Cancelling here is what keeps that pointer good, and it covers every place
+     * a record is deleted, this one's three and the fourth somebody adds
+     * later. */
     if (limit_jointimerID) {
         bot->stopTimer(limit_jointimerID);
     }

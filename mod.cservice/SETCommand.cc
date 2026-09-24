@@ -1884,9 +1884,7 @@ bool SETCommand::Exec(iClient* theClient, const string& Message) {
              */
             else if (lapTime < limit_period) {
                 bot->stopTimer(theChan->getLimitJoinTimer());
-                xServer::timerID newTimer = this->server->RegisterTimer(expTime, bot, theChan);
-                theChan->setLimitJoinTimer(newTimer);
-                theChan->setLimitJoinTimeExpire(expTime);
+                bot->scheduleJoinLimitLift(theChan, expTime);
             }
         }
 
