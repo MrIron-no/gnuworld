@@ -855,10 +855,6 @@ bool xClient::addChan(Channel*) { return true; }
 
 bool xClient::removeChan(Channel*) { return true; }
 
-void xClient::OnTimer(const xServer::timerID&, void*) {}
-
-void xClient::OnTimerDestroy(xServer::timerID, void*) {}
-
 void xClient::OnSignal(int) {}
 
 // This method courtesy of OUTSider

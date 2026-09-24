@@ -64,14 +64,6 @@ class ServerTimerHandler : public TimerHandler {
      */
     virtual void schedule() = 0;
 
-    /**
-     * No server timer is registered through the void* API any more, so
-     * nothing here is ever called: the concrete definition is only what
-     * lets these handlers be instantiated while TimerHandler still
-     * declares the method, and goes when that declaration does.
-     */
-    virtual void OnTimer(const timerID&, void*) override {}
-
   protected:
     /**
      * This is a pointer to the server core.

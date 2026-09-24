@@ -48,35 +48,14 @@ void xServer::registerServerTimers() {
     pingTimer->schedule();
 }
 
-xServer::timerID xServer::RegisterTimer(const time_t& absTime, TimerHandler* theHandler,
-                                        void* data) {
-    assert(theHandler != 0);
-
-    // Allow registration of timers which are requesting to be executed
-    // at times which are <= now.
-    // This will just allow the timer to run on the next iteration
-
-    // Retrieve a unique timerID
-    timerID ID = getUniqueTimerID();
-
-    // Allocate a timerInfo structure to represent this timer
-    timerInfo* ti = new (std::nothrow) timerInfo(ID, absTime, theHandler, data);
-    assert(ti != 0);
-
-    // Add this timerInfo structure to the timerQueue
-    timerQueue.push(timerQueueType::value_type(absTime, ti));
-
-    // Add the unique timerID to the timerID map
-    uniqueTimerMap.insert(uniqueTimerMapType::value_type(ID, true));
-
-    // Return the valid timerID of this timer
-    return ID;
-}
-
 xServer::timerID xServer::registerCallbackTimer(const time_t& absTime, TimerHandler* owner,
                                                 timerCallback callback) {
     assert(owner != 0);
     assert(static_cast<bool>(callback));
+
+    // Allow registration of timers which are requesting to be executed
+    // at times which are <= now.
+    // This will just allow the timer to run on the next iteration
 
     // Retrieve a unique timerID
     timerID ID = getUniqueTimerID();
@@ -166,19 +145,13 @@ unsigned int xServer::CheckTimers() {
         // Remove the structure from the timerQueue
         timerQueue.pop();
 
-        /* Call the timer handler method for the client.  A timer handler is
-         * module code like any other, so this counts as a dispatch: a module
-         * that asks to be unloaded from in here is not unmapped under its own
-         * frame, a network object core removes waits for the main loop, and a
-         * post waits its turn.  Same shape as xServer::dispatch(). */
+        /* Run the timer's callback.  That is module code like any other, so
+         * this counts as a dispatch: a module that asks to be unloaded from in
+         * here is not unmapped under its own frame, a network object core
+         * removes waits for the main loop, and a post waits its turn.  Same
+         * shape as xServer::dispatch(). */
         ++dispatchDepth;
-        if (info->callback) {
-            // A timer registered with a callback runs that and nothing else:
-            // the closure already holds whatever the caller needed
-            info->callback();
-        } else {
-            info->theHandler->OnTimer(info->ID, info->data);
-        }
+        info->callback();
         --dispatchDepth;
 
         if (0 == dispatchDepth) {
@@ -218,20 +191,12 @@ void xServer::removeAllTimers(TimerHandler* theHandler) {
 
         if (thePair.second->theHandler == theHandler) {
             // This timerInfo belongs to the TimerHandler in
-            // question.
+            // question.  There is nothing to hand back to it:
+            // deleting the timer discards its callback, and the
+            // callback's captures go with it.
             //		elog	<< "xServer::removeAllTimers> Found "
             //			<< "a timer that was not unregistered"
             //			<< endl ;
-
-            // Since the TimerHandler has little or no access
-            // to the timer system internals here, it is safe
-            // to simply call its OnTimerDestroy() method, even
-            // though that method may call other xServer methods.
-            // A timer registered with a callback has nothing to hand back:
-            // deleting it discards the closure, and its captures go with it.
-            if (!thePair.second->callback) {
-                theHandler->OnTimerDestroy(thePair.second->ID, thePair.second->data);
-            }
 
             // This timer no longer exists, so neither does its id
             uniqueTimerMap.erase(thePair.second->ID);

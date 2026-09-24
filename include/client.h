@@ -502,22 +502,6 @@ class xClient : public TimerHandler, public NetworkTarget {
      */
     virtual void OnServerMessage(iServer* Sender, const std::string& Message, bool secure = false);
 
-    /**
-     * Handle a timer event.  The first argument is the
-     * handle for the timer registration, and the second is
-     * the arguments that were passed when registering the
-     * timer.
-     * This method overloads the pure virtual TimerHandler
-     * base class method declaration.
-     */
-    virtual void OnTimer(const xServer::timerID&, void*);
-
-    /**
-     * A timer has been destroyed by the server (such as during
-     * a shutdown).  Perform cleanup for the timer here.
-     */
-    virtual void OnTimerDestroy(xServer::timerID, void*);
-
     /* Utility methods */
 
     /**

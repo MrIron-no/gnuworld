@@ -748,30 +748,18 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
     typedef std::function<void()> timerCallback;
 
     /**
-     * Register for a timer event.  The first argument is the
-     * absolute time at which the timed event is to occur.
-     * The second argument is a pointer to an argument to be
-     * passed to the timer handler.
-     * Returns 0 on failure, a valid timerID otherwise.
-     */
-    virtual timerID RegisterTimer(const time_t& absoluteTime, TimerHandler* theHandler,
-                                  void* data = 0);
-
-    /**
-     * Register for a timer event which runs the given callback when it
-     * expires, rather than calling the handler's OnTimer() method.  The
-     * first argument is the absolute time at which the timed event is to
-     * occur, the second the owner of the timer.  The owner is there for one
-     * reason: removeAllTimers() must still cancel a module's timers when it
-     * unloads.  It is not handed to the callback, which captures whatever
-     * it needs.
+     * Register for a timer event, which runs the given callback when it
+     * expires.  The first argument is the absolute time at which the timed
+     * event is to occur, the second the owner of the timer.  The owner is
+     * there for one reason: removeAllTimers() must still cancel a module's
+     * timers when it unloads.  It is not handed to the callback, which
+     * captures whatever it needs.
      * Cancelling such a timer, whether through UnRegisterTimer() or by the
      * owner going away, simply discards the callback, and its captures are
-     * released with it.  OnTimerDestroy() is not called for a callback
-     * timer: that method belongs to the void* API above, and goes away with
-     * it once the last module has converted.
-     * Constrained to invocables taking no argument, so that the many calls
-     * passing a null void* still resolve to the overload above.
+     * released with it.  The owner is never called back about a timer that
+     * goes away.
+     * Constrained to invocables taking no argument, so that anything else
+     * is refused at the call site rather than inside the template.
      * Returns 0 on failure, a valid timerID otherwise.
      */
     template <typename F>
@@ -1474,16 +1462,9 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
      */
     struct timerInfo {
         /// Instantiate a new timerInfo structure.
-        timerInfo(const timerID& _ID, const time_t& _absTime, TimerHandler* _theHandler,
-                  void* _data = 0)
-            : ID(_ID), absTime(_absTime), theHandler(_theHandler), data(_data) {}
-
-        /// Instantiate a new timerInfo structure for a timer which runs a
-        /// callback of its own instead of calling its owner's OnTimer().
         timerInfo(const timerID& _ID, const time_t& _absTime, TimerHandler* _owner,
                   timerCallback _callback)
-            : ID(_ID), absTime(_absTime), theHandler(_owner), data(0),
-              callback(std::move(_callback)) {}
+            : ID(_ID), absTime(_absTime), theHandler(_owner), callback(std::move(_callback)) {}
 
         /// The unique identifier of this timer
         timerID ID;
@@ -1491,14 +1472,11 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
         /// The absolute time at which the timer expires
         time_t absTime;
 
-        /// The handler for this timed event
+        /// The owner of this timed event, which is what removeAllTimers()
+        /// matches a timer to
         TimerHandler* theHandler;
 
-        /// The argument to pass to the handler
-        void* data;
-
-        /// What to run when this timer expires; empty for a timer registered
-        /// through the void* API, whose handler is called instead
+        /// What to run when this timer expires
         timerCallback callback;
     };
 
@@ -1532,11 +1510,9 @@ class xServer : public ConnectionManager, public ConnectionHandler, public Netwo
                                           timerCallback callback);
 
     /**
-     * Remove all timers registered by the given xClient.
-     * Note that this does not attempt to deallocate any
-     * heap space allocated to the argument.
-     * Instead, that data is returned to the xClient in question
-     * by calling its OnTimerDestroy() method.
+     * Remove all timers owned by the given owner.  Each of them simply
+     * goes: its callback is discarded, and whatever the callback captured
+     * is released with it.  The owner is not told.
      */
     virtual void removeAllTimers(TimerHandler*);
 

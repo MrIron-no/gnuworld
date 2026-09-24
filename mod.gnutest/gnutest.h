@@ -22,7 +22,6 @@
 #ifndef __GNUTEST_H
 #define __GNUTEST_H "$Id: gnutest.h,v 1.14 2005/01/17 23:09:54 dan_karrels Exp $"
 
-#include <list>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -205,12 +204,6 @@ class gnutest : public xClient {
     virtual void OnFakeCTCP(iClient* srcClient, iClient* fakeClient, const std::string& command,
                             const std::string& message, bool secure = false) override;
 
-    /**
-     * Core destroyed a timer of ours without being asked.  Report the id and
-     * the payload it handed us, the same way an event is reported.
-     */
-    virtual void OnTimerDestroy(xServer::timerID, void*) override;
-
   protected:
     /**
      * Spawn a fake client.
@@ -324,12 +317,6 @@ class gnutest : public xClient {
     /// "<#channel> <timestamp> [<modes> [<args>]]" to BurstChannel() during
     /// our burst; empty for none.
     std::string burstChannel;
-
-    /**
-     * The payload of every timer "timer" registered, each one the void* handed
-     * to core.  A list, so that an address stays an address as more are added.
-     */
-    std::list<std::string> timerPayloads;
 
     /**
      * This type is used for the helpTable, which will store basic
